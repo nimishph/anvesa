@@ -156,6 +156,16 @@ describe('command line', () => {
     const callers = json(await cli(root, 'callers', 'validate', '--json'));
     expect(JSON.stringify(callers)).toContain('src/config.ts');
 
+    // In text, a caller or callee says where it is, what it looks like, and where the call is.
+    const callerText = (await cli(root, 'callers', 'validate')).out;
+    expect(callerText).toMatch(/callers of src\/config\.ts#validate\s+src\/config\.ts:\d+/);
+    expect(callerText).toMatch(/parseConfig\s+src\/config\.ts:\d+(-\d+)?\s+parseConfig\(text/);
+    expect(callerText).toContain('calls at :2');
+    const calleeText = (await cli(root, 'callees', 'parseConfig')).out;
+    expect(calleeText).toMatch(
+      /validate\s+src\/config\.ts:\d+(-\d+)?\s+validate\(text.*\(resolved\)\s+calls at :2/,
+    );
+
     const dependents = json(await cli(root, 'dependents', 'src/config.ts', '--json'));
     expect(JSON.stringify(dependents)).toContain('src/server.ts');
 
