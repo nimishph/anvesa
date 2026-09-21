@@ -1,7 +1,17 @@
 import { InvalidArgumentError, type Page, type PageRequest } from '@sutras/code-lens-core';
+import type { FileFacts, SymbolFact } from '../extract/facts.ts';
 import type { EdgeRecord, IndexStore } from '../store/index.ts';
 import type { WorkspacePackage } from '../workspace/discover.ts';
 import { CALL_EDGE_KINDS, EDGE, IMPORT_EDGE_KINDS } from './edges.ts';
+
+/** What a reader needs to recognise a symbol without opening its file. */
+export interface SymbolBrief {
+  readonly name: string;
+  readonly kind: string;
+  readonly startLine: number;
+  readonly endLine: number;
+  readonly signature: string | undefined;
+}
 
 /** A call into a symbol. */
 export interface CallerRef {
@@ -14,6 +24,10 @@ export interface CallerRef {
   readonly package: string | undefined;
   /** The caller lives in a different workspace package than the symbol it calls. */
   readonly crossPackage: boolean;
+  /** The calling symbol's own lines and signature; absent for a call made outside any symbol. */
+  readonly symbol: SymbolBrief | undefined;
+  /** Lines in the caller's file that call the name (several when it is called more than once). */
+  readonly callLines: readonly number[];
 }
 
 /** A call out of a symbol or file. */
@@ -21,6 +35,10 @@ export interface CalleeRef {
   /** A symbol id, `package#name` for something external, or the called name when unresolved. */
   readonly to: string;
   readonly kind: 'resolved' | 'name' | 'external' | 'unresolved';
+  /** The called symbol's lines and signature, when it is one this workspace holds. */
+  readonly symbol: SymbolBrief | undefined;
+  /** Lines, in the calling symbol's file, where it makes this call. */
+  readonly callLines: readonly number[];
 }
 
 export interface Dependent {
@@ -76,8 +94,10 @@ export class GraphQueries {
       ...pageRequest(request),
     });
     const items: CallerRef[] = [];
+    const facts = new FactsCache(this.#store);
     for (const edge of page.items) {
-      const path = await this.#pathOf(edge.from);
+      const caller = await this.#store.symbol(edge.from);
+      const path = caller ? caller.path : edge.from;
       const pkg = this.#packageOf(path);
       items.push({
         from: edge.from,
@@ -85,6 +105,10 @@ export class GraphQueries {
         evidence: edge.kind === EDGE.calls ? 'resolved' : 'name',
         package: pkg?.name,
         crossPackage: target !== undefined && pkg?.root !== targetPackage,
+        symbol: caller ? briefOf(caller) : undefined,
+        callLines: target
+          ? await callLines(facts, path, caller ? edge.from : undefined, [target.baseName])
+          : [],
       });
     }
     return { ...page, items };
@@ -97,7 +121,26 @@ export class GraphQueries {
       kinds: [EDGE.calls, EDGE.callsByName, EDGE.callsExternal, EDGE.callsUnresolved],
       ...pageRequest(request),
     });
-    return { ...page, items: page.items.map(calleeOf) };
+    const origin = await this.#store.symbol(from);
+    const originPath = origin ? origin.path : from;
+    const facts = new FactsCache(this.#store);
+    const items: CalleeRef[] = [];
+    for (const edge of page.items) {
+      const kind = calleeOf(edge);
+      const callee =
+        kind === 'resolved' || kind === 'name' ? await this.#store.symbol(edge.to) : undefined;
+      items.push({
+        to: edge.to,
+        kind,
+        symbol: callee ? briefOf(callee) : undefined,
+        callLines: await callLines(facts, originPath, origin ? from : undefined, [
+          ...(callee ? [callee.baseName] : []),
+          edge.to,
+          lastSegment(edge.to),
+        ]),
+      });
+    }
+    return { ...page, items };
   }
 
   /** Files that import `path`, and optionally the files that import those. */
@@ -200,11 +243,6 @@ export class GraphQueries {
     return [...result].sort();
   }
 
-  async #pathOf(node: string): Promise<string> {
-    const symbol = await this.#store.symbol(node);
-    return symbol ? symbol.path : node;
-  }
-
   #edgesTo(to: string, kinds: readonly string[]): AsyncGenerator<EdgeRecord> {
     return this.#allEdges({ to, kinds });
   }
@@ -234,15 +272,66 @@ function pageRequest(request: PageRequest): PageRequest {
   };
 }
 
-function calleeOf(edge: EdgeRecord): CalleeRef {
+function calleeOf(edge: EdgeRecord): CalleeRef['kind'] {
   switch (edge.kind) {
     case EDGE.calls:
-      return { to: edge.to, kind: 'resolved' };
+      return 'resolved';
     case EDGE.callsByName:
-      return { to: edge.to, kind: 'name' };
+      return 'name';
     case EDGE.callsExternal:
-      return { to: edge.to, kind: 'external' };
+      return 'external';
     default:
-      return { to: edge.to, kind: 'unresolved' };
+      return 'unresolved';
   }
+}
+
+function briefOf(symbol: SymbolFact): SymbolBrief {
+  return {
+    name: symbol.name,
+    kind: symbol.kind,
+    startLine: symbol.startLine,
+    endLine: symbol.endLine,
+    signature: symbol.signature,
+  };
+}
+
+/** `pkg#name` and `Outer.method` both end in the name that was written at the call. */
+function lastSegment(text: string): string {
+  return text.split(/[#.]/).at(-1) ?? text;
+}
+
+/** File facts read once per query however many edges land in the same file. */
+class FactsCache {
+  readonly #store: IndexStore;
+  readonly #byPath = new Map<string, Promise<FileFacts | undefined>>();
+
+  constructor(store: IndexStore) {
+    this.#store = store;
+  }
+
+  of(path: string): Promise<FileFacts | undefined> {
+    let facts = this.#byPath.get(path);
+    if (!facts) {
+      facts = this.#store.facts(path);
+      this.#byPath.set(path, facts);
+    }
+    return facts;
+  }
+}
+
+/** The lines in `path` where `from` (or the file itself, when undefined) calls any of `names`. */
+async function callLines(
+  facts: FactsCache,
+  path: string,
+  from: string | undefined,
+  names: readonly string[],
+): Promise<number[]> {
+  const file = await facts.of(path);
+  if (!file) return [];
+  const wanted = new Set(names);
+  return [
+    ...new Set(
+      file.calls.filter((call) => call.from === from && wanted.has(call.name)).map((c) => c.line),
+    ),
+  ].sort((a, b) => a - b);
 }

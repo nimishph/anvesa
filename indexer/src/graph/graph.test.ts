@@ -189,7 +189,7 @@ describe('linking a pnpm monorepo', () => {
   test('callers work across packages, and say so', async () => {
     const { queries } = await ready();
     const callers = await queries.callers('packages/core/src/greet.ts#greet');
-    expect(callers.items).toEqual([
+    expect(callers.items).toMatchObject([
       {
         from: 'packages/app/src/main.ts#run',
         path: 'packages/app/src/main.ts',
@@ -198,6 +198,11 @@ describe('linking a pnpm monorepo', () => {
         crossPackage: true,
       },
     ]);
+    // A caller says where it is and where it makes the call, without opening the file.
+    const [caller] = callers.items;
+    expect(caller?.symbol).toMatchObject({ name: 'run', kind: 'function', startLine: 8 });
+    expect(caller?.symbol?.endLine).toBeGreaterThan(8);
+    expect(caller?.callLines).toEqual([9]);
     const inPackage = await queries.callers('packages/core/src/math.ts#add');
     expect(inPackage.items.map((c) => [c.from, c.crossPackage])).toEqual([
       ['packages/app/src/main.ts#run', true],
@@ -225,6 +230,14 @@ describe('linking a pnpm monorepo', () => {
     expect(callees.items.find((c) => c.kind === 'external')?.to).toBe(
       'react#default.createElement',
     );
+    // What it calls says what those are (lines, signature) and where it calls them.
+    const greet = callees.items.find((c) => c.to === 'packages/core/src/greet.ts#greet');
+    expect(greet?.symbol).toMatchObject({ name: 'greet', kind: 'function', startLine: 1 });
+    expect(greet?.symbol?.signature).toContain('greet(');
+    expect(greet?.callLines).toEqual([9]);
+    // Something that is not in the workspace has no symbol, but still says where it is called.
+    expect(callees.items.find((c) => c.to === 'missing')).toMatchObject({ symbol: undefined });
+    expect(callees.items.find((c) => c.to === 'missing')?.callLines.length).toBeGreaterThan(0);
     const neighbors = await queries.neighbors('packages/core/src/index.ts#Store.put');
     expect(neighbors.callers.items).toHaveLength(1);
     expect(neighbors.callees.items.map((c) => c.to)).toEqual([

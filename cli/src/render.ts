@@ -63,7 +63,8 @@ function place(result: {
 
 function renderResult(result: SearchResult, index: number): string {
   const found = result.foundBy.map((c) => `${c.lane}#${c.rank}`).join(' ');
-  const head = `${String(index + 1).padStart(2)}. ${result.title}${result.kind ? ` (${result.kind})` : ''}  ${place(result)}  [${found}]`;
+  const signature = result.card?.attrs.signature;
+  const head = `${String(index + 1).padStart(2)}. ${result.title}${result.kind ? ` (${result.kind})` : ''}  ${place(result)}${signature ? `  ${signature}` : ''}  [${found}]`;
   if (!result.card) return head;
   const fenced = fenceUntrusted(result.card.text, {
     source: result.card.source.path,
@@ -87,15 +88,18 @@ export function renderRetrieved(
 ): string {
   const rows = page.items.map((hit, index) => {
     const { card } = hit;
-    const at = card.source.span
-      ? `${card.source.path}:${card.source.span.startLine}`
-      : card.source.path;
+    const at = place({
+      path: card.source.path,
+      line: card.source.span?.startLine,
+      endLine: card.source.span?.endLine,
+    });
+    const signature = card.attrs.signature;
     const fenced = fenceUntrusted(card.text, {
       source: card.source.path,
       channel: card.channel,
       trust: card.provenance.trust,
     });
-    return `${String(index + 1).padStart(2)}. ${card.attrs.symbol ?? card.attrs.section ?? card.id}  ${at}  score ${hit.score.toFixed(3)}\n${fenced.replace(/^/gm, '      ')}`;
+    return `${String(index + 1).padStart(2)}. ${card.attrs.symbol ?? card.attrs.section ?? card.id}  ${at}${signature ? `  ${signature}` : ''}  score ${hit.score.toFixed(3)}\n${fenced.replace(/^/gm, '      ')}`;
   });
   return lines(...rows, pageFooter(page, 'cards'));
 }
@@ -128,31 +132,72 @@ export function renderStructural(
   );
 }
 
+interface Brief {
+  readonly name: string;
+  readonly startLine: number;
+  readonly endLine: number;
+  readonly signature: string | undefined;
+}
+
+/** `name  path:12-20  signature`: what a reader needs to know which symbol this is. */
+function describeSymbol(path: string, brief: Brief | undefined, fallback: string): string {
+  // A call made outside any symbol has no symbol to describe: the file is the caller.
+  if (!brief) return fallback === path ? `${path}  (file level)` : `${fallback}  ${path}`;
+  return `${brief.name}  ${place({ path, line: brief.startLine, endLine: brief.endLine })}${brief.signature ? `  ${brief.signature}` : ''}`;
+}
+
+/** Where the call is made: `calls at :24, :31`. Nothing when the lines are not known. */
+function callSites(lines: readonly number[]): string {
+  return lines.length > 0 ? `  calls at ${lines.map((line) => `:${line}`).join(', ')}` : '';
+}
+
 export function renderCallers(
-  symbol: { id: string },
+  symbol: { id: string; path?: string } & Partial<Brief>,
   page: Page<{
     from: string;
     path: string;
     evidence: string;
     package: string | undefined;
     crossPackage: boolean;
+    symbol: Brief | undefined;
+    callLines: readonly number[];
   }>,
 ): string {
   const rows = page.items.map((c) =>
-    `${c.from}  ${c.path}  ${c.evidence === 'name' ? '(guess by name)' : ''}${c.crossPackage ? ` (from ${c.package ?? 'another package'})` : ''}`.trimEnd(),
+    `${describeSymbol(c.path, c.symbol, c.from)}${callSites(c.callLines)}${c.evidence === 'name' ? '  (guess by name)' : ''}${c.crossPackage ? `  (from ${c.package ?? 'another package'})` : ''}`.trimEnd(),
   );
-  return lines(`callers of ${symbol.id}`, ...rows, pageFooter(page, 'callers'));
+  return lines(`callers of ${symbolHeading(symbol)}`, ...rows, pageFooter(page, 'callers'));
 }
 
 export function renderCallees(
-  symbol: { id: string },
-  page: Page<{ to: string; kind: string }>,
+  symbol: { id: string; path?: string } & Partial<Brief>,
+  page: Page<{
+    to: string;
+    kind: string;
+    symbol: (Brief & { path?: string }) | undefined;
+    callLines: readonly number[];
+  }>,
 ): string {
   return lines(
-    `callees of ${symbol.id}`,
-    ...page.items.map((c) => `${c.to}  (${c.kind})`),
+    `callees of ${symbolHeading(symbol)}`,
+    ...page.items.map((c) => {
+      const named = c.symbol ? describeSymbol(pathOfSymbolId(c.to), c.symbol, c.to) : c.to;
+      return `${named}  (${c.kind})${callSites(c.callLines)}`;
+    }),
     pageFooter(page, 'callees'),
   );
+}
+
+function symbolHeading(symbol: { id: string; path?: string } & Partial<Brief>): string {
+  if (symbol.startLine === undefined || symbol.endLine === undefined) return symbol.id;
+  const path = symbol.path ?? pathOfSymbolId(symbol.id);
+  return `${symbol.id}  ${place({ path, line: symbol.startLine, endLine: symbol.endLine })}${symbol.signature ? `  ${symbol.signature}` : ''}`;
+}
+
+/** A symbol id is `<path>#<name>`. */
+function pathOfSymbolId(id: string): string {
+  const at = id.indexOf('#');
+  return at === -1 ? id : id.slice(0, at);
 }
 
 export function renderStatus(status: Status): string {
