@@ -1,6 +1,10 @@
 import { MappingConflictError, MappingInvalidError, MappingNotFoundError } from './errors.ts';
+import goJson from './mappings/go.json' with { type: 'json' };
+import javaJson from './mappings/java.json' with { type: 'json' };
 import phpJson from './mappings/php.json' with { type: 'json' };
 import pythonJson from './mappings/python.json' with { type: 'json' };
+import rubyJson from './mappings/ruby.json' with { type: 'json' };
+import rustJson from './mappings/rust.json' with { type: 'json' };
 import typescriptJson from './mappings/typescript.json' with { type: 'json' };
 
 /**
@@ -284,6 +288,41 @@ export class MappingRegistry {
     for (const language of languages) this.#byLanguage.set(language, compiled);
   }
 
+  /**
+   * Register a mapping in place of any that already has its name or serves one of its languages.
+   * This is how a project or user mapping takes over from a bundled one.
+   */
+  override(mapping: LanguageMapping, options: RegisterOptions = {}): void {
+    const languages = options.languages ?? [mapping.name];
+    const replaced = new Set<string>([mapping.name]);
+    for (const language of languages) {
+      const owner = this.#byLanguage.get(language);
+      if (owner) replaced.add(owner.mapping.name);
+    }
+    for (const name of replaced) {
+      const existing = this.#byName.get(name);
+      if (!existing) continue;
+      this.#byName.delete(name);
+      for (const [language, owner] of [...this.#byLanguage]) {
+        if (owner === existing) this.#byLanguage.delete(language);
+      }
+    }
+    this.register(mapping, { languages });
+  }
+
+  /** The mapping that serves a language, without compiling anything new. */
+  mappingFor(language: string): LanguageMapping | undefined {
+    return this.#byLanguage.get(language)?.mapping;
+  }
+
+  /** The language keys a named mapping serves. */
+  languagesOf(name: string): readonly string[] {
+    const found = this.#byName.get(name);
+    return found
+      ? [...this.#byLanguage].filter(([, owner]) => owner === found).map(([key]) => key)
+      : [];
+  }
+
   has(language: string): boolean {
     return this.#byLanguage.has(language);
   }
@@ -312,5 +351,11 @@ export function builtinMappings(): readonly {
     },
     { mapping: validateMapping(pythonJson, 'python.json'), languages: ['python'] },
     { mapping: validateMapping(phpJson, 'php.json'), languages: ['php'] },
+    // Learned from real code with `mapping train` (see docs on teaching a language) and checked
+    // against it: every mapped syntax node comes out as its tag.
+    { mapping: validateMapping(goJson, 'go.json'), languages: ['go'] },
+    { mapping: validateMapping(rustJson, 'rust.json'), languages: ['rust'] },
+    { mapping: validateMapping(javaJson, 'java.json'), languages: ['java'] },
+    { mapping: validateMapping(rubyJson, 'ruby.json'), languages: ['ruby'] },
   ];
 }

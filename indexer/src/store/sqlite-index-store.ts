@@ -142,10 +142,11 @@ interface SymbolRow {
   signature: string | null;
   params: string | null;
   doc: string | null;
+  alias_of: string | null;
 }
 
 const SYMBOL_COLUMNS =
-  'id, path, name, base_name, kind, parent_id, exported, start_line, end_line, signature, params, doc';
+  'id, path, name, base_name, kind, parent_id, exported, start_line, end_line, signature, params, doc, alias_of';
 
 function symbolOf(row: SymbolRow): SymbolFact {
   return {
@@ -161,6 +162,7 @@ function symbolOf(row: SymbolRow): SymbolFact {
     signature: row.signature ?? undefined,
     ...(row.params === null ? {} : { params: row.params }),
     doc: row.doc ?? undefined,
+    ...(row.alias_of === null ? {} : { aliasOf: row.alias_of }),
   };
 }
 
@@ -357,7 +359,7 @@ export class SqliteIndexStore implements IndexStore {
 
       const insertSymbol = db.query(
         `INSERT INTO symbols (path, seq, ${SYMBOL_COLUMNS.replace('path, ', '')})
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       facts.symbols.forEach((symbol, seq) => {
         insertSymbol.run(
@@ -374,6 +376,7 @@ export class SqliteIndexStore implements IndexStore {
           symbol.signature ?? null,
           symbol.params ?? null,
           symbol.doc ?? null,
+          symbol.aliasOf ?? null,
         );
       });
 

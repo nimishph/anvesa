@@ -3,14 +3,23 @@ import {
   type ChannelInfo,
   type Diagnosis,
   type Explanation,
+  type FragmentManifest,
+  type FragmentStatus,
   fenceUntrusted,
+  type Golden,
+  type GoldenDifference,
   type GrammarRow,
   type IndexReport,
+  type MappingCheck,
   type ModelDoctor,
   type ModelRow,
+  type RedTeamRuleInfo,
+  type RedTeamScan,
   type SearchPage,
   type SearchResult,
   type Status,
+  type StoredMapping,
+  type TrainedResult,
 } from '@sutras/code-lens-retriever';
 
 /** JSON for machines: maps become objects, errors keep their code and context, trees are left out. */
@@ -191,7 +200,7 @@ export function renderIndex(result: {
   const { report } = result;
   const f = report.files;
   return lines(
-    `indexed in ${(report.elapsedMs / 1000).toFixed(2)} s${report.resumedAfterInterruption ? ' (after an interrupted run)' : ''}`,
+    `indexed in ${(report.elapsedMs / 1000).toFixed(2)} s${report.resumedAfterInterruption ? ' (after an interrupted run)' : ''}${report.reextracted ? ' (extraction changed: every file read again)' : ''}`,
     `files: ${f.added} added, ${f.modified} modified, ${f.unchanged} unchanged, ${f.touched} re-stamped, ${f.removed} removed, ${f.quarantined + f.stillQuarantined} quarantined`,
     f.unsupported.size > 0
       ? `not source: ${[...f.unsupported].map(([ext, n]) => `${ext || '(none)'} ${n}`).join(', ')}`
@@ -247,7 +256,7 @@ export function renderModels(models: readonly ModelRow[]): string {
   return lines(
     ...models.map(
       (m) =>
-        `${m.installed ? '*' : ' '} ${m.id}  ${m.tier}  ${m.dimensions}d  ${m.maxTokens} tokens  ${m.sizeMb} MB on disk, ~${m.estimatedMemoryMb} MB in memory  ${m.license}`,
+        `${m.installed ? '*' : ' '} ${m.id}  ${m.tier ?? 'custom'}  ${m.dimensions}d  ${m.maxTokens} tokens  ${m.sizeMb} MB on disk, ~${m.estimatedMemoryMb} MB in memory  ${m.license}`,
     ),
     '* installed',
   );
@@ -271,5 +280,134 @@ export function renderGrammars(rows: readonly GrammarRow[]): string {
         `${r.state === 'ready' ? '*' : ' '} ${r.language.padEnd(12)} ${r.extensions.join(' ').padEnd(24)} ${r.state}: ${r.detail}`,
     ),
     '* usable',
+  );
+}
+
+export function renderMappings(mappings: readonly StoredMapping[]): string {
+  return lines(
+    ...mappings.map(
+      (m) =>
+        `${m.tier.padEnd(8)} ${m.mapping.name.padEnd(14)} ${m.languages.join(', ').padEnd(28)} ${Object.keys(m.mapping.nodeTypeMap).length} node types, ${m.mapping.structuralTags.length} structural tags  ${m.sha256}`,
+    ),
+  );
+}
+
+export function renderMappingChecks(checks: readonly MappingCheck[]): string {
+  return lines(
+    ...checks.map((c) => `${c.status.padEnd(10)} ${c.tier.padEnd(8)} ${c.name}  ${c.path}`),
+    checks.length === 0 ? 'no stored mappings' : undefined,
+  );
+}
+
+export function renderTraining(result: TrainedResult): string {
+  const { report } = result;
+  const rows = report.deductions.map(
+    (d) =>
+      `  ${d.role.padEnd(18)} ${d.type.padEnd(34)} -> ${d.tag.padEnd(10)} seen ${d.occurrences}${d.nameChild ? `, named by ${d.nameChild}` : ''}`,
+  );
+  const checks = report.verification.tags.map(
+    (t) =>
+      `  ${t.tag.padEnd(12)} ${t.found}/${t.expected}${t.found === t.expected ? '' : '  MISMATCH'}`,
+  );
+  return lines(
+    `learned ${report.mapping.name} from ${result.samples} files, ${report.topology.nodes} syntax nodes`,
+    'what each node type was taken to be:',
+    ...rows,
+    'checked against the samples (outline nodes / syntax nodes):',
+    ...checks,
+    `${report.verification.symbols} named symbols in the outlines`,
+    ...report.issues.map((issue) => `${issue.code}: ${issue.message}`),
+    result.stored
+      ? `kept in ${result.stored.tier}: ${result.stored.path}\nserving ${result.stored.languages.join(', ')}; recorded ${result.stored.sha256}`
+      : `not kept: ${result.refused}`,
+  );
+}
+
+export function renderGoldenCheck(checked: {
+  golden: Golden;
+  differences: readonly GoldenDifference[];
+}): string {
+  return lines(
+    `${checked.golden.samples.length} samples recorded for ${checked.golden.mapping}`,
+    ...checked.differences.map((d) => `  ${d.path}: ${d.problem}`),
+    checked.differences.length === 0
+      ? 'every sample comes out as recorded'
+      : `${checked.differences.length} differ`,
+  );
+}
+
+export function renderFragmentStatus(status: FragmentStatus): string {
+  if (!status.enabled || !status.drift) {
+    return lines(
+      'sharded indexing is off (one index.db)',
+      'to turn it on: code-lens fragments enable',
+    );
+  }
+  const { drift } = status;
+  return lines(
+    `sharded by ${status.algorithm?.id}@${status.algorithm?.version}`,
+    ...drift.shards.map(
+      (s) =>
+        `  ${s.id.padEnd(24)} ${s.files} files, ${s.symbols} symbols${s.quarantinedFiles ? `, ${s.quarantinedFiles} quarantined` : ''}`,
+    ),
+    drift.manifestChanged
+      ? 'the manifest changed since the shards were last settled; the next index run moves what is out of place'
+      : undefined,
+    ...drift.misplacedFiles.map(
+      (m) => `  misplaced: ${m.path} is in ${m.in}, belongs in ${m.belongsIn}`,
+    ),
+    ...drift.misplacedSources.map(
+      (m) =>
+        `  misplaced embedding (${m.channel}): ${m.path} is in ${m.in}, belongs in ${m.belongsIn}`,
+    ),
+    ...drift.orphanShards.map(
+      (id) => `  orphan shard: ${id}.db belongs to no fragment of the manifest`,
+    ),
+    !drift.manifestChanged && drift.misplacedFiles.length === 0 && drift.orphanShards.length === 0
+      ? 'every file is where the manifest says'
+      : undefined,
+  );
+}
+
+export function renderProposal(manifest: FragmentManifest, written: string | undefined): string {
+  const rows = Object.entries(manifest.fragments)
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([id, spec]) => {
+      const parts = [
+        spec.roots?.length ? `${spec.roots.length} folders (${spec.roots.join(', ')})` : undefined,
+        spec.files?.length ? `${spec.files.length} files` : undefined,
+      ].filter(Boolean);
+      return `  ${id.padEnd(24)} ${parts.join(', ') || (id === manifest.fallback ? 'everything else' : '')}${spec.label && spec.label !== id ? `  — ${spec.label}` : ''}`;
+    });
+  return lines(
+    `${Object.keys(manifest.fragments).length} fragments by ${manifest.algorithm.id}@${manifest.algorithm.version}; everything else goes to "${manifest.fallback}"`,
+    ...rows,
+    written
+      ? `written to ${written}`
+      : 'not written: pass --write to keep it (and commit it: every machine follows the file)',
+  );
+}
+
+export function renderRedTeamRules(rules: readonly RedTeamRuleInfo[]): string {
+  return lines(
+    'rule                     severity  first-party  third-party  untrusted    source',
+    ...rules.map(
+      (r) =>
+        `${r.id.padEnd(24)} ${r.severity.padEnd(9)} ${r.actions['first-party'].padEnd(12)} ${r.actions['third-party'].padEnd(12)} ${r.actions.untrusted.padEnd(12)} ${r.source}`,
+    ),
+  );
+}
+
+export function renderRedTeamScan(scan: RedTeamScan): string {
+  return lines(
+    `${scan.cards} cards from ${scan.files} files screened`,
+    ...scan.byRule.map(
+      (r) =>
+        `  ${r.rule.padEnd(24)} ${r.flagged} flagged, ${r.sanitized} sanitized, ${r.quarantined} quarantined`,
+    ),
+    ...scan.quarantined.map(
+      (q) => `  would quarantine ${q.path} (${q.channel}): ${q.rules.join(', ')}`,
+    ),
+    scan.quarantined.length === 0 ? 'nothing would be quarantined' : undefined,
   );
 }

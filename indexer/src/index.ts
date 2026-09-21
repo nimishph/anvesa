@@ -1,5 +1,19 @@
 export * from './errors.ts';
 export * from './extract/index.ts';
+export type { Edge } from './fragments/louvain.ts';
+export { communities } from './fragments/louvain.ts';
+export type { FragmentManifest, FragmentSpec } from './fragments/manifest.ts';
+export {
+  FRAGMENTS_PATH,
+  FragmentAssigner,
+  loadManifest,
+  manifestText,
+  normalizeEntry,
+  saveManifest,
+  validateManifest,
+} from './fragments/manifest.ts';
+export type { ClusterInput, ProposeInput } from './fragments/propose.ts';
+export { proposeClustered, proposePathPrior, slug } from './fragments/propose.ts';
 export * from './graph/index.ts';
 export * from './run/index.ts';
 export * from './store/index.ts';

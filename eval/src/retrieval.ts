@@ -5,9 +5,10 @@ import type { SymbolFact } from '@sutras/code-lens-indexer';
  * - `identifier`: the words of a symbol's name, as someone who remembers the name loosely would type.
  * - `intent`: what the symbol does, from its documentation, with the words of its own name taken out
  *   so the query is not the name in disguise.
- * - `exact-name`: a WQL query for a definition by kind and name, which the structural lane answers.
+ * - `doc`: a sentence from the first paragraph of a documentation file, which that file answers.
+ * - `exact-name`: a WQL query for a definition by kind and name (`[@declaration]` leaves out mentions), which the structural lane answers.
  */
-export type Population = 'identifier' | 'intent' | 'exact-name';
+export type Population = 'identifier' | 'intent' | 'exact-name' | 'doc';
 
 export interface EvalQuery {
   readonly population: Population;
@@ -72,6 +73,7 @@ const isTest = (path: string): boolean =>
 export function generateQueries(
   symbols: Iterable<SymbolFact>,
   options: QueryOptions = DEFAULT_QUERY_OPTIONS,
+  documents: readonly { readonly path: string; readonly content: string }[] = [],
 ): EvalQuery[] {
   const byName = new Map<string, Set<string>>();
   const eligible: SymbolFact[] = [];
@@ -104,7 +106,7 @@ export function generateQueries(
     queries.push({ population: 'identifier', text, relevant, symbol: symbol.id });
     queries.push({
       population: 'exact-name',
-      text: `//${symbol.kind}[@name="${symbol.baseName}"]`,
+      text: `//${symbol.kind}[@name="${symbol.baseName}"][@declaration]`,
       relevant,
       symbol: symbol.id,
     });
@@ -126,6 +128,7 @@ export function generateQueries(
     }
   }
   queries.push(...spread(intent, options.perPopulation));
+  queries.push(...spread(documentQueries(documents, options.minWords), options.perPopulation));
   return queries;
 }
 
@@ -175,4 +178,32 @@ export function percentile(values: readonly number[], p: number): number | undef
   if (values.length === 0) return undefined;
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(p * sorted.length) - 1))];
+}
+
+/** The first sentence of the first paragraph of a document, if it is long enough to be a question. */
+export function documentQueries(
+  documents: readonly { readonly path: string; readonly content: string }[],
+  minWords: number,
+): EvalQuery[] {
+  const queries: EvalQuery[] = [];
+  for (const { path, content } of documents) {
+    if (isTest(path)) continue;
+    const paragraph = content
+      .split(/\r?\n\s*\r?\n/)
+      .map((block) => block.trim())
+      .find(
+        (block) =>
+          block !== '' &&
+          !block.startsWith('#') &&
+          !block.startsWith('```') &&
+          !block.startsWith('|') &&
+          !block.startsWith('<'),
+      );
+    if (!paragraph) continue;
+    const text = firstSentence(paragraph.replace(/\s+/g, ' ').replace(/[`*_>[\]()]/g, ''));
+    if (text.split(' ').length >= Math.max(minWords, 6)) {
+      queries.push({ population: 'doc', text, relevant: new Set([path]), symbol: path });
+    }
+  }
+  return queries;
 }

@@ -1,0 +1,42 @@
+{
+  "name": "go",
+  "version": "1.0.0",
+  "extensions": [".go"],
+  "nodeTypeMap": {
+    "call_expression": "call",
+    "const_spec": "constant",
+    "expression_switch_statement": "switch",
+    "for_clause": "for",
+    "for_statement": "for",
+    "func_literal": "lambda",
+    "function_declaration": "function",
+    "if_statement": "if",
+    "import_declaration": "import",
+    "method_declaration": "method",
+    "method_elem": "method",
+    "return_statement": "return",
+    "type_alias": "type",
+    "type_spec": "type"
+  },
+  "structuralTags": [
+    "constant",
+    "for",
+    "function",
+    "if",
+    "import",
+    "lambda",
+    "method",
+    "return",
+    "switch",
+    "type"
+  ],
+  "nameExtractors": {
+    "const_spec": "identifier",
+    "function_declaration": "identifier",
+    "method_declaration": "field_identifier",
+    "method_elem": "field_identifier",
+    "type_alias": "type_identifier",
+    "type_spec": "type_identifier"
+  },
+  "callableTags": ["function", "lambda", "method"]
+}

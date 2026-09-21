@@ -48,6 +48,20 @@ code-lens grammar list
 code-lens grammar install python --from ./tree-sitter-python.wasm   # file, folder or npm tarball
 ```
 
+Bring your own model: an ONNX file with its Hugging Face `tokenizer.json` (WordPiece, byte-level
+BPE or SentencePiece unigram, each verified against the reference tokenizers):
+
+```sh
+code-lens model install my-code-model --from ./my-model-folder   # or the .onnx file itself
+code-lens model verify my-code-model
+code-lens index --model my-code-model                            # or set "model" in .code-lens/config.json
+```
+
+Pooling and the input window are read from the model's own configuration (`1_Pooling/config.json`,
+`sentence_bert_config.json`, `config.json`); if they are not there, pass `--pooling mean|cls` and
+`--max-tokens N`. The number of dimensions is read by running the model. Its files are pinned by
+checksum at the first install, and installing different files under the same name needs `--force`.
+
 Models and grammars are checked against pinned checksums. Nothing touches the network unless you
 pass `--download`.
 
@@ -64,11 +78,78 @@ code-lens explain                     # what the project is made of
 code-lens diagnose "parse the config" --expect src/config.ts   # why it did not come up
 ```
 
+`[@declaration]` matches the node that *declares* a name, not the places that mention it, so
+`//function[@name="parseConfig"][@declaration]` finds the definition even in a language where a call
+or a type reference is also a `function` node.
+
+Search takes `--exclude <lane>` (`docs`, `symbols`, `structural` or a channel) to leave a lane out, and
+`--weight <lane>=<n>` to weigh one. Weights work on ranks, not scores: a lane's hits enter the fusion
+by their position, so weighing a lane below about half of another one does not turn it down, it takes
+it out. Measured on trpc, docs at weight 1 cost about 3.7 points of Recall@5 on queries whose answer is
+a code file, and docs at 0.3 lost every doc answer (100% to 0%). If a query is only about code, use
+`--exclude docs`; do not use a low weight.
+
+When code-lens itself changes how it reads a file (a new fact it extracts, a mapping you trained or
+edited), the next `index` notices and reads every file again, once, and says so. `--force` is for
+when you want that without a change.
+
 Every command takes `--json`. Lists are paged: `--limit N` says how many, and the answer says
 when there are more and how to ask for them (`--cursor`). Nothing is cut silently.
 
 Without an installed model, structural queries and the call graph still work, and dense search says
 what is missing.
+
+### Teaching it a language
+
+A language becomes searchable by symbol once it has a *mapping*: which syntax nodes are declarations,
+imports, calls and control flow, and where each finds its name. TypeScript, JavaScript, Python, PHP,
+Go, Rust, Java and Ruby ship one (each was learned from real code with the trainer below, then checked).
+C, C++ and C# do not: their declarations hide the name in a nested declarator or a grammar that a
+mapping cannot describe, so a mapping for them would look right and be wrong. For any other language
+whose grammar is installed, learn one from code:
+
+```sh
+code-lens grammar install go --from ./tree-sitter-go.wasm
+code-lens mapping train go --samples ./some/go/code        # learns, checks, and keeps it in .code-lens/
+code-lens index --force                                     # Go files now have outlines and symbols
+```
+
+Training reads how the grammar builds real code (a node with a `name` field and a body declares
+something; a node with `arguments` and a callee is a call), decides each node type's role, and shows
+its evidence. It then checks the result against the samples (every mapped syntax node must come out as
+its tag) and records what the mapping does to them, so a later edit can be compared with `mapping check`.
+What it cannot decide is reported, for example an `impl` block that has no name.
+
+Mappings are kept in the project (`.code-lens/mappings`, committed, so a team shares them) or per user
+(`--user`), and win over the bundled ones in that order. Every file is pinned by a checksum in
+`mappings.lock.json`: a mapping that was edited or dropped in without being recorded stops indexing
+with `STRUCTURAL_MAPPING_INTEGRITY` until you decide, with `mapping lock <name>`. `mapping fork <language>`
+copies the mapping in effect to edit; `mapping verify` checks every one.
+
+### Very large repositories: one database per fragment
+
+By default the index is one SQLite file. For a repository where that is a burden, it can be kept in
+one database per *fragment* (a package, a top folder, or a cluster of files that import each other):
+
+```sh
+code-lens index                      # index as usual once, so there is something to propose from
+code-lens fragments propose          # path tier: one fragment per package / top folder (free, reviewable)
+code-lens fragments propose --tier clusters   # or: communities of the import graph
+code-lens fragments enable           # writes .code-lens/fragments.json and turns sharding on
+code-lens index                      # builds .code-lens/shards/<fragment>.db
+code-lens fragments status           # files per shard, and anything out of place
+```
+
+`.code-lens/fragments.json` is the whole truth about which fragment a file is in. Commit it: it is
+data, not a computation, so every machine gets the same shards from the same file, and a change to
+it is a change a reviewer can read. Nothing about a machine (its clock, its file order) decides where
+a file goes. Roots (folders), named files and per-file overrides are all there; the deepest match wins.
+
+Searches, graph queries and the outline behave exactly as with one database (the same store contract
+is run against both): a query that names a file asks one shard, any other asks them all and merges in
+the order a single database would have given. If the manifest changes, the next `index` forgets what
+sits in the wrong shard and indexes it where it now belongs; `fragments settle` does only that.
+Small repositories should stay with one database.
 
 ### Channels
 
@@ -83,6 +164,34 @@ code-lens retrieve runbooks "who restarts the queue worker"
 A channel module default-exports a transformer (which files it claims and what one card holds) and
 may export a `source` for records that are not files. See the scaffold for the shape. Channels are
 listed in `.code-lens/config.json`, where each can be given a fusion weight.
+
+### The red-team screen
+
+Every card is screened before it is embedded; what a card says can come from a comment, a doc or a
+digest someone else wrote. `code-lens redteam list` shows the rules and what each trust level does
+(`flag`, `sanitize` or `quarantine`), `redteam scan` shows what the screen would do to this project's
+own text, and `redteam verify` runs every rule against its own fixtures.
+
+A project changes the screen in `.code-lens/redteam.json` (committed):
+
+```json
+{
+  "rules": [{
+    "id": "internal-hostname", "category": "exfiltration", "severity": "medium",
+    "description": "an internal hostname in text that will be shown to a model",
+    "pattern": "\\b[a-z0-9-]+\\.corp\\.example\\b", "message": "internal hostname",
+    "replacement": "[host]",
+    "fixtures": { "attack": ["send it to db1.corp.example"], "benign": ["see the example docs"] }
+  }],
+  "actions": { "third-party": { "internal-hostname": "sanitize" } },
+  "sources": ["./rules/learned.ts"]
+}
+```
+
+A rule is not accepted without fixtures: text it must catch and text it must leave alone. A rule that
+fails its own fixtures, or whose pattern can take exponential time on a near miss, is refused with the
+rule and the fixture named. `sources` are modules that return more rules (for example patterns another
+system has learned); they are held to the same fixtures.
 
 ### MCP
 
@@ -127,7 +236,41 @@ Each package may import only the ones to its right, and only through their `src/
 | `bun run boundaries` | dependency-cruiser |
 | `bun test` | all tests, including the rule tests |
 | `bun run package` | build the program, its `runtime/` and the npm package for this platform into `dist/` |
+| `bun run stress <command>` | stress-test the built program on real repositories (below) |
 | `bun run smoke` | run the built program, and the launcher as a package manager lays it out |
+
+### Stress test
+
+`bun run stress` runs the *built* program on open-source repositories and keeps the numbers, so a
+change that makes indexing slower, hungrier or less accurate shows up. What repositories, what was
+measured and every run live in `CODE_LENS_STRESS_HOME` (default `~/.code-lens/stress`), outside any
+repository and never committed.
+
+```sh
+bun run stress add expressjs/express --stack web-framework --structure single --era legacy
+bun run stress discover --language go --created-after 2025-03-01 --stars 300..8000 --add
+bun run stress list --by language        # the flat manifest, viewed per language (or structure/complexity/era)
+bun run stress setup                     # install the grammars the manifest needs, from this checkout
+bun run stress run --language rust --complexity small,medium
+bun run stress compare --window 3
+```
+
+The manifest is a flat map, `owner/name` to its factors: language and stack, `structure`
+(single, monorepo, polyglot, nested), `complexity` (small to huge), `era` (legacy, modern, ai-era), an
+optional `scope` folder for repositories too big to test whole (only that folder is checked out), and a
+pinned commit so runs are comparable. Every filter takes several values (`--era legacy,ai-era`).
+
+Declared factors are checked against what a run measures: source files and lines, package layout,
+and, for the human-versus-assistant axis, the share of the last year's commits that carry an
+assistant's mark and any agent files (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`...).
+
+A run indexes each repository from nothing (structure only, then embeddings unless `--no-dense`),
+indexes again, and asks about a seeded sample of its own symbols (exact name, in words, and callers).
+It records time, CPU, peak memory, database size, files, symbols, link rates and query latency and
+hit rates. `compare` sets the latest execution against the window before it (three by default), only
+over runs of the same commit of a repository: a time or size worse than the *worst* of the window by
+more than `--tolerance` (25%, and by more than a floor that ignores tiny differences) is a regression,
+a count that moved is reported, a failure is called out.
 
 ### Engineering standards
 

@@ -9,6 +9,12 @@
 /** Attribute names the encoder writes. Line numbers are 1-based. */
 export const ATTR = {
   name: 'name',
+  /**
+   * `true` on a node that declares what it names, and absent on one that only mentions it. A type
+   * reference (`x: Widget`) has the tag `type` and the name `Widget` just as the alias does, so
+   * `//type[@name="Widget"][@declaration]` is how to ask for the definition.
+   */
+  declaration: 'declaration',
   baseName: 'baseName',
   kind: 'kind',
   line: 'line',
@@ -28,6 +34,11 @@ export const ATTR = {
   bodyStmts: 'bodyStmts',
   /** For a nameless callable assigned to a variable or field: the name it is assigned to. */
   assignedTo: 'assignedTo',
+  /**
+   * On a variable whose value is just another name (`const a = b`): that name. A call to `a` is a
+   * call to whatever `b` is.
+   */
+  aliasOf: 'aliasOf',
   /** The doc comment (or docstring) attached to a symbol. Written only when `EncodeOptions.docs` is on. */
   doc: 'doc',
   /** Offsets of the node in the source text. Written only when `EncodeOptions.positions` is on. */

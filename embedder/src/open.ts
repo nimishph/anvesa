@@ -87,11 +87,12 @@ export async function resolveModel(
   } = {},
 ): Promise<Resolution> {
   if (options.model !== undefined) {
-    const spec = builtinModel(options.model);
+    const spec = builtinModel(options.model) ?? (await cache.findCustom(options.model));
     if (!spec) {
+      const custom = (await cache.customModels()).map((model) => model.id);
       throw new InvalidArgumentError(
         'model',
-        `one of ${TIERS.map((tier) => BUILTIN_MODELS[tier].id).join(', ')}`,
+        `one of ${[...TIERS.map((tier) => BUILTIN_MODELS[tier].id), ...custom].join(', ')}`,
         options.model,
       );
     }

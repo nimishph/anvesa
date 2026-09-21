@@ -64,7 +64,7 @@ export function builtinLanguages(): readonly LanguageDef[] {
     {
       key: 'csharp',
       extensions: ['.cs'],
-      grammar: grammar('csharp', 'tree-sitter-c-sharp'),
+      grammar: grammar('csharp', 'tree-sitter-c-sharp', 'tree-sitter-c_sharp.wasm'),
     },
     { key: 'php', extensions: ['.php'], grammar: grammar('php', 'tree-sitter-php') },
   ];

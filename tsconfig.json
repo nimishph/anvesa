@@ -21,6 +21,6 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
   },
-  "include": ["*/src", "tooling/*.ts"],
+  "include": ["*/src", "tooling/*.ts", "tooling/stress/*.ts"],
   "exclude": ["node_modules"]
 }

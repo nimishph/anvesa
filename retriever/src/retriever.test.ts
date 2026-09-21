@@ -10,6 +10,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { InvalidArgumentError } from '@sutras/code-lens-core';
 import { type Embedder, inputFile } from '@sutras/code-lens-dense';
 import { npmPackageSource, SyntaxRuntime } from '@sutras/code-lens-syntax';
 import { loadChannelModule } from './channel-module.ts';
@@ -160,6 +161,7 @@ describe('project config', () => {
       model: undefined,
       channels: {},
       fusionK: undefined,
+      fragments: false,
     });
     expect(
       validateProjectConfig({
@@ -170,7 +172,10 @@ describe('project config', () => {
       model: undefined,
       channels: { notes: { enabled: true, weight: 2, module: './n.ts' } },
       fusionK: 30,
+      fragments: false,
     });
+    expect(validateProjectConfig({ indexing: { fragments: 'on' } }).fragments).toBe(true);
+    expect(validateProjectConfig({ indexing: { fragments: 'off' } }).fragments).toBe(false);
   });
 
   test.each([
@@ -181,6 +186,8 @@ describe('project config', () => {
     [{ channels: { ok: { enabled: 'yes' } } }, 'channels.ok.enabled'],
     [{ channels: { ok: { color: 'red' } } }, 'channels.ok.color'],
     [{ fusion: { k: 0 } }, 'fusion.k'],
+    [{ indexing: { fragments: 'maybe' } }, 'indexing.fragments'],
+    [{ indexing: { shards: 3 } }, 'indexing.shards'],
   ])('%j is refused at %s', (raw, location) => {
     try {
       validateProjectConfig(raw);
@@ -270,6 +277,7 @@ describe('searching', () => {
       config: {
         model: undefined,
         fusionK: undefined,
+        fragments: false,
         channels: { docs: { enabled: true, weight: 0, module: undefined } },
       },
     });
@@ -304,6 +312,53 @@ describe('searching', () => {
     const page = await r.retrieve('symbols', 'start the http server');
     expect(page.items.map((hit) => hit.card.attrs.symbol)).toContain('startServer');
     await expect(r.retrieve('nope', 'x')).rejects.toThrow(/nope/);
+  });
+});
+
+describe('choosing lanes for one search', () => {
+  const lanesOf = (page: Awaited<ReturnType<Retriever['search']>>) => page.lanes.map((l) => l.name);
+
+  test('a lane can be left out, or weighed, for a single question', async () => {
+    const r = await indexed();
+    const all = await r.search('install the installer to set the service up', { limit: 10 });
+    expect(lanesOf(all)).toEqual(expect.arrayContaining(['symbols', 'docs']));
+    expect(all.items.some((item) => item.path === 'docs/guide.md')).toBe(true);
+
+    const noDocs = await r.search('install the installer to set the service up', {
+      limit: 10,
+      exclude: ['docs'],
+    });
+    expect(lanesOf(noDocs)).toEqual(['symbols']);
+    expect(noDocs.items.some((item) => item.path === 'docs/guide.md')).toBe(false);
+
+    const zero = await r.search('install the installer to set the service up', {
+      limit: 10,
+      weights: { docs: 0 },
+    });
+    expect(lanesOf(zero)).toEqual(['symbols']);
+
+    // A small weight keeps the lane but lets the other one win where both found something.
+    const question = 'render a user interface widget on the screen';
+    const even = await r.search(question, { limit: 10, weights: { docs: 1 } });
+    const light = await r.search(question, { limit: 10, weights: { docs: 0.001 } });
+    const scoreOf = (page: typeof even, path: string) =>
+      page.items.find((i) => i.path === path)?.score;
+    expect(scoreOf(light, 'docs/guide.md') ?? 0).toBeLessThan(scoreOf(even, 'docs/guide.md') ?? 1);
+    expect(scoreOf(light, 'src/render.ts')).toBe(scoreOf(even, 'src/render.ts'));
+  });
+
+  test('the structural lane can be weighed too, and unknown lanes and bad weights are refused', async () => {
+    const r = await indexed();
+    const wql = '//function[@name="validate"]';
+    expect(lanesOf(await r.search(wql, { exclude: ['symbols', 'docs'] }))).toEqual(['structural']);
+    expect(lanesOf(await r.search(wql, { exclude: ['structural'] }))).not.toContain('structural');
+    await expect(r.search('anything', { exclude: ['nope'] })).rejects.toThrow(/lanes among/);
+    await expect(r.search('anything', { weights: { docs: -1 } })).rejects.toBeInstanceOf(
+      InvalidArgumentError,
+    );
+    await expect(r.search('anything', { weights: { symbols: 0, docs: 0 } })).rejects.toThrow(
+      /at least one lane/,
+    );
   });
 });
 
@@ -457,6 +512,7 @@ describe('channels', () => {
       config: {
         model: undefined,
         fusionK: undefined,
+        fragments: false,
         channels: {
           notes: { enabled: true, weight: 1, module: join(FIXTURES, 'notes-channel.ts') },
         },
@@ -485,6 +541,7 @@ describe('channels', () => {
       config: {
         model: undefined,
         fusionK: undefined,
+        fragments: false,
         channels: {
           notes: { enabled: true, weight: 1, module: join(FIXTURES, 'notes-channel.ts') },
         },
@@ -514,5 +571,140 @@ describe('channels', () => {
       0,
     );
     expect(await r.vectors.sourceState('docs', 'docs/x.md')).toBeUndefined();
+  });
+});
+
+describe('an index kept in shards', () => {
+  const manifest = {
+    manifestVersion: 1,
+    algorithm: { id: 'test', version: 1 },
+    fallback: 'root',
+    fragments: { root: {}, src: { roots: ['src'] }, docs: { roots: ['docs'] } },
+  } as const;
+  const sharded = validateProjectConfig({ indexing: { fragments: 'on' } });
+
+  async function shardedProject(over: Record<string, unknown> = {}) {
+    const root = makeProject();
+    mkdirSync(join(root, '.code-lens'), { recursive: true });
+    writeFileSync(
+      join(root, '.code-lens', 'fragments.json'),
+      JSON.stringify({ ...manifest, ...over }),
+    );
+    return root;
+  }
+
+  test('answers exactly as an index in one database does, and lives in one database per fragment', async () => {
+    const single = await indexed();
+    const root = await shardedProject();
+    const many = await retriever(root, { config: sharded });
+    await many.index();
+
+    expect(existsSync(join(root, '.code-lens', 'shards', 'src.db'))).toBe(true);
+    expect(existsSync(join(root, '.code-lens', 'shards', 'docs.db'))).toBe(true);
+    expect(existsSync(join(root, '.code-lens', 'index.db'))).toBe(false);
+
+    for (const question of [
+      'parse the configuration file',
+      'render a widget on the screen',
+      'install the service',
+    ]) {
+      const a = await single.search(question, { limit: 20 });
+      const b = await many.search(question, { limit: 20 });
+      expect(b.items.map((r) => [r.key, r.score])).toEqual(a.items.map((r) => [r.key, r.score]));
+      expect(b.total).toBe(a.total);
+    }
+    const wql = '//function';
+    expect((await many.query(wql)).items.map((h) => `${h.path}:${h.startLine}`)).toEqual(
+      (await single.query(wql)).items.map((h) => `${h.path}:${h.startLine}`),
+    );
+    const symbols = await many.retrieve('symbols', 'validate settings');
+    expect(symbols.items.map((h) => [h.card.id, h.score])).toEqual(
+      (await single.retrieve('symbols', 'validate settings')).items.map((h) => [
+        h.card.id,
+        h.score,
+      ]),
+    );
+    expect((await many.callers('validate')).callers.items.map((c) => c.path)).toEqual(
+      (await single.callers('validate')).callers.items.map((c) => c.path),
+    );
+    const [statusMany, statusSingle] = [await many.status(), await single.status()];
+    expect(statusMany.index).toEqual(statusSingle.index);
+    expect(statusMany.channels.map((c) => [c.name, c.cards, c.sources])).toEqual(
+      statusSingle.channels.map((c) => [c.name, c.cards, c.sources]),
+    );
+    expect((await many.explain()).index).toEqual((await single.explain()).index);
+  });
+
+  test('a manifest that sends a file elsewhere moves it on the next index, and nothing is lost', async () => {
+    const root = await shardedProject();
+    const first = await retriever(root, { config: sharded });
+    await first.index();
+    const before = await first.fragmentStatus();
+    expect(before.enabled).toBe(true);
+    expect(before.drift?.misplacedFiles).toEqual([]);
+    expect(before.drift?.shards.map((s) => [s.id, s.files])).toEqual([
+      ['docs', 1],
+      ['src', 3],
+    ]);
+    await first.close();
+    open.pop();
+
+    writeFileSync(
+      join(root, '.code-lens', 'fragments.json'),
+      JSON.stringify({ ...manifest, overrides: { 'src/render.ts': 'docs' } }),
+    );
+    const second = await retriever(root, { config: sharded });
+    expect((await second.fragmentStatus()).drift).toMatchObject({
+      manifestChanged: true,
+      misplacedFiles: [{ path: 'src/render.ts', in: 'src', belongsIn: 'docs' }],
+    });
+    const report = await second.index();
+    expect(report.report.dense?.ingested).toBeGreaterThan(0);
+    const after = await second.fragmentStatus();
+    expect(after.drift?.manifestChanged).toBe(false);
+    expect(after.drift?.misplacedFiles).toEqual([]);
+    expect(after.drift?.shards.map((s) => [s.id, s.files])).toEqual([
+      ['docs', 2],
+      ['src', 2],
+    ]);
+    const found = await second.search('render a user interface widget');
+    expect(found.items[0]?.path).toBe('src/render.ts');
+    // Nothing is left over in the shard it came from.
+    expect((await second.query('//function[@name="renderWidget"]')).items).toHaveLength(1);
+  });
+
+  test('turning it on without saying what the fragments are is refused, with what to do', async () => {
+    const root = makeProject();
+    await expect(Retriever.open({ root, config: sharded })).rejects.toMatchObject({
+      code: 'RETRIEVER_CONFIG',
+      hint: expect.stringContaining('fragments enable'),
+    });
+  });
+
+  test('a manifest is proposed from what is indexed, and turning sharding on and off is a config change', async () => {
+    const r = await indexed();
+    const path = await r.proposeFragments({ tier: 'path' });
+    expect(Object.keys(path.fragments).sort()).toEqual(['docs', 'root', 'src']);
+    expect(path.algorithm.id).toBe('path-prior');
+    const clusters = await r.proposeFragments({ tier: 'clusters' });
+    expect(clusters.algorithm.id).toBe('import-clusters');
+    const saved = await r.saveFragments(path);
+    expect(readFileSync(saved, 'utf8')).toContain('"path-prior"');
+    expect((await r.fragmentStatus()).enabled).toBe(false);
+    await r.setFragments(true);
+    expect(
+      JSON.parse(readFileSync(join(r.root, '.code-lens', 'config.json'), 'utf8')).indexing,
+    ).toEqual({
+      fragments: 'on',
+    });
+    await r.setFragments(false);
+    expect(
+      JSON.parse(readFileSync(join(r.root, '.code-lens', 'config.json'), 'utf8')).indexing,
+    ).toBeUndefined();
+    await expect(
+      retriever(makeProject(), { embedder: null }).then((x) =>
+        x.proposeFragments({ tier: 'path' }),
+      ),
+    ).rejects.toBeInstanceOf(NotIndexedError);
   });
 });

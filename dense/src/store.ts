@@ -69,6 +69,12 @@ export interface VectorStore {
   sourceState(channel: string, path: string): Promise<SourceState | undefined>;
   /** Every source a channel holds, by path, in order. */
   sourcePaths(channel: string): Promise<readonly string[]>;
+  /**
+   * How many cards each source of a channel holds, smallest first. It is what a store spread over
+   * several places needs to say what is typical (`ChannelStats.medianCardsPerSource`) without
+   * guessing from partial answers.
+   */
+  cardCounts(channel: string): Promise<readonly number[]>;
   search(query: Float32Array, options: SearchOptions): Promise<readonly SearchHit[]>;
   stats(channel: string): Promise<ChannelStats>;
   quarantined(channel: string): Promise<readonly QuarantinedCard[]>;
@@ -129,6 +135,12 @@ export class MemoryVectorStore implements VectorStore {
 
   async sourcePaths(channel: string): Promise<readonly string[]> {
     return [...(this.#channels.get(channel)?.keys() ?? [])].sort();
+  }
+
+  async cardCounts(channel: string): Promise<readonly number[]> {
+    return [...(this.#channels.get(channel)?.values() ?? [])]
+      .map((source) => source.cards.length)
+      .sort((a, b) => a - b);
   }
 
   async search(query: Float32Array, options: SearchOptions): Promise<readonly SearchHit[]> {

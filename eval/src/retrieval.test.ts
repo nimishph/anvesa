@@ -46,7 +46,7 @@ describe('query generation', () => {
     expect(identifier?.text).toBe('load user data');
     expect([...(identifier?.relevant ?? [])].sort()).toEqual(['a.ts', 'b.ts']);
     expect(queries.find((q) => q.population === 'exact-name')?.text).toBe(
-      '//function[@name="loadUserData"]',
+      '//function[@name="loadUserData"][@declaration]',
     );
     expect(queries.filter((q) => q.population === 'identifier')).toHaveLength(1);
   });

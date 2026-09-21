@@ -231,6 +231,18 @@ export class SqliteVectorStore implements VectorStore {
     return collector.result();
   }
 
+  async cardCounts(channel: string): Promise<readonly number[]> {
+    return this.#database.guard('count cards per source', (db) =>
+      (
+        allRows(
+          db,
+          'SELECT cards FROM vector_sources WHERE channel = ? ORDER BY cards',
+          channel,
+        ) as { cards: number }[]
+      ).map((row) => row.cards),
+    );
+  }
+
   async stats(channel: string): Promise<ChannelStats> {
     return this.#database.guard('count cards', (db) => {
       const totals = allRows(

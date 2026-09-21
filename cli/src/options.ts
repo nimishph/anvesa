@@ -23,6 +23,18 @@ const OPTIONS = {
   model: { type: 'string' },
   scope: { type: 'string' },
   user: { type: 'boolean' },
+  pooling: { type: 'string' },
+  samples: { type: 'string', multiple: true },
+  exclude: { type: 'string', multiple: true },
+  weight: { type: 'string', multiple: true },
+  tier: { type: 'string' },
+  resolution: { type: 'string' },
+  labels: { type: 'string' },
+  write: { type: 'boolean' },
+  name: { type: 'string' },
+  'dry-run': { type: 'boolean' },
+  'min-share': { type: 'string' },
+  'max-tokens': { type: 'string' },
 } as const;
 
 export interface Parsed {
@@ -48,6 +60,18 @@ export interface Parsed {
     readonly model?: string;
     readonly scope?: string;
     readonly user?: boolean;
+    readonly pooling?: string;
+    readonly samples?: string[];
+    readonly exclude?: string[];
+    readonly weight?: string[];
+    readonly tier?: string;
+    readonly resolution?: string;
+    readonly labels?: string;
+    readonly write?: boolean;
+    readonly name?: string;
+    readonly 'dry-run'?: boolean;
+    readonly 'min-share'?: string;
+    readonly 'max-tokens'?: string;
   };
 }
 

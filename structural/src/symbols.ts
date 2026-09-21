@@ -5,6 +5,7 @@ const SYMBOL_TAGS: ReadonlySet<string> = new Set([
   'function',
   'method',
   'class',
+  'struct',
   'interface',
   'type',
   'enum',
@@ -20,6 +21,20 @@ const SYMBOL_TAGS: ReadonlySet<string> = new Set([
  * annotation), and only the declaration is a symbol.
  */
 const DECLARATION_KIND = /_(declaration|definition|item|statement|spec|alias)$/;
+
+/** Tags that are not declarations even when the grammar node that made them has a name. */
+const NEVER_DECLARING: ReadonlySet<string> = new Set(['import', 'export', 'call']);
+
+/**
+ * Whether a node declares what it names, from what the encoder knows when it makes the node: its
+ * tag, the grammar's own kind for it, and whether it has a name. Mentions (a type annotation, an
+ * imported name) name things without declaring them.
+ */
+export function declares(tag: string, kind: string, named: boolean): boolean {
+  if (!named || NEVER_DECLARING.has(tag)) return false;
+  if (tag === 'type') return DECLARATION_KIND.test(kind);
+  return SYMBOL_TAGS.has(tag) || tag === 'variable';
+}
 
 /** A named declaration in an outline, with what a reader needs to place and describe it. */
 export interface OutlineSymbol {
@@ -41,6 +56,8 @@ export interface OutlineSymbol {
    * `undefined` where the language has no such marker, so callers do not have to guess.
    */
   readonly exported: boolean | undefined;
+  /** For a variable that is only another name: that name. */
+  readonly aliasOf?: string;
 }
 
 /**
@@ -89,8 +106,16 @@ export function outlineSymbols(root: WNode): OutlineSymbol[] {
           signature: callable.attrs.get(ATTR.signature),
           params: callable.attrs.get(ATTR.params),
         });
-      } else if (doc !== undefined) {
-        symbols.push({ ...shared, kind: 'variable', doc, signature: undefined, params: undefined });
+      } else if (doc !== undefined || node.attrs.has(ATTR.aliasOf)) {
+        const aliasOf = node.attrs.get(ATTR.aliasOf);
+        symbols.push({
+          ...shared,
+          kind: 'variable',
+          doc,
+          signature: undefined,
+          params: undefined,
+          ...(aliasOf === undefined ? {} : { aliasOf }),
+        });
       }
     }
   }

@@ -1,0 +1,52 @@
+{
+  "name": "rust",
+  "version": "1.0.0",
+  "extensions": [".rs"],
+  "nodeTypeMap": {
+    "call_expression": "call",
+    "closure_expression": "closure",
+    "const_item": "constant",
+    "enum_item": "enum",
+    "for_expression": "for",
+    "function_item": "function",
+    "function_signature_item": "method",
+    "if_expression": "if",
+    "match_expression": "match",
+    "mod_item": "module",
+    "return_expression": "return",
+    "struct_item": "struct",
+    "trait_item": "trait",
+    "type_item": "type",
+    "use_declaration": "import",
+    "while_expression": "while"
+  },
+  "structuralTags": [
+    "closure",
+    "constant",
+    "enum",
+    "for",
+    "function",
+    "if",
+    "import",
+    "match",
+    "method",
+    "module",
+    "return",
+    "struct",
+    "trait",
+    "type",
+    "while"
+  ],
+  "nameExtractors": {
+    "const_item": "identifier",
+    "enum_item": "type_identifier",
+    "function_item": "identifier",
+    "function_signature_item": "identifier",
+    "mod_item": "identifier",
+    "struct_item": "type_identifier",
+    "trait_item": "type_identifier",
+    "type_item": "type_identifier",
+    "use_declaration": "scoped_use_list"
+  },
+  "callableTags": ["closure", "function", "method"]
+}

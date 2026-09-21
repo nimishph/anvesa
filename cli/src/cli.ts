@@ -3,8 +3,11 @@ import {
   COMMANDS,
   type Context,
   channelCommand,
+  fragmentsCommand,
   grammarCommand,
+  mappingCommand,
   modelCommand,
+  redteamCommand,
 } from './commands.ts';
 import type { Environment } from './environment.ts';
 import { parseOptions } from './options.ts';
@@ -18,6 +21,7 @@ usage: code-lens <command> [arguments] [options]
   index                     bring the index up to date (--force, --retry-quarantined, --scope <path>)
   status                    what is indexed, and by which channels and model
   search <question>         fused search over every channel and, for WQL, the structure
+                            (--channel, --exclude <lane>, --weight <lane>=<n>, e.g. --weight docs=0.25)
   retrieve <channel> <q>    one channel on its own
   query '<wql>'             structural query, e.g. '//function[@name="parse"]'
   callers|callees|neighbors <symbol>   symbol id, name, or path:line
@@ -26,7 +30,14 @@ usage: code-lens <command> [arguments] [options]
   diagnose <question> --expect <path>   why a file did not come up
   channel add|list|show|test|index|remove   custom dense channels (make/create = add)
   grammar list|install <language>        parsers (--from <file|dir|tarball>, --user, --force, --download)
-  model list|install|doctor              local embedding models
+  redteam list|verify|scan  the screen every card passes; .code-lens/redteam.json adds rules and
+                            changes what each trust level does (scan: would this project's own text be quarantined?)
+  fragments status|propose|enable|disable|settle   keep the index in one database per fragment
+                            propose [--tier path|clusters] [--write]; the manifest is committed
+  mapping list|show|train|fork|lock|remove|verify|check   how a language's syntax becomes an outline;
+                            train <language> --samples <dir|file> learns one from code
+  model list|install|verify|doctor       local embedding models; install <new-name> --from <dir|file.onnx>
+                                         brings your own (--pooling, --max-tokens, --force)
   mcp serve                 run as an MCP server on stdio
   --version                 print the version
 
@@ -60,6 +71,9 @@ export async function runCli(argv: readonly string[], environment: Environment):
     if (command === 'channel') await channelCommand(ctx);
     else if (command === 'model') await modelCommand(ctx);
     else if (command === 'grammar') await grammarCommand(ctx);
+    else if (command === 'mapping') await mappingCommand(ctx);
+    else if (command === 'fragments') await fragmentsCommand(ctx);
+    else if (command === 'redteam') await redteamCommand(ctx);
     else if (command === 'mcp') {
       const [sub, ...rest] = parsed.positionals;
       if (sub !== 'serve')

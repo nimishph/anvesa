@@ -8,9 +8,12 @@ import {
   estimatePeakRssMb,
   type HardwareProbe,
   type InstalledModel,
+  installCustomModel,
   ModelCache,
+  type ModelSpec,
   ModelUnavailableError,
   openLocalEmbedder,
+  type Pooling,
   probeHardware,
   resolveModel,
   TIERS,
@@ -31,47 +34,69 @@ export interface ModelRow {
   readonly notes: string;
 }
 
-/** The built-in models, and which are installed in this cache. */
+const rowOf = async (cache: ModelCache, spec: ModelSpec): Promise<ModelRow> => ({
+  id: spec.id,
+  tier: spec.tier,
+  dimensions: spec.dimensions,
+  maxTokens: spec.maxTokens,
+  sizeMb: Math.round(spec.model.bytes / 1024 / 1024),
+  installed: (await cache.find(spec)) !== undefined,
+  estimatedMemoryMb: Math.round(estimatePeakRssMb(spec.model.bytes)),
+  license: spec.license,
+  notes: spec.notes,
+});
+
+/** The built-in models, and the ones the user brought in, with which are installed in this cache. */
 export async function listModels(cache: ModelCache): Promise<readonly ModelRow[]> {
   const rows: ModelRow[] = [];
-  for (const tier of TIERS) {
-    const spec = BUILTIN_MODELS[tier];
-    rows.push({
-      id: spec.id,
-      tier,
-      dimensions: spec.dimensions,
-      maxTokens: spec.maxTokens,
-      sizeMb: Math.round(spec.model.bytes / 1024 / 1024),
-      installed: (await cache.find(spec)) !== undefined,
-      estimatedMemoryMb: Math.round(estimatePeakRssMb(spec.model.bytes)),
-      license: spec.license,
-      notes: spec.notes,
-    });
-  }
+  for (const tier of TIERS) rows.push(await rowOf(cache, BUILTIN_MODELS[tier]));
+  for (const spec of await cache.customModels()) rows.push(await rowOf(cache, spec));
   return rows;
 }
 
+export interface InstallModelOptions {
+  /** A directory (or, for a model brought in, the `.onnx` file) on this machine. */
+  readonly from?: string;
+  /** Fetch a built-in model's pinned files. Never done unless asked for. */
+  readonly download?: boolean;
+  /** For a model brought in: how it pools, when its own files do not say. */
+  readonly pooling?: Pooling;
+  /** For a model brought in: its window in tokens, when its own files do not say. */
+  readonly maxTokens?: number;
+  /** For a model brought in: accept files that differ from an earlier install of the id. */
+  readonly replace?: boolean;
+  readonly deadline?: Deadline;
+  readonly onProgress?: (file: string, received: number, expected: number) => void;
+}
+
 /**
- * Install a built-in model, from a directory on this machine, or by downloading the pinned files
- * when `download` is set. Neither is done unless asked for.
+ * Install a model. A built-in id comes from a directory on this machine, or by downloading the
+ * pinned files when `download` is set. Any other id is a model the user brings, from a directory
+ * or an `.onnx` file with its `tokenizer.json`: its checksums are pinned at this first install.
  */
 export async function installModel(
   cache: ModelCache,
   id: string,
-  options: {
-    readonly from?: string;
-    readonly download?: boolean;
-    readonly deadline?: Deadline;
-    readonly onProgress?: (file: string, received: number, expected: number) => void;
-  },
+  options: InstallModelOptions,
 ): Promise<InstalledModel> {
   const spec = builtinModel(id);
   if (!spec) {
-    throw new InvalidArgumentError(
-      'model',
-      `one of ${TIERS.map((t) => BUILTIN_MODELS[t].id).join(', ')}`,
+    if (options.from === undefined) {
+      throw new InvalidArgumentError(
+        'model',
+        `a built-in model (${TIERS.map((t) => BUILTIN_MODELS[t].id).join(', ')}), or a new name with --from <dir|file.onnx> to bring in your own`,
+        id,
+      );
+    }
+    const installed = await installCustomModel(cache, {
       id,
-    );
+      from: options.from,
+      ...(options.pooling ? { pooling: options.pooling } : {}),
+      ...(options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens }),
+      ...(options.replace ? { replace: true } : {}),
+      ...(options.deadline ? { deadline: options.deadline } : {}),
+    });
+    return cache.require(installed);
   }
   if (options.from !== undefined) {
     return cache.installFromDirectory(
@@ -85,6 +110,23 @@ export async function installModel(
     ...(options.deadline ? { deadline: options.deadline } : {}),
     ...(options.onProgress ? { onProgress: options.onProgress } : {}),
   });
+}
+
+/** Read every file of an installed model and check it against the checksums it is pinned to. */
+export async function verifyModel(
+  cache: ModelCache,
+  id: string,
+  deadline?: Deadline,
+): Promise<InstalledModel> {
+  const spec = builtinModel(id) ?? (await cache.findCustom(id));
+  if (!spec) {
+    throw new InvalidArgumentError(
+      'model',
+      `one of ${(await listModels(cache)).map((row) => row.id).join(', ')}`,
+      id,
+    );
+  }
+  return cache.verify(spec, deadline);
 }
 
 export interface ModelDoctor {

@@ -30,7 +30,15 @@ function invalid(raw: unknown): MappingInvalidError {
 describe('validateMapping', () => {
   test('accepts a well-formed mapping and the bundled ones', () => {
     expect(validateMapping(valid()).name).toBe('demo');
-    expect(builtinMappings().map((b) => b.mapping.name)).toEqual(['typescript', 'python', 'php']);
+    expect(builtinMappings().map((b) => b.mapping.name)).toEqual([
+      'typescript',
+      'python',
+      'php',
+      'go',
+      'rust',
+      'java',
+      'ruby',
+    ]);
   });
 
   test('a legacy maxDepth is accepted and ignored', () => {

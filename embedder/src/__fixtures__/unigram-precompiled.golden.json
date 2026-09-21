@@ -1,0 +1,698 @@
+[
+  { "text": "    }", "ids": [0, 17, 2], "bare": 1 },
+  { "text": "  }", "ids": [0, 17, 2], "bare": 1 },
+  {
+    "text": "      cache.installFromDirectory(spec, source('flat'), {",
+    "ids": [0, 4, 261, 11, 232, 176, 21, 149, 364, 215, 5, 579, 10, 5, 13, 2],
+    "bare": 14
+  },
+  { "text": "    return found;", "ids": [0, 58, 303, 6, 2], "bare": 3 },
+  {
+    "text": "  for (let dot = qualified.indexOf('.'); dot !== -1; dot = qualified.indexOf('.', dot + 1)) {",
+    "ids": [
+      0, 113, 41, 51, 9, 230, 9, 14, 441, 569, 10, 6, 230, 9, 197, 167, 4, 78, 90, 6, 230, 9, 14,
+      441, 569, 5, 230, 9, 4, 439, 4, 90, 115, 13, 2
+    ],
+    "bare": 33
+  },
+  { "text": "      });", "ids": [0, 44, 6, 2], "bare": 2 },
+  {
+    "text": "        population: 'intent',",
+    "ids": [0, 180, 154, 29, 39, 173, 8, 20, 59, 9, 45, 9, 15, 5, 2],
+    "bare": 13
+  },
+  { "text": "      );", "ids": [0, 4, 10, 6, 2], "bare": 3 },
+  { "text": "]);", "ids": [0, 4, 122, 6, 2], "bare": 3 },
+  {
+    "text": "  const oldEntries = group(before);",
+    "ids": [
+      0, 26, 4, 23, 194, 66, 35, 9, 130, 98, 14, 4, 33, 21, 89, 22, 19, 46, 16, 40, 23, 36, 10, 6, 2
+    ],
+    "bare": 23
+  },
+  {
+    "text": "const NAME_TYPES: ReadonlySet<string> = new Set([",
+    "ids": [
+      0, 26, 4, 95, 80, 83, 66, 126, 65, 326, 96, 66, 82, 8, 4, 79, 42, 409, 14, 77, 37, 4, 82, 16,
+      9, 19, 123, 2
+    ],
+    "bare": 26
+  },
+  {
+    "text": "      if (scope === 'descendants' && searched.has(from.node)) continue;",
+    "ids": [
+      0, 4, 70, 41, 7, 25, 154, 16, 4, 104, 518, 204, 4, 236, 236, 258, 32, 11, 38, 12, 7, 19, 40,
+      21, 149, 11, 138, 115, 279, 59, 29, 16, 6, 2
+    ],
+    "bare": 32
+  },
+  {
+    "text": "    '//class[@name=\"Parser\"]>method[@name^=\"cre\"]',",
+    "ids": [
+      0, 20, 511, 96, 63, 7, 47, 97, 60, 30, 472, 123, 252, 121, 595, 187, 97, 25, 36, 97, 60, 15,
+      5, 2
+    ],
+    "bare": 22
+  },
+  { "text": "}", "ids": [0, 17, 2], "bare": 1 },
+  { "text": "interface Held {", "ids": [0, 4, 157, 4, 170, 16, 194, 13, 2], "bare": 7 },
+  { "text": "  });", "ids": [0, 44, 6, 2], "bare": 2 },
+  { "text": "];", "ids": [0, 4, 60, 6, 2], "bare": 3 },
+  { "text": "function targetOf(", "ids": [0, 119, 572, 2], "bare": 2 },
+  {
+    "text": "    json = parsed.values.json === true;",
+    "ids": [0, 4, 276, 14, 4, 395, 276, 4, 104, 4, 262, 6, 2],
+    "bare": 11
+  },
+  {
+    "text": "  download: { type: 'boolean' },",
+    "ids": [0, 4, 18, 243, 216, 8, 13, 135, 8, 20, 289, 15, 17, 5, 2],
+    "bare": 13
+  },
+  {
+    "text": "        this.#scores.set(piece, score);",
+    "ids": [0, 212, 7, 233, 132, 69, 9, 19, 22, 28, 16, 25, 16, 5, 301, 10, 6, 2],
+    "bare": 16
+  },
+  { "text": "    const files = [", "ids": [0, 26, 159, 7, 14, 99, 2], "bare": 5 },
+  {
+    "text": "      entry = { matched: 0, truth: 0, ours: 0 };",
+    "ids": [
+      0, 4, 45, 202, 14, 13, 4, 259, 32, 8, 131, 5, 424, 8, 131, 5, 4, 89, 21, 88, 131, 17, 6, 2
+    ],
+    "bare": 22
+  },
+  { "text": "    }", "ids": [0, 17, 2], "bare": 1 },
+  {
+    "text": "          ...(from ? { from: resolve(ctx.environment.cwd, from) } : {}),",
+    "ids": [
+      0, 185, 19, 40, 21, 149, 103, 13, 71, 8, 4, 277, 16, 19, 25, 9, 76, 11, 528, 11, 25, 37, 18,
+      5, 71, 10, 17, 4, 8, 208, 10, 5, 2
+    ],
+    "bare": 31
+  },
+  {
+    "text": "  relevant: ReadonlySet<string>,",
+    "ids": [0, 166, 51, 67, 12, 35, 9, 8, 4, 79, 42, 409, 5, 2],
+    "bare": 12
+  },
+  {
+    "text": "  readonly params: string | undefined;",
+    "ids": [0, 34, 42, 180, 63, 12, 27, 88, 73, 175, 120, 6, 2],
+    "bare": 11
+  },
+  {
+    "text": "    for (let token = 0; token < batch.length; token += 1) {",
+    "ids": [
+      0, 113, 41, 51, 9, 129, 50, 45, 14, 131, 6, 129, 50, 45, 4, 198, 4, 311, 11, 249, 6, 129, 50,
+      45, 4, 439, 187, 4, 90, 10, 13, 2
+    ],
+    "bare": 30
+  },
+  {
+    "text": "    expect(outcome).toBeInstanceOf(OperationAbortedError);",
+    "ids": [0, 62, 89, 9, 25, 149, 16, 10, 327, 492, 80, 46, 57, 32, 137, 10, 6, 2],
+    "bare": 16
+  },
+  {
+    "text": "      cardOf('fine card', 'third-party', { key: 'a' }),",
+    "ids": [
+      0, 4, 222, 125, 40, 110, 40, 59, 16, 4, 222, 15, 5, 399, 5, 13, 4, 148, 8, 20, 12, 15, 44, 5,
+      2
+    ],
+    "bare": 23
+  },
+  { "text": "        channel: 'docs',", "ids": [0, 4, 182, 8, 20, 186, 204, 5, 2], "bare": 7 },
+  { "text": "  | 'method'", "ids": [0, 175, 20, 472, 15, 2], "bare": 4 },
+  {
+    "text": "    transformerVersion: '1',",
+    "ids": [0, 4, 213, 420, 8, 20, 90, 15, 5, 2],
+    "bare": 8
+  },
+  { "text": "    );", "ids": [0, 4, 10, 6, 2], "bare": 3 },
+  {
+    "text": "  budget: over.maxTokens ? { ...budget, maxTokens: over.maxTokens } : budget,",
+    "ids": [
+      0, 255, 8, 4, 23, 94, 11, 27, 12, 76, 257, 103, 13, 185, 46, 29, 18, 33, 16, 9, 5, 338, 8, 4,
+      23, 94, 11, 27, 12, 76, 257, 17, 4, 8, 255, 5, 2
+    ],
+    "bare": 35
+  },
+  { "text": "    source,", "ids": [0, 179, 5, 2], "bare": 2 },
+  { "text": "  encodeCursor,", "ids": [0, 4, 45, 264, 101, 29, 21, 7, 53, 5, 2], "bare": 9 },
+  {
+    "text": "  const centroidOf = (vectors: readonly Float32Array[]) => {",
+    "ids": [0, 26, 529, 14, 41, 209, 88, 34, 42, 287, 109, 10, 14, 30, 13, 2],
+    "bare": 14
+  },
+  {
+    "text": "      } else if (unknown !== undefined) {",
+    "ids": [0, 17, 4, 16, 39, 69, 4, 70, 41, 280, 197, 167, 120, 10, 13, 2],
+    "bare": 14
+  },
+  {
+    "text": "      const path = ctx.parsed.values.expect;",
+    "ids": [0, 26, 177, 14, 72, 9, 76, 11, 395, 219, 6, 2],
+    "bare": 10
+  },
+  {
+    "text": "    modelPath: installed.modelPath,",
+    "ids": [0, 141, 431, 8, 4, 232, 32, 11, 160, 431, 5, 2],
+    "bare": 10
+  },
+  {
+    "text": "  /** The grammar runtime to use instead of the standard layout. Tests supply one. */",
+    "ids": [
+      0, 4, 87, 299, 4, 127, 34, 111, 9, 28, 27, 16, 129, 4, 29, 69, 128, 64, 134, 143, 55, 4, 64,
+      12, 35, 18, 63, 18, 4, 181, 49, 89, 9, 11, 4, 65, 105, 7, 4, 7, 29, 22, 22, 39, 49, 4, 68, 16,
+      11, 85, 2
+    ],
+    "bare": 49
+  },
+  {
+    "text": "  constructor(root: string, problem: string, init: ErrorInit = {}) {",
+    "ids": [
+      0, 464, 156, 8, 73, 5, 4, 368, 8, 73, 5, 128, 31, 8, 4, 137, 100, 35, 31, 14, 208, 10, 13, 2
+    ],
+    "bare": 22
+  },
+  {
+    "text": "    }> = builtinMappings(),",
+    "ids": [0, 17, 30, 14, 191, 29, 221, 9, 59, 481, 7, 43, 5, 2],
+    "bare": 12
+  },
+  {
+    "text": "   * reported as corrupt rather than as absent.",
+    "ids": [0, 117, 319, 32, 133, 4, 473, 34, 12, 247, 158, 35, 133, 24, 46, 7, 45, 9, 11, 2],
+    "bare": 18
+  },
+  {
+    "text": "    total: more ? null : hits.length,",
+    "ids": [0, 129, 9, 56, 8, 4, 27, 23, 36, 103, 4, 35, 29, 150, 4, 8, 4, 38, 31, 132, 249, 5, 2],
+    "bare": 21
+  },
+  { "text": "}", "ids": [0, 17, 2], "bare": 1 },
+  {
+    "text": "    const source = join(s.root, 'unpacked');",
+    "ids": [0, 26, 179, 14, 380, 19, 132, 156, 5, 20, 111, 22, 12, 25, 50, 32, 48, 6, 2],
+    "bare": 17
+  },
+  { "text": "      this.#space();", "ids": [0, 212, 340, 43, 6, 2], "bare": 4 },
+  {
+    "text": "      } catch (resolveFailure) {",
+    "ids": [0, 17, 4, 238, 41, 277, 16, 388, 10, 13, 2],
+    "bare": 9
+  },
+  {
+    "text": "    expect((await r.diagnose({ query: 'x', path: 'src/empty.ts' })).lostAt).toBe('CARDS');",
+    "ids": [
+      0, 62, 19, 12, 54, 31, 34, 11, 440, 193, 4, 189, 8, 20, 76, 15, 5, 177, 8, 20, 7, 21, 25, 52,
+      422, 112, 44, 10, 11, 124, 64, 80, 9, 245, 101, 80, 79, 146, 82, 48, 6, 2
+    ],
+    "bare": 40
+  },
+  { "text": "      return;", "ids": [0, 58, 6, 2], "bare": 2 },
+  {
+    "text": "    arch: arch(),",
+    "ids": [0, 4, 63, 25, 38, 8, 4, 63, 25, 38, 43, 5, 2],
+    "bare": 11
+  },
+  {
+    "text": "/** Split `parseHTTPConfig`, `parse_config` and `ParseConfig` into lower-case words. */",
+    "ids": [
+      0, 4, 87, 4, 82, 22, 39, 31, 152, 184, 170, 65, 65, 96, 308, 84, 5, 152, 184, 126, 272, 84,
+      92, 152, 96, 63, 69, 308, 84, 128, 145, 4, 124, 37, 47, 78, 321, 4, 37, 53, 18, 132, 85, 2
+    ],
+    "bare": 42
+  },
+  { "text": "        for (;;) {", "ids": [0, 113, 41, 6, 6, 10, 13, 2], "bare": 6 },
+  {
+    "text": "      rules: { 'no-fix': 'sanitize' },",
+    "ids": [0, 34, 29, 51, 88, 13, 20, 35, 23, 78, 40, 28, 76, 15, 8, 20, 525, 17, 5, 2],
+    "bare": 18
+  },
+  { "text": "});", "ids": [0, 44, 6, 2], "bare": 2 },
+  { "text": "    };", "ids": [0, 17, 6, 2], "bare": 2 },
+  {
+    "text": "          category: 'poisoning',",
+    "ids": [0, 72, 93, 33, 53, 49, 8, 20, 22, 23, 28, 7, 68, 74, 15, 5, 2],
+    "bare": 15
+  },
+  {
+    "text": "      expect(result.verdict).toBe('pass');",
+    "ids": [0, 62, 36, 7, 29, 39, 9, 11, 94, 18, 28, 25, 9, 245, 22, 12, 7, 7, 48, 6, 2],
+    "bare": 19
+  },
+  {
+    "text": "    const registry = new MappingRegistry();",
+    "ids": [0, 26, 34, 260, 14, 77, 37, 4, 481, 79, 260, 43, 6, 2],
+    "bare": 12
+  },
+  { "text": "      }", "ids": [0, 17, 2], "bare": 1 },
+  { "text": "    );", "ids": [0, 4, 10, 6, 2], "bare": 3 },
+  { "text": "  });", "ids": [0, 44, 6, 2], "bare": 2 },
+  {
+    "text": "        `${r.state === 'ready' ? '*' : ' '} ${r.language.padEnd(12)} ${r.extensions.join(' ').padEnd(24)} ${r.state}: ${r.detail}`,",
+    "ids": [
+      0, 218, 21, 11, 64, 93, 4, 104, 20, 21, 134, 49, 15, 103, 20, 195, 15, 4, 8, 20, 20, 81, 165,
+      21, 11, 237, 535, 90, 178, 10, 81, 165, 21, 11, 298, 7, 163, 7, 369, 4, 48, 535, 178, 305, 10,
+      81, 165, 21, 11, 64, 93, 81, 8, 165, 21, 11, 18, 283, 221, 144, 5, 2
+    ],
+    "bare": 60
+  },
+  { "text": "    do {", "ids": [0, 230, 13, 2], "bare": 2 },
+  {
+    "text": "async function fromDirectory(grammar: GrammarRef, directory: string): Promise<Obtained> {",
+    "ids": [
+      0, 24, 102, 119, 71, 364, 127, 8, 4, 251, 79, 16, 40, 5, 4, 465, 8, 190, 8, 274, 125, 46, 9,
+      12, 59, 32, 30, 13, 2
+    ],
+    "bare": 27
+  },
+  { "text": "  | 'property';", "ids": [0, 175, 20, 22, 21, 154, 47, 9, 49, 15, 6, 2], "bare": 10 },
+  {
+    "text": "      groups.set(key, group);",
+    "ids": [0, 4, 33, 21, 89, 22, 132, 69, 9, 19, 148, 5, 4, 33, 21, 89, 22, 10, 6, 2],
+    "bare": 18
+  },
+  {
+    "text": "export function startServer() { return parseConfig('x'); }",
+    "ids": [0, 75, 57, 119, 296, 82, 47, 94, 43, 13, 58, 4, 184, 308, 110, 76, 48, 6, 17, 2],
+    "bare": 18
+  },
+  { "text": "    });", "ids": [0, 44, 6, 2], "bare": 2 },
+  { "text": "}", "ids": [0, 17, 2], "bare": 1 },
+  { "text": "  }", "ids": [0, 17, 2], "bare": 1 },
+  {
+    "text": "    throw new InferenceError(model, `it produced a vector with length ${norm}`, {",
+    "ids": [
+      0, 200, 77, 37, 558, 160, 5, 152, 31, 4, 407, 32, 24, 4, 209, 147, 4, 249, 165, 35, 53, 27,
+      144, 5, 13, 2
+    ],
+    "bare": 24
+  },
+  { "text": "            ...card,", "ids": [0, 185, 222, 5, 2], "bare": 3 },
+  {
+    "text": "import { type OursImport, scoreCalls, scoreImports, scoreSymbols } from './compare.ts';",
+    "ids": [
+      0, 106, 13, 135, 4, 125, 29, 21, 7, 377, 5, 301, 101, 56, 39, 7, 5, 301, 377, 7, 5, 301, 330,
+      7, 17, 71, 172, 25, 149, 22, 12, 36, 112, 6, 2
+    ],
+    "bare": 33
+  },
+  {
+    "text": "    expect(text.indexOf('\"c\"')).toBeLessThan(text.indexOf('\"zig\"'));",
+    "ids": [0, 4, 219, 575, 25, 97, 48, 512, 575, 234, 28, 33, 97, 48, 10, 6, 2],
+    "bare": 15
+  },
+  {
+    "text": " * reproducible. A bounded min-heap makes a scan linear in the number of items and constant in",
+    "ids": [
+      0, 117, 166, 407, 28, 46, 51, 11, 4, 80, 191, 23, 111, 18, 32, 4, 27, 59, 78, 38, 16, 12, 22,
+      382, 7, 24, 4, 7, 25, 12, 35, 4, 171, 63, 128, 55, 108, 143, 162, 16, 27, 7, 92, 26, 12, 35,
+      9, 128, 2
+    ],
+    "bare": 47
+  },
+  { "text": "  });", "ids": [0, 44, 6, 2], "bare": 2 },
+  {
+    "text": "export interface SyncReport {",
+    "ids": [0, 75, 57, 4, 157, 4, 312, 79, 16, 22, 57, 13, 2],
+    "bare": 11
+  },
+  { "text": "}", "ids": [0, 17, 2], "bare": 1 },
+  { "text": "    }", "ids": [0, 17, 2], "bare": 1 },
+  {
+    "text": "  const declarations: ts.Declaration[] = [];",
+    "ids": [
+      0, 26, 4, 86, 25, 39, 63, 173, 88, 4, 9, 132, 146, 16, 25, 39, 63, 173, 109, 14, 4, 109, 6, 2
+    ],
+    "bare": 22
+  },
+  {
+    "text": "    changes.push('signature');",
+    "ids": [0, 4, 414, 7, 284, 15, 539, 48, 6, 2],
+    "bare": 8
+  },
+  { "text": "  #check(", "ids": [0, 4, 168, 25, 38, 16, 25, 50, 19, 2], "bare": 8 },
+  {
+    "text": "      : requireStringArray(raw.callableTags, 'callableTags', at);",
+    "ids": [
+      0, 4, 8, 166, 598, 29, 28, 36, 430, 80, 21, 21, 12, 49, 19, 21, 12, 37, 11, 501, 5, 20, 501,
+      15, 5, 24, 9, 10, 6, 2
+    ],
+    "bare": 28
+  },
+  {
+    "text": "  test('a card says what the symbol is, in words, with its doc and signature, but never its body', async () => {",
+    "ids": [
+      0, 207, 4, 222, 4, 7, 12, 49, 7, 4, 37, 38, 12, 9, 55, 205, 91, 5, 128, 4, 37, 53, 18, 7, 5,
+      147, 162, 7, 4, 186, 92, 4, 539, 5, 191, 151, 77, 94, 162, 7, 4, 239, 15, 5, 24, 102, 4, 43,
+      14, 30, 13, 2
+    ],
+    "bare": 50
+  },
+  { "text": "  });", "ids": [0, 44, 6, 2], "bare": 2 },
+  { "text": "  });", "ids": [0, 44, 6, 2], "bare": 2 },
+  { "text": "}", "ids": [0, 17, 2], "bare": 1 },
+  { "text": "  buildFrame,", "ids": [0, 191, 29, 221, 18, 176, 21, 12, 27, 16, 5, 2], "bare": 10 },
+  { "text": "  let nodes = 1;", "ids": [0, 4, 51, 9, 4, 138, 7, 14, 4, 90, 6, 2], "bare": 10 },
+  {
+    "text": "export interface CompiledMapping {",
+    "ids": [0, 75, 57, 4, 157, 450, 13, 2],
+    "bare": 6
+  },
+  {
+    "text": "  if (!(length > 0) || !Number.isFinite(length)) {",
+    "ids": [0, 4, 70, 41, 269, 19, 249, 4, 30, 131, 10, 175, 174, 197, 552, 249, 115, 13, 2],
+    "bare": 17
+  },
+  { "text": "  validateCard,", "ids": [0, 4, 67, 56, 28, 18, 93, 101, 63, 18, 5, 2], "bare": 10 },
+  {
+    "text": "describe('special tokens in the text', () => {",
+    "ids": [
+      0, 442, 46, 16, 110, 215, 28, 56, 129, 50, 45, 7, 128, 55, 4, 161, 15, 5, 4, 43, 14, 30, 13, 2
+    ],
+    "bare": 22
+  },
+  {
+    "text": "    expect(failure).toBeInstanceOf(OperationAbortedError);",
+    "ids": [0, 390, 10, 327, 492, 80, 46, 57, 32, 137, 10, 6, 2],
+    "bare": 11
+  },
+  {
+    "text": "    await installGrammar(base);",
+    "ids": [0, 24, 54, 31, 349, 19, 46, 12, 69, 10, 6, 2],
+    "bare": 10
+  },
+  {
+    "text": "  readonly #normalized: Uint8Array;",
+    "ids": [0, 34, 42, 4, 168, 527, 8, 4, 504, 6, 2],
+    "bare": 9
+  },
+  {
+    "text": "      truthMs: truth.programMs,",
+    "ids": [0, 424, 83, 88, 424, 11, 22, 21, 23, 33, 21, 12, 27, 83, 7, 5, 2],
+    "bare": 15
+  },
+  {
+    "text": "    expect(score.notExtracted).toEqual(['a.ts:1  ./z']);",
+    "ids": [
+      0, 62, 7, 233, 11, 211, 66, 335, 10, 224, 15, 12, 11, 9, 88, 90, 4, 11, 52, 234, 15, 122, 6, 2
+    ],
+    "bare": 22
+  },
+  {
+    "text": "    [{ transform: 'x' as never }, 'transform'],",
+    "ids": [
+      0, 99, 271, 4, 9, 21, 12, 35, 7, 40, 53, 27, 8, 20, 76, 15, 133, 77, 94, 17, 5, 4, 506, 60, 5,
+      2
+    ],
+    "bare": 24
+  },
+  {
+    "text": "    expect(page.degraded.map((d) => d.lane).sort()).toEqual(['docs', 'symbols']);",
+    "ids": [
+      0, 62, 22, 192, 11, 86, 33, 21, 12, 18, 32, 227, 18, 10, 14, 30, 4, 18, 11, 181, 35, 16, 10,
+      11, 7, 57, 43, 10, 224, 15, 186, 204, 5, 20, 246, 15, 122, 6, 2
+    ],
+    "bare": 37
+  },
+  {
+    "text": "      requests.push(url);",
+    "ids": [0, 166, 598, 29, 105, 7, 284, 29, 21, 39, 10, 6, 2],
+    "bare": 11
+  },
+  {
+    "text": "      models: { type: 'string' },",
+    "ids": [0, 141, 88, 13, 135, 8, 20, 64, 21, 74, 15, 17, 5, 2],
+    "bare": 12
+  },
+  {
+    "text": "      const arrow = variable?.children.find((child) => child.tag === 'arrow');",
+    "ids": [
+      0, 26, 4, 63, 21, 23, 37, 14, 4, 67, 63, 28, 12, 46, 51, 61, 11, 25, 391, 11, 201, 19, 19,
+      324, 10, 14, 30, 4, 324, 11, 9, 12, 33, 4, 104, 20, 63, 21, 23, 37, 48, 6, 2
+    ],
+    "bare": 41
+  },
+  { "text": "        language: 'tsx',", "ids": [0, 4, 237, 8, 20, 9, 7, 76, 15, 5, 2], "bare": 9 },
+  {
+    "text": "    const fenced = fenceUntrusted(text, { source: 'a.md', channel: 'docs', trust: 'third-party' });",
+    "ids": [
+      0, 26, 4, 40, 45, 25, 32, 14, 4, 40, 45, 25, 16, 286, 411, 19, 161, 5, 13, 179, 8, 20, 12,
+      226, 5, 4, 182, 8, 20, 186, 204, 5, 378, 8, 399, 44, 6, 2
+    ],
+    "bare": 36
+  },
+  { "text": "  return true;", "ids": [0, 58, 4, 262, 6, 2], "bare": 4 },
+  {
+    "text": "    const list = samples.get(category) ?? [];",
+    "ids": [
+      0, 26, 4, 39, 28, 64, 14, 4, 7, 345, 7, 316, 25, 93, 33, 53, 49, 10, 103, 61, 4, 109, 6, 2
+    ],
+    "bare": 22
+  },
+  {
+    "text": "    const file = inputFile('docs/a.md', 'content');",
+    "ids": [0, 26, 159, 14, 500, 186, 7, 52, 12, 226, 5, 20, 25, 68, 9, 45, 9, 48, 6, 2],
+    "bare": 18
+  },
+  { "text": "  }", "ids": [0, 17, 2], "bare": 1 },
+  {
+    "text": "  readonly config?: ProjectConfig;",
+    "ids": [0, 34, 42, 4, 272, 61, 8, 4, 332, 308, 6, 2],
+    "bare": 10
+  },
+  {
+    "text": "  /** Called with each batch, so tests can see how work was divided. */",
+    "ids": [
+      0, 4, 87, 4, 101, 56, 51, 18, 147, 4, 351, 4, 311, 5, 250, 302, 7, 320, 4, 69, 16, 4, 353, 4,
+      37, 53, 50, 4, 54, 7, 4, 18, 28, 67, 28, 18, 32, 11, 85, 2
+    ],
+    "bare": 38
+  },
+  { "text": "        );", "ids": [0, 4, 10, 6, 2], "bare": 3 },
+  { "text": "    grammar,", "ids": [0, 4, 127, 5, 2], "bare": 3 },
+  {
+    "text": "    expect(index.paths()).toEqual([...index.paths()].sort());",
+    "ids": [
+      0, 62, 139, 11, 153, 7, 43, 10, 224, 11, 11, 11, 139, 11, 153, 7, 43, 60, 11, 7, 57, 43, 10,
+      6, 2
+    ],
+    "bare": 23
+  },
+  { "text": "        channel?: string;", "ids": [0, 4, 182, 61, 8, 73, 6, 2], "bare": 6 },
+  {
+    "text": "    baseName === undefined ? (label ?? '') : qualifier ? `${qualifier}.${baseName}` : baseName;",
+    "ids": [
+      0, 418, 4, 104, 120, 103, 41, 428, 103, 61, 20, 48, 4, 8, 4, 438, 103, 218, 438, 81, 11, 114,
+      46, 12, 69, 313, 144, 4, 8, 418, 6, 2
+    ],
+    "bare": 30
+  },
+  {
+    "text": "  test('a garbage cursor is refused with the parse failure kept', () => {",
+    "ids": [
+      0, 207, 4, 33, 63, 46, 192, 419, 91, 484, 147, 55, 4, 184, 294, 4, 50, 16, 22, 9, 15, 5, 4,
+      43, 14, 30, 13, 2
+    ],
+    "bare": 26
+  },
+  {
+    "text": "  readonly queries: GraphQueries;",
+    "ids": [0, 34, 42, 4, 598, 29, 47, 28, 98, 8, 4, 223, 21, 12, 22, 38, 447, 6, 2],
+    "bare": 17
+  },
+  {
+    "text": "      hits: keys.map((key) => ({ key, item: key })),",
+    "ids": [
+      0, 4, 38, 31, 88, 4, 148, 7, 227, 148, 10, 14, 30, 4, 193, 4, 148, 5, 162, 16, 27, 8, 4, 148,
+      44, 10, 5, 2
+    ],
+    "bare": 26
+  },
+  { "text": "  });", "ids": [0, 44, 6, 2], "bare": 2 },
+  {
+    "text": "  test('are off by default', async () => {",
+    "ids": [0, 207, 36, 143, 40, 203, 4, 334, 15, 5, 24, 102, 4, 43, 14, 30, 13, 2],
+    "bare": 16
+  },
+  { "text": "  });", "ids": [0, 44, 6, 2], "bare": 2 },
+  { "text": "}", "ids": [0, 17, 2], "bare": 1 },
+  {
+    "text": "    'You must always check. Never skip it. Do not stop. Make sure to log. You should retry.',",
+    "ids": [
+      0, 20, 326, 89, 4, 27, 29, 64, 4, 56, 54, 49, 7, 72, 38, 16, 25, 50, 11, 4, 95, 16, 94, 4, 7,
+      50, 28, 22, 162, 11, 4, 146, 23, 140, 4, 64, 154, 11, 4, 83, 12, 50, 16, 4, 7, 29, 36, 129, 4,
+      124, 33, 11, 4, 326, 89, 270, 89, 194, 166, 202, 11, 15, 5, 2
+    ],
+    "bare": 62
+  },
+  { "text": "}", "ids": [0, 17, 2], "bare": 1 },
+  {
+    "text": "  readonly quarantined: number;",
+    "ids": [0, 34, 42, 4, 288, 8, 108, 6, 2],
+    "bare": 7
+  },
+  {
+    "text": "    syntax.childForFieldName('parameters') ??",
+    "ids": [
+      0, 4, 7, 49, 35, 9, 12, 76, 11, 324, 266, 176, 28, 16, 194, 313, 110, 22, 63, 12, 27, 16, 9,
+      47, 7, 48, 103, 61, 2
+    ],
+    "bare": 27
+  },
+  { "text": "  language: string,", "ids": [0, 4, 237, 8, 73, 5, 2], "bare": 5 },
+  {
+    "text": "    const failure = await rt",
+    "ids": [0, 26, 294, 14, 24, 54, 31, 34, 9, 2],
+    "bare": 8
+  },
+  {
+    "text": "    expect(result.removed[0]?.field).toBe('attr:note');",
+    "ids": [0, 62, 509, 476, 429, 245, 240, 8, 211, 16, 48, 6, 2],
+    "bare": 11
+  },
+  { "text": "}", "ids": [0, 17, 2], "bare": 1 },
+  {
+    "text": "      (entry): SearchResult => ({",
+    "ids": [0, 41, 45, 202, 10, 8, 470, 79, 98, 29, 39, 9, 14, 30, 4, 193, 2],
+    "bare": 15
+  },
+  {
+    "text": "        vectors[original] = pooled[row] as Float32Array;",
+    "ids": [
+      0, 4, 209, 7, 123, 53, 28, 33, 59, 56, 60, 14, 180, 23, 23, 51, 18, 123, 21, 23, 37, 60, 133,
+      287, 6, 2
+    ],
+    "bare": 24
+  },
+  {
+    "text": "  search <question>         fused search over every channel and, for WQL, the structure",
+    "ids": [
+      0, 258, 4, 198, 598, 29, 105, 163, 30, 4, 40, 29, 7, 32, 258, 4, 23, 94, 4, 16, 94, 49, 4,
+      182, 92, 5, 113, 4, 142, 592, 136, 5, 55, 4, 331, 16, 2
+    ],
+    "bare": 35
+  },
+  { "text": "    };", "ids": [0, 17, 6, 2], "bare": 2 },
+  {
+    "text": "  readonly positions?: boolean;",
+    "ids": [0, 34, 42, 4, 242, 31, 163, 7, 61, 8, 4, 289, 6, 2],
+    "bare": 12
+  },
+  { "text": "    attrs,", "ids": [0, 4, 240, 7, 5, 2], "bare": 4 },
+  {
+    "text": "    expect(attr(find, 'bodyKind')).toBe('empty');",
+    "ids": [0, 62, 240, 19, 201, 5, 20, 410, 48, 245, 422, 48, 6, 2],
+    "bare": 12
+  },
+  { "text": "      registry,", "ids": [0, 34, 260, 5, 2], "bare": 3 },
+  {
+    "text": "import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';",
+    "ids": [
+      0, 106, 13, 4, 27, 50, 18, 169, 312, 5, 453, 312, 5, 34, 27, 312, 5, 445, 17, 71, 423, 15, 6,
+      2
+    ],
+    "bare": 22
+  },
+  {
+    "text": "    for (const { rows, length } of backend.batches) expect(rows * length).toBeLessThanOrEqual(20);",
+    "ids": [
+      0, 113, 41, 206, 13, 4, 278, 5, 4, 249, 17, 143, 4, 520, 62, 278, 117, 4, 249, 512, 125, 21,
+      393, 19, 178, 183, 10, 6, 2
+    ],
+    "bare": 27
+  },
+  { "text": "  name = 'embedded',", "ids": [0, 118, 14, 20, 273, 18, 32, 15, 5, 2], "bare": 8 },
+  { "text": "      store: this.store,", "ids": [0, 352, 8, 228, 11, 7, 145, 36, 5, 2], "bare": 8 },
+  {
+    "text": "        'target symbol not extracted',",
+    "ids": [0, 20, 9, 63, 33, 16, 9, 205, 140, 4, 16, 335, 15, 5, 2],
+    "bare": 13
+  },
+  { "text": "  }", "ids": [0, 17, 2], "bare": 1 },
+  {
+    "text": "import { InvalidArgumentError } from '@sutras/code-lens-core';",
+    "ids": [0, 106, 13, 4, 315, 394, 17, 71, 20, 252, 7, 356, 233, 15, 6, 2],
+    "bare": 14
+  },
+  { "text": "  );", "ids": [0, 4, 10, 6, 2], "bare": 3 },
+  {
+    "text": "def f(x):\n    return x  # comment\n\tif y:\n\t\tpass",
+    "ids": [
+      0, 4, 86, 40, 4, 40, 19, 76, 10, 8, 58, 4, 76, 4, 168, 72, 149, 27, 45, 9, 4, 70, 4, 49, 8,
+      180, 12, 7, 7, 2
+    ],
+    "bare": 28
+  },
+  {
+    "text": "snake_case camelCase PascalCase kebab-case HTTPServer parseURL getX2",
+    "ids": [
+      0, 4, 7, 35, 12, 50, 16, 126, 321, 72, 12, 27, 16, 39, 101, 12, 69, 4, 96, 12, 7, 25, 56, 101,
+      12, 69, 4, 50, 16, 46, 12, 46, 78, 321, 4, 170, 65, 65, 96, 82, 47, 94, 4, 184, 286, 79, 136,
+      4, 33, 16, 9, 549, 178, 2
+    ],
+    "bare": 52
+  },
+  {
+    "text": "  indented and   spaced  ",
+    "ids": [0, 128, 18, 45, 9, 32, 92, 4, 340, 18, 4, 2],
+    "bare": 10
+  },
+  {
+    "text": "don't we'll they're I'm you've he'd",
+    "ids": [
+      0, 230, 35, 15, 9, 4, 37, 16, 15, 150, 55, 49, 15, 36, 4, 100, 15, 27, 4, 49, 89, 15, 67, 16,
+      4, 38, 16, 15, 18, 2
+    ],
+    "bare": 28
+  },
+  {
+    "text": "3.14159e-10 0xDEADBEEF 1_000_000",
+    "ids": [
+      0, 4, 254, 11, 90, 305, 90, 235, 362, 16, 78, 90, 183, 131, 76, 146, 66, 80, 146, 199, 66, 66,
+      176, 4, 90, 126, 183, 183, 183, 126, 183, 183, 183, 2
+    ],
+    "bare": 32
+  },
+  {
+    "text": "日本語 mixed with english and 中文",
+    "ids": [0, 4, 3, 4, 27, 28, 76, 32, 147, 4, 45, 33, 39, 28, 7, 38, 92, 4, 3, 2],
+    "bare": 18
+  },
+  {
+    "text": "ǅ İstanbul café ﬁnance ①②③ ｆｕｌｌｗｉｄｔｈ",
+    "ids": [
+      0, 4, 146, 3, 4, 3, 64, 12, 35, 46, 29, 39, 72, 12, 40, 3, 4, 40, 59, 12, 35, 25, 16, 4, 90,
+      178, 254, 4, 40, 29, 150, 37, 28, 18, 9, 38, 2
+    ],
+    "bare": 35
+  },
+  {
+    "text": "emoji 🎉 and 😀 and tab\tand\nnewlines\r\n",
+    "ids": [0, 4, 16, 27, 23, 285, 28, 4, 3, 92, 4, 3, 92, 4, 9, 12, 46, 92, 77, 37, 171, 7, 4, 2],
+    "bare": 22
+  },
+  { "text": "", "ids": [0, 2], "bare": 0 },
+  { "text": " ", "ids": [0, 4, 2], "bare": 1 },
+  {
+    "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "ids": [
+      0, 24, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
+      12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
+      12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
+      12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
+      12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
+      12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
+      12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 2
+    ],
+    "bare": 150
+  },
+  {
+    "text": " nbsp and ​zero width",
+    "ids": [0, 4, 35, 46, 7, 22, 92, 4, 234, 47, 23, 4, 37, 28, 18, 9, 38, 2],
+    "bare": 16
+  }
+]

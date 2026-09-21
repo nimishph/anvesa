@@ -9,14 +9,9 @@ import {
   type ChannelRegistry,
   type Embedder,
   retrieve as retrieveDense,
+  type VectorStore,
 } from '@sutras/code-lens-dense';
-import type {
-  EdgeRecord,
-  IndexStats,
-  SqliteIndexStore,
-  SqliteVectorStore as SqliteVectorStoreType,
-  Workspace,
-} from '@sutras/code-lens-indexer';
+import type { EdgeRecord, IndexStats, IndexStore, Workspace } from '@sutras/code-lens-indexer';
 import { EDGE, IMPORT_EDGE_KINDS } from '@sutras/code-lens-indexer';
 import { looksLikeWql, type WqlHit } from '@sutras/code-lens-structural';
 import type { StructuralCoverage, StructuralLane } from './structural-lane.ts';
@@ -43,8 +38,8 @@ export interface ChannelInfo {
 export interface ProjectView {
   readonly root: string;
   readonly workspace: Workspace;
-  readonly store: SqliteIndexStore;
-  readonly vectors: SqliteVectorStoreType;
+  readonly store: IndexStore;
+  readonly vectors: VectorStore;
   readonly registry: ChannelRegistry;
   readonly embedder: Embedder | undefined;
   readonly structure: StructuralLane;

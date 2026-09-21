@@ -3,6 +3,7 @@ import type { LimitReport } from '@sutras/code-lens-core';
 import type { SyntaxNode } from '@sutras/code-lens-syntax';
 import type { CompiledMapping } from './mapping.ts';
 import { ATTR, shortDigest, type WNode } from './node.ts';
+import { declares } from './symbols.ts';
 
 export interface EncodeOptions {
   readonly mapping: CompiledMapping;
@@ -165,6 +166,11 @@ function startNode(
     attrs.set(ATTR.baseName, base);
   }
   attrs.set(ATTR.kind, syntax.type);
+  if (tag === 'variable' && base !== undefined) {
+    const alias = aliasTarget(syntax);
+    if (alias !== undefined) attrs.set(ATTR.aliasOf, alias);
+  }
+  if (declares(tag, syntax.type, base !== undefined)) attrs.set(ATTR.declaration, 'true');
   attrs.set(ATTR.line, String(syntax.startPosition.row + 1));
   attrs.set(ATTR.endLine, String(syntax.endPosition.row + 1));
   if (path !== undefined) attrs.set('path', path);
@@ -642,4 +648,17 @@ function callableShapes(root: SyntaxNode, mapping: CompiledMapping): Map<number,
     (node, shape) => shapes.set(node.id, shape),
   );
   return shapes;
+}
+
+/**
+ * The name a declaration's value is, when the value is nothing but a name: `const a = b` and
+ * `const a: typeof b = b`, not `const a = b()` or `const a = obj.b`.
+ */
+function aliasTarget(declaration: SyntaxNode): string | undefined {
+  for (const declarator of declaration.namedChildren) {
+    if (declarator.type !== 'variable_declarator') continue;
+    const value = declarator.childForFieldName('value');
+    if (value?.type === 'identifier') return value.text;
+  }
+  return undefined;
 }

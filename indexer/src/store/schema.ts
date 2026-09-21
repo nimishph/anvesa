@@ -170,6 +170,13 @@ export const MIGRATIONS: readonly Migration[] = [
       ) WITHOUT ROWID;
     `,
   },
+  {
+    version: 4,
+    description: 'variables that are only another name',
+    sql: `
+      ALTER TABLE symbols ADD COLUMN alias_of TEXT;
+    `,
+  },
 ];
 
 /** The schema version a database has once fully migrated. */

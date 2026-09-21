@@ -13,7 +13,7 @@ import type { WNode } from './node.ts';
  * Bump this when the meaning of the text changes, so caches built from older text can be
  * recognised and recomputed.
  */
-export const WEXPR_FORMAT_VERSION = 2;
+export const WEXPR_FORMAT_VERSION = 3;
 
 const ESCAPES: Readonly<Record<string, string>> = {
   '\\': '\\',

@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -173,6 +173,26 @@ describe('command line', () => {
     expect(diagnosed.out).toContain('index:');
   });
 
+  test('a search can leave a lane out or weigh it, and a bad weight is a usage error', async () => {
+    const root = makeProject();
+    await cli(root, 'index');
+    const question = 'run the installer to set the service up';
+    const lanes = async (...extra: string[]) =>
+      (
+        json(await cli(root, 'search', question, '--json', ...extra)).lanes as { name: string }[]
+      ).map((l) => l.name);
+    expect(await lanes()).toEqual(expect.arrayContaining(['symbols', 'docs']));
+    expect(await lanes('--exclude', 'docs')).toEqual(['symbols']);
+    expect(await lanes('--weight', 'docs=0')).toEqual(['symbols']);
+    expect(await lanes('--weight', 'symbols=0.5', '--weight', 'docs=2')).toEqual(
+      expect.arrayContaining(['symbols', 'docs']),
+    );
+    for (const bad of ['docs', 'docs=x', '=1', 'docs=-1']) {
+      expect((await cli(root, 'search', question, '--weight', bad)).code).toBe(2);
+    }
+    expect((await cli(root, 'search', question, '--exclude', 'nope')).code).toBe(2);
+  });
+
   test('a limit is applied, reported and continued with a cursor', async () => {
     const root = makeProject();
     await cli(root, 'index');
@@ -284,6 +304,482 @@ describe('grammars', () => {
     expect(refused.err).toContain('--from');
     const unknown = await cliWith({}, root, 'grammar', 'install', 'klingon', '--from', wasm);
     expect(unknown.code).not.toBe(0);
+  });
+});
+
+describe('bringing your own model', () => {
+  test('a name that is not built in needs a source, and a bad pooling is a usage error', async () => {
+    const root = makeProject();
+    const cache = join(root, 'models');
+    const noSource = await cliWith({}, root, 'model', 'install', 'mine', '--models', cache);
+    expect(noSource.code).toBe(2);
+    const noFrom = await cliWith(
+      {},
+      root,
+      'model',
+      'install',
+      'mine',
+      '--download',
+      '--models',
+      cache,
+    );
+    expect(noFrom.code).toBe(2);
+    expect(noFrom.err).toContain('bring in your own');
+    const bad = await cliWith(
+      {},
+      root,
+      'model',
+      'install',
+      'mine',
+      '--from',
+      root,
+      '--pooling',
+      'max',
+      '--models',
+      cache,
+    );
+    expect(bad.code).toBe(2);
+    expect(bad.err).toContain('mean or cls');
+    const listed = await cliWith({}, root, 'model', 'list', '--json', '--models', cache);
+    expect(json(listed).map((m: { id: string }) => m.id)).not.toContain('mine');
+  });
+
+  // The real thing, where a MiniLM is at hand (CODE_LENS_TEST_MODELS, as the embedder tests).
+  const library = process.env.CODE_LENS_TEST_MODELS;
+  (library ? test : test.skip)(
+    'installs from a folder, lists it, verifies it, pins it, and indexes with it',
+    async () => {
+      const root = makeProject();
+      const cache = join(root, 'models');
+      const source = join(library as string, 'all-MiniLM-L6-v2');
+      const args = ['--models', cache];
+
+      const installed = await cliWith(
+        {},
+        root,
+        'model',
+        'install',
+        'mine',
+        '--from',
+        source,
+        '--pooling',
+        'mean',
+        '--max-tokens',
+        '256',
+        ...args,
+      );
+      expect(installed.code).toBe(0);
+      const listed = json(await cliWith({}, root, 'model', 'list', '--json', ...args));
+      const mine = listed.find((m: { id: string }) => m.id === 'mine');
+      expect(mine).toMatchObject({ installed: true, dimensions: 384, maxTokens: 256 });
+      expect(mine.tier).toBeUndefined();
+      expect((await cliWith({}, root, 'model', 'list', ...args)).out).toContain('custom');
+      expect((await cliWith({}, root, 'model', 'verify', 'mine', ...args)).code).toBe(0);
+      expect((await cliWith({}, root, 'model', 'verify', 'ghost', ...args)).code).toBe(2);
+
+      // Dense indexing with it, through the real embedder, not the test double.
+      const noDouble = { embedder: undefined, runtime };
+      const indexed = await cliWith(noDouble, root, 'index', '--model', 'mine', ...args);
+      expect(indexed.code).toBe(0);
+      expect(indexed.out).toContain('dense:');
+      const found = json(
+        await cliWith(
+          noDouble,
+          root,
+          'search',
+          'parse the configuration file',
+          '--model',
+          'mine',
+          '--json',
+          ...args,
+        ),
+      );
+      expect(found.items[0].path).toBe('src/config.ts');
+    },
+  );
+});
+
+describe('teaching it a language', () => {
+  // C# has no bundled mapping (its grammar needs more than a mapping can say), so it stands for any
+  // language a person teaches.
+  const CSHARP = {
+    'App.csproj': '<Project Sdk="Microsoft.NET.Sdk"></Project>',
+    'server/Server.cs': `namespace App;
+
+/// <summary>Answers requests.</summary>
+public class Server
+{
+    private readonly string addr;
+
+    public Server(string addr) { this.addr = addr; }
+
+    /// <summary>Starts listening and blocks.</summary>
+    public int Serve()
+    {
+        for (var i = 0; i < 3; i++) { Log(addr); }
+        return 1;
+    }
+
+    public string Addr() { return addr; }
+
+    private void Log(string text) { System.Console.WriteLine(text); }
+}
+`,
+    'server/Config.cs': `namespace App;
+
+public class Config
+{
+    /// <summary>Reads settings from the environment.</summary>
+    public static Server Load()
+    {
+        var addr = System.Environment.GetEnvironmentVariable("ADDR");
+        if (addr == null) { addr = ":8080"; }
+        return new Server(addr);
+    }
+
+    public static int Helper(int x)
+    {
+        while (x < 10) { x += 1; }
+        return x;
+    }
+}
+
+public interface IThing { void Run(); }
+`,
+  };
+
+  function csharpProject(): string {
+    const root = mkdtempSync(join(tmpdir(), 'code-lens-cs-'));
+    roots.push(root);
+    for (const [path, text] of Object.entries(CSHARP)) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), text);
+    }
+    return root;
+  }
+  const own = (root: string) => ({
+    grammars: { npmFrom: import.meta.filename, home: join(root, 'home') },
+  });
+
+  test('without a mapping a language has no outline; a learned one gives it symbols, and is pinned', async () => {
+    const root = csharpProject();
+    const options = own(root);
+    await cliWith(options, root, 'index', '--no-embed');
+    const before = await cliWith(options, root, 'query', '//method', '--json');
+    expect(before.code === 0 ? json(before).items : []).toEqual([]);
+
+    const dry = await cliWith(
+      options,
+      root,
+      'mapping',
+      'train',
+      'csharp',
+      '--samples',
+      'server',
+      '--dry-run',
+      '--json',
+    );
+    expect(dry.code).toBe(0);
+    expect(json(dry).stored).toBeUndefined();
+    expect(existsSync(join(root, '.code-lens', 'mappings', 'csharp.json'))).toBe(false);
+
+    const trained = await cliWith(
+      options,
+      root,
+      'mapping',
+      'train',
+      'csharp',
+      '--samples',
+      'server',
+    );
+    expect(trained.code).toBe(0);
+    expect(trained.out).toContain('method_declaration');
+    expect(trained.out).toContain('class_declaration');
+    expect(trained.out).toContain('kept in project');
+    expect(existsSync(join(root, '.code-lens', 'mappings', 'csharp.json'))).toBe(true);
+    expect(existsSync(join(root, '.code-lens', 'mappings', 'csharp.golden.json'))).toBe(true);
+    expect(existsSync(join(root, '.code-lens', 'mappings.lock.json'))).toBe(true);
+
+    const listed = json(await cliWith(options, root, 'mapping', 'list', '--json'));
+    // biome-ignore lint/suspicious/noExplicitAny: asserting a JSON shape
+    const learned = listed.find((m: any) => m.mapping.name === 'csharp');
+    expect(learned).toMatchObject({ tier: 'project', languages: ['csharp'] });
+    // biome-ignore lint/suspicious/noExplicitAny: asserting a JSON shape
+    expect(listed.some((m: any) => m.tier === 'bundled' && m.mapping.name === 'python')).toBe(true);
+
+    const indexed = await cliWith(options, root, 'index', '--no-embed', '--force');
+    expect(indexed.code).toBe(0);
+    const found = json(await cliWith(options, root, 'query', '//method[@name="Serve"]', '--json'));
+    expect(found.items.map((hit: { path: string }) => hit.path)).toEqual(['server/Server.cs']);
+    const classes = json(await cliWith(options, root, 'query', '//class', '--json'));
+    expect(classes.items.map((hit: { name: string }) => hit.name).sort()).toEqual([
+      'Config',
+      'Server',
+    ]);
+    expect((await cliWith(options, root, 'mapping', 'verify')).code).toBe(0);
+    expect((await cliWith(options, root, 'mapping', 'check', 'csharp')).code).toBe(0);
+    const shown = await cliWith(options, root, 'mapping', 'show', 'csharp');
+    expect(JSON.parse(shown.out).nodeTypeMap.class_declaration).toBe('class');
+  });
+
+  test('a mapping that was changed after it was recorded stops everything, until it is recorded again', async () => {
+    const root = csharpProject();
+    const options = own(root);
+    await cliWith(options, root, 'mapping', 'train', 'csharp', '--samples', 'server');
+    const path = join(root, '.code-lens', 'mappings', 'csharp.json');
+    writeFileSync(path, readFileSync(path, 'utf8').replaceAll('"method"', '"func"'));
+
+    const index = await cliWith(options, root, 'index', '--no-embed');
+    expect(index.code).toBe(1);
+    expect(index.err).toContain('STRUCTURAL_MAPPING_INTEGRITY');
+    expect(index.err).toContain('differs from the recorded checksum');
+
+    const verify = await cliWith(options, root, 'mapping', 'verify');
+    expect(verify.code).toBe(1);
+    expect(verify.err).toContain('csharp is modified');
+    expect((await cliWith(options, root, 'mapping', 'lock', 'csharp')).code).toBe(0);
+    expect((await cliWith(options, root, 'mapping', 'verify')).code).toBe(0);
+    // Recorded, so it is used; and what it now says is no longer what was learned.
+    expect((await cliWith(options, root, 'index', '--no-embed')).code).toBe(0);
+    const check = await cliWith(options, root, 'mapping', 'check', 'csharp');
+    expect(check.code).toBe(1);
+    expect(check.err).toContain('no longer come out as recorded');
+  });
+
+  test('forking a bundled mapping gives one to edit, and removing it goes back to the bundled one', async () => {
+    const root = csharpProject();
+    const options = own(root);
+    const forked = await cliWith(options, root, 'mapping', 'fork', 'python', '--json');
+    expect(forked.code).toBe(0);
+    expect(existsSync(join(root, '.code-lens', 'mappings', 'python.json'))).toBe(true);
+    type Listed = { mapping: { name: string }; tier: string };
+    const inEffect = (ran: Ran) =>
+      (json(ran) as Listed[]).filter((m) => m.mapping.name === 'python').map((m) => m.tier);
+    expect(inEffect(await cliWith(options, root, 'mapping', 'list', '--json'))).toEqual([
+      'bundled',
+      'project',
+    ]);
+    expect((await cliWith(options, root, 'mapping', 'remove', 'python')).out).toContain('removed');
+    expect(inEffect(await cliWith(options, root, 'mapping', 'list', '--json'))).toEqual([
+      'bundled',
+    ]);
+    expect((await cliWith(options, root, 'mapping', 'show', 'klingon')).code).toBe(2);
+    expect((await cliWith(options, root, 'mapping', 'train', 'csharp')).code).toBe(2);
+    expect(
+      (await cliWith(options, root, 'mapping', 'train', 'csharp', '--samples', 'nowhere')).code,
+    ).toBe(2);
+  });
+});
+
+describe('sharded indexing', () => {
+  test('is proposed from the index, turned on, built, kept in step with the manifest, and turned off', async () => {
+    const root = makeProject();
+    await cli(root, 'index');
+    const before = json(await cli(root, 'search', 'parse the configuration file', '--json'));
+
+    const proposed = await cli(root, 'fragments', 'propose', '--json');
+    expect(proposed.code).toBe(0);
+    expect(Object.keys(json(proposed).manifest.fragments).sort()).toEqual(['docs', 'root', 'src']);
+    expect(existsSync(join(root, '.code-lens', 'fragments.json'))).toBe(false);
+    const text = await cli(root, 'fragments', 'propose');
+    expect(text.out).toContain('not written');
+    expect((await cli(root, 'fragments', 'propose', '--tier', 'nope')).code).toBe(2);
+    expect((await cli(root, 'fragments', 'propose', '--resolution', '0')).code).toBe(2);
+    expect((await cli(root, 'fragments', 'propose', '--tier', 'clusters', '--json')).code).toBe(0);
+
+    const off = await cli(root, 'fragments', 'status');
+    expect(off.out).toContain('sharded indexing is off');
+
+    const enabled = await cli(root, 'fragments', 'enable');
+    expect(enabled.code).toBe(0);
+    expect(existsSync(join(root, '.code-lens', 'fragments.json'))).toBe(true);
+    expect(
+      JSON.parse(readFileSync(join(root, '.code-lens', 'config.json'), 'utf8')).indexing,
+    ).toEqual({
+      fragments: 'on',
+    });
+    // Proposing again would replace what every machine follows.
+    const again = await cli(root, 'fragments', 'propose', '--write');
+    expect(again.code).toBe(1);
+    expect(again.err).toContain('CLI_COMMAND_FAILED');
+    expect((await cli(root, 'fragments', 'propose', '--write', '--force')).code).toBe(0);
+
+    const built = await cli(root, 'index');
+    expect(built.code).toBe(0);
+    expect(existsSync(join(root, '.code-lens', 'shards', 'src.db'))).toBe(true);
+    const after = json(await cli(root, 'search', 'parse the configuration file', '--json'));
+    expect(after.items.map((r: { path: string }) => r.path)).toEqual(
+      before.items.map((r: { path: string }) => r.path),
+    );
+
+    const status = await cli(root, 'fragments', 'status');
+    expect(status.out).toContain('sharded by path-prior@1');
+    expect(status.out).toContain('every file is where the manifest says');
+    const statusJson = json(await cli(root, 'fragments', 'status', '--json'));
+    expect(statusJson.drift.shards.map((s: { id: string }) => s.id)).toEqual(['docs', 'src']);
+
+    // A committed change to the manifest is noticed, and acted on by the next index.
+    const path = join(root, '.code-lens', 'fragments.json');
+    const manifest = JSON.parse(readFileSync(path, 'utf8'));
+    manifest.overrides = { 'src/server.ts': 'docs' };
+    writeFileSync(path, JSON.stringify(manifest));
+    const drifted = await cli(root, 'fragments', 'status');
+    expect(drifted.out).toContain('misplaced: src/server.ts is in src, belongs in docs');
+    const settled = await cli(root, 'fragments', 'settle');
+    expect(settled.out).toContain('1 files');
+    await cli(root, 'index');
+    expect((await cli(root, 'fragments', 'status')).out).toContain(
+      'every file is where the manifest says',
+    );
+    const moved = json(await cli(root, 'query', '//function[@name="startServer"]', '--json'));
+    expect(moved.items.map((h: { path: string }) => h.path)).toEqual(['src/server.ts']);
+
+    const disabled = await cli(root, 'fragments', 'disable');
+    expect(disabled.code).toBe(0);
+    expect((await cli(root, 'fragments', 'status')).out).toContain('sharded indexing is off');
+    expect((await cli(root, 'fragments', 'frobnicate')).code).toBe(2);
+  });
+
+  test('turning it on with no manifest at hand is refused by the commands that need one; enable proposes from an index', async () => {
+    const root = makeProject();
+    mkdirSync(join(root, '.code-lens'), { recursive: true });
+    writeFileSync(join(root, '.code-lens', 'config.json'), '{"indexing":{"fragments":"on"}}');
+    const status = await cli(root, 'status');
+    expect(status.code).toBe(1);
+    expect(status.err).toContain('fragments enable');
+    // enable works from the state that stopped everything else: it looks at the index as it is.
+    await cli(root, 'index', '--json').then(() => undefined);
+    const enabled = await cli(root, 'fragments', 'enable');
+    expect(enabled.code).toBe(1);
+    expect(enabled.err).toContain('has no index yet');
+  });
+});
+
+describe('red-team rules a project brings', () => {
+  const widgetRule = {
+    id: 'config-talk',
+    category: 'injection',
+    severity: 'high',
+    description: 'Text about configuration.',
+    pattern: '\\bconfiguration\\b',
+    flags: 'i',
+    message: 'Mentions configuration.',
+    fixtures: { attack: ['load the Configuration file'], benign: ['load the settings file'] },
+  };
+  const policyPath = (root: string) => join(root, '.code-lens', 'redteam.json');
+  const writePolicy = (root: string, policy: unknown) => {
+    mkdirSync(join(root, '.code-lens'), { recursive: true });
+    writeFileSync(policyPath(root), JSON.stringify(policy));
+  };
+
+  test('a project with no file has the built-in rules; a file adds rules and changes what trust levels do', async () => {
+    const root = makeProject();
+    const plain = json(await cli(root, 'redteam', 'list', '--json'));
+    expect(plain.every((r: { source: string }) => r.source === 'built in')).toBe(true);
+    expect(plain.map((r: { id: string }) => r.id)).toContain('instruction-override');
+    expect((await cli(root, 'redteam', 'verify')).out).toContain('0 added by policy');
+    await cli(root, 'index');
+    expect((await cli(root, 'redteam', 'scan')).code).toBe(0);
+
+    writePolicy(root, {
+      rules: [widgetRule],
+      actions: {
+        'first-party': { 'config-talk': 'quarantine' },
+        'third-party': { 'config-talk': 'flag' },
+      },
+    });
+    const listed = json(await cli(root, 'redteam', 'list', '--json'));
+    const rule = listed.find((r: { id: string }) => r.id === 'config-talk');
+    expect(rule).toMatchObject({
+      severity: 'high',
+      actions: { 'first-party': 'quarantine', 'third-party': 'flag' },
+    });
+    expect(rule.source).toContain('redteam.json');
+    expect((await cli(root, 'redteam', 'verify')).out).toContain('1 added by policy');
+
+    // Without any change to code, the gate now refuses the cards that mention configuration.
+    const scan = await cli(root, 'redteam', 'scan');
+    expect(scan.code).toBe(1);
+    expect(scan.out).toContain('would quarantine src/config.ts (symbols): config-talk');
+    expect(scan.err).toContain('CLI_COMMAND_FAILED');
+    await cli(root, 'index', '--force');
+    const status = json(await cli(root, 'status', '--json'));
+    const symbols = status.channels.find((c: { name: string }) => c.name === 'symbols');
+    expect(symbols.quarantined).toBeGreaterThan(0);
+
+    // And turning a built-in rule off is the same kind of change.
+    writePolicy(root, { actions: { 'third-party': { 'mixed-script-words': 'off' } } });
+    const off = json(await cli(root, 'redteam', 'list', '--json')).find(
+      (r: { id: string }) => r.id === 'mixed-script-words',
+    );
+    expect(off.actions['third-party']).toBe('off');
+  });
+
+  test('a file that does not check out stops everything, naming the field or the fixture', async () => {
+    const root = makeProject();
+    const bad = async (policy: unknown) => {
+      writePolicy(root, policy);
+      return cli(root, 'redteam', 'verify');
+    };
+
+    const noFixtures = await bad({ rules: [{ ...widgetRule, fixtures: undefined }] });
+    expect(noFixtures.code).toBe(1);
+    expect(noFixtures.err).toContain('DENSE_DEFINITION_INVALID');
+    expect(noFixtures.err).toContain('rules[0].fixtures');
+
+    const missesAttack = await bad({
+      rules: [{ ...widgetRule, fixtures: { attack: ['nothing here'], benign: ['a gadget'] } }],
+    });
+    expect(missesAttack.err).toContain('DENSE_RULE_FIXTURE');
+    expect(missesAttack.err).toContain('attack fixture');
+
+    const clash = await bad({ rules: [{ ...widgetRule, id: 'instruction-override' }] });
+    expect(clash.err).toContain('already defined by the built-in rules');
+
+    const ghost = await bad({ actions: { untrusted: { 'no-such-rule': 'flag' } } });
+    expect(ghost.err).toContain('names no rule');
+
+    writeFileSync(policyPath(root), '{oops');
+    const notJson = await cli(root, 'status');
+    expect(notJson.code).toBe(1);
+    expect(notJson.err).toContain('RETRIEVER_CONFIG');
+    // Every command that opens the project is stopped, not only the red-team ones.
+    writePolicy(root, { rules: [{ ...widgetRule, pattern: '(' }] });
+    expect((await cli(root, 'index')).code).toBe(1);
+  });
+
+  test('rules learned elsewhere come from a module the file lists, and are checked the same way', async () => {
+    const root = makeProject();
+    writeFileSync(
+      join(root, 'learned.ts'),
+      `export default ({ root }: { root: string }) => ({
+  rules: [{
+    id: 'learned-widget', category: 'poisoning', severity: 'medium', pattern: 'gadget',
+    fixtures: { attack: ['a gadget'], benign: ['a widget'] },
+  }],
+  actions: { 'first-party': { 'learned-widget': 'flag' } },
+});
+`,
+    );
+    writePolicy(root, { sources: ['./learned.ts'] });
+    const listed = json(await cli(root, 'redteam', 'list', '--json'));
+    const learned = listed.find((r: { id: string }) => r.id === 'learned-widget');
+    expect(learned.source).toContain('learned.ts');
+    expect(learned.actions['first-party']).toBe('flag');
+
+    // A module is loaded once per process, so the broken one is another file.
+    writeFileSync(join(root, 'broken.ts'), 'export default { rules: [{ id: "x" }] };\n');
+    writePolicy(root, { sources: ['./broken.ts'] });
+    const invalid = await cli(root, 'redteam', 'verify');
+    expect(invalid.code).toBe(1);
+    expect(invalid.err).toContain('broken.ts');
+    expect(invalid.err).toContain('rules[0]');
+
+    writePolicy(root, { sources: ['./missing.ts'] });
+    expect((await cli(root, 'redteam', 'verify')).err).toContain('RETRIEVER_CHANNEL_MODULE');
+    writePolicy(root, { sources: 'nope' });
+    expect((await cli(root, 'redteam', 'verify')).err).toContain('sources');
+    expect((await cli(root, 'redteam', 'frobnicate')).code).toBe(2);
   });
 });
 
