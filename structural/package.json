@@ -1,0 +1,20 @@
+{
+  "name": "@sutras/code-lens-structural",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Structural retrieval: W-expression outlines, the WQL query language, structural hashing, clones and diff.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@sutras/code-lens-core": "workspace:*",
+    "@sutras/code-lens-syntax": "workspace:*"
+  },
+  "devDependencies": {
+    "tree-sitter-javascript": "^0.25.0",
+    "tree-sitter-python": "^0.25.0",
+    "tree-sitter-typescript": "^0.23.2"
+  },
+  "license": "MIT"
+}

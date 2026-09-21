@@ -1,0 +1,19 @@
+{
+  "name": "@sutras/code-lens-syntax",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Grammar resolution and parsing: path or extension in, tree-sitter tree out, offline once grammars are installed.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@sutras/code-lens-core": "workspace:*",
+    "web-tree-sitter": "^0.26.12"
+  },
+  "devDependencies": {
+    "tree-sitter-javascript": "^0.25.0",
+    "tree-sitter-typescript": "^0.23.2"
+  },
+  "license": "MIT"
+}

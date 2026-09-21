@@ -1,0 +1,9 @@
+// A catch block with no statements swallows the failure, even when it holds a comment.
+or {
+  `try { $body } catch ($param) { }`,
+  `try { $body } catch { }`,
+  `try { $body } catch ($param) { } finally { $cleanup }`,
+  `try { $body } catch { } finally { $cleanup }`
+} as $match where {
+  register_diagnostic(span=$match, message="Empty catch swallows the failure. Handle it, wrap it in a typed CodeLensError with context and rethrow, or return a typed result.", severity="error")
+}

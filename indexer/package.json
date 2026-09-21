@@ -1,0 +1,22 @@
+{
+  "name": "@sutras/code-lens-indexer",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Workspace indexing pipeline, extractors, graphs and store.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@sutras/code-lens-core": "workspace:*",
+    "@sutras/code-lens-syntax": "workspace:*",
+    "@sutras/code-lens-structural": "workspace:*",
+    "@sutras/code-lens-dense": "workspace:*"
+  },
+  "devDependencies": {
+    "tree-sitter-javascript": "^0.25.0",
+    "tree-sitter-python": "^0.25.0",
+    "tree-sitter-typescript": "^0.23.2"
+  },
+  "license": "MIT"
+}

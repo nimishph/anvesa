@@ -1,0 +1,11 @@
+{
+  "name": "@sutras/code-lens-tooling",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Enforcement for the engineering standards: Biome plugins and the tests that prove they fire.",
+  "dependencies": {
+    "@sutras/code-lens-core": "workspace:*"
+  },
+  "license": "MIT"
+}

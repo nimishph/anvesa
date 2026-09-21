@@ -1,0 +1,1 @@
+export function f(g: () => void) { try { g(); } catch { /* ignored */ } }

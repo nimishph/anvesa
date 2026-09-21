@@ -1,0 +1,24 @@
+{
+  "name": "@sutras/code-lens-retriever",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Dense plus structural retrieval: fusion, graph queries, explain, diagnose.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@sutras/code-lens-core": "workspace:*",
+    "@sutras/code-lens-syntax": "workspace:*",
+    "@sutras/code-lens-structural": "workspace:*",
+    "@sutras/code-lens-dense": "workspace:*",
+    "@sutras/code-lens-indexer": "workspace:*",
+    "@sutras/code-lens-embedder": "workspace:*"
+  },
+  "devDependencies": {
+    "tree-sitter-javascript": "^0.25.0",
+    "tree-sitter-python": "^0.25.0",
+    "tree-sitter-typescript": "^0.23.2"
+  },
+  "license": "MIT"
+}

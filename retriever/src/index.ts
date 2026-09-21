@@ -1,0 +1,16 @@
+export type { Embedder, InputFile, InputSource } from '@sutras/code-lens-dense';
+export { inputFile } from '@sutras/code-lens-dense';
+export type { IndexReport } from '@sutras/code-lens-indexer';
+export { npmPackageSource, SyntaxRuntime } from '@sutras/code-lens-syntax';
+export { type LoadedChannel, loadChannelModule } from './channel-module.ts';
+export * from './config.ts';
+export * from './errors.ts';
+export type { Contribution, Fused, Lane } from './fuse.ts';
+export { DEFAULT_RRF_K, fuse } from './fuse.ts';
+export * from './grammars.ts';
+export * from './insight.ts';
+export * from './models.ts';
+export { fenceUntrusted } from './render.ts';
+export * from './retriever.ts';
+export { type StructuralCoverage, StructuralLane } from './structural-lane.ts';
+export { workspaceSource } from './workspace-source.ts';

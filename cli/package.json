@@ -1,0 +1,59 @@
+{
+  "name": "@sutras/code-lens",
+  "version": "0.1.0",
+  "description": "Find code by meaning and by structure, from the command line or over MCP. Works offline.",
+  "keywords": [
+    "code-search",
+    "mcp",
+    "embeddings",
+    "semantic-search",
+    "tree-sitter",
+    "cli"
+  ],
+  "license": "MIT",
+  "author": {
+    "name": "nimishph",
+    "url": "https://github.com/nimishph"
+  },
+  "homepage": "https://github.com/nimishph/code-lens#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nimishph/code-lens.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nimishph/code-lens/issues"
+  },
+  "type": "module",
+  "bin": {
+    "code-lens": "bin/code-lens.cjs"
+  },
+  "files": [
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "optionalDependencies": {
+    "@sutras/code-lens-linux-x64": "0.1.0",
+    "@sutras/code-lens-linux-arm64": "0.1.0",
+    "@sutras/code-lens-darwin-arm64": "0.1.0",
+    "@sutras/code-lens-win32-x64": "0.1.0"
+  },
+  "devDependencies": {
+    "@sutras/code-lens-core": "workspace:*",
+    "@sutras/code-lens-retriever": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^4.0.0",
+    "tree-sitter-javascript": "^0.25.0",
+    "tree-sitter-typescript": "^0.23.2",
+    "web-tree-sitter": "^0.26.12"
+  },
+  "scripts": {
+    "build": "bun run ../tooling/package-release.ts"
+  }
+}

@@ -1,0 +1,1 @@
+export function f(): never { throw new Error('boom'); }

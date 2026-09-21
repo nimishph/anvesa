@@ -1,0 +1,662 @@
+{
+  "uncased": [
+    {
+      "text": "",
+      "ids": [2, 3]
+    },
+    {
+      "text": " ",
+      "ids": [2, 3]
+    },
+    {
+      "text": "hello world",
+      "ids": [2, 46, 378, 95, 82, 418, 95, 89, 3]
+    },
+    {
+      "text": "Hello, World!",
+      "ids": [2, 46, 378, 95, 82, 14, 418, 95, 89, 5, 3]
+    },
+    {
+      "text": "function parseConfig(opts: Options): Result {",
+      "ids": [2, 346, 597, 297, 85, 164, 10, 172, 92, 91, 28, 172, 625, 11, 28, 494, 65, 3]
+    },
+    {
+      "text": "const x = a.b.c(d[0], {e: 1});",
+      "ids": [
+        2, 151, 62, 31, 39, 16, 40, 16, 41, 10, 42, 34, 18, 35, 14, 65, 43, 28, 19, 67, 11, 29, 3
+      ]
+    },
+    {
+      "text": "snake_case_name and camelCaseName",
+      "ids": [2, 57, 96, 483, 86, 37, 384, 37, 296, 269, 148, 93, 378, 90, 563, 96, 228, 86, 3]
+    },
+    {
+      "text": "HTTPServer parseURL",
+      "ids": [2, 46, 92, 92, 88, 516, 243, 597, 125, 95, 3]
+    },
+    {
+      "text": "Résumé naïve café",
+      "ids": [2, 327, 173, 86, 52, 97, 355, 148, 85, 86, 3]
+    },
+    {
+      "text": "ÀÉÎÕÜ àéîõü",
+      "ids": [2, 39, 86, 84, 82, 94, 39, 86, 84, 82, 94, 3]
+    },
+    {
+      "text": "日本語のテキスト",
+      "ids": [2, 76, 77, 79, 68, 108, 109, 110, 111, 3]
+    },
+    {
+      "text": "hello 你好 world",
+      "ids": [2, 46, 378, 95, 82, 74, 75, 418, 95, 89, 3]
+    },
+    {
+      "text": "tab\tseparated\nlines\r\nand nbsp",
+      "ids": [2, 58, 400, 233, 88, 153, 306, 89, 50, 162, 91, 269, 52, 103, 91, 88, 3]
+    },
+    {
+      "text": "control\u0000char\u0007bell",
+      "ids": [2, 186, 142, 95, 226, 153, 202, 217, 3]
+    },
+    {
+      "text": "emoji 🎉 and 😀 mixed",
+      "ids": [2, 682, 82, 102, 84, 1, 269, 1, 51, 84, 87, 120, 3]
+    },
+    {
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ids": [2, 1, 3]
+    },
+    {
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+      "ids": [
+        2, 62, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87,
+        87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87,
+        87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87,
+        87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87,
+        87, 87, 87, 87, 87, 87, 87, 87, 1, 3
+      ]
+    },
+    {
+      "text": "https://example.com/path?q=1&r=2#frag",
+      "ids": [
+        2, 46, 92, 92, 88, 91, 28, 17, 17, 359, 228, 560, 86, 16, 681, 17, 614, 33, 55, 31, 19, 8,
+        56, 31, 20, 1, 44, 294, 100, 3
+      ]
+    },
+    {
+      "text": "1234567890 3.14159 0xDEADBEEF",
+      "ids": [2, 1, 21, 16, 1, 18, 87, 89, 86, 131, 202, 225, 3]
+    },
+    {
+      "text": "!@#$%^&*()_+-=[]{}|;':\",./<>?",
+      "ids": [
+        2, 5, 1, 1, 7, 1, 36, 8, 12, 10, 11, 37, 13, 15, 31, 34, 35, 65, 67, 66, 29, 9, 28, 6, 14,
+        16, 17, 30, 32, 33, 3
+      ]
+    },
+    {
+      "text": "  leading and trailing  ",
+      "ids": [2, 50, 86, 131, 146, 269, 417, 161, 146, 3]
+    },
+    {
+      "text": "İstanbul ǅ ß ﬁ",
+      "ids": [2, 230, 92, 174, 103, 281, 1, 1, 1, 3]
+    },
+    {
+      "text": "Ｆｕｌｌｗｉｄｔｈ ｔｅｘｔ",
+      "ids": [2, 1, 1, 3]
+    },
+    {
+      "text": "mañana ÑANDÚ",
+      "ids": [2, 509, 96, 174, 97, 609, 89, 94, 3]
+    },
+    {
+      "text": "// TODO: fix this\nreturn null;",
+      "ids": [2, 17, 17, 140, 89, 82, 28, 44, 84, 87, 234, 200, 476, 29, 3]
+    },
+    {
+      "text": "if (a && b || !c) { throw new Error(`bad ${x}`); }",
+      "ids": [
+        2, 291, 10, 39, 8, 8, 40, 66, 66, 5, 41, 11, 65, 213, 211, 157, 10, 38, 545, 7, 65, 62, 67,
+        38, 11, 29, 67, 3
+      ]
+    },
+    {
+      "text": "SELECT * FROM users WHERE id = 1;",
+      "ids": [2, 233, 315, 128, 12, 322, 59, 516, 91, 241, 564, 47, 89, 31, 19, 29, 3]
+    },
+    {
+      "text": "def __init__(self, *args, **kwargs):",
+      "ids": [
+        2, 138, 85, 37, 37, 268, 37, 37, 10, 233, 95, 85, 14, 12, 442, 100, 91, 14, 12, 12, 49, 83,
+        153, 100, 91, 11, 28, 3
+      ]
+    },
+    {
+      "text": "<div class=\"a\">text</div>",
+      "ids": [2, 30, 42, 252, 387, 31, 6, 39, 6, 32, 512, 30, 17, 42, 252, 32, 3]
+    },
+    {
+      "text": "​zero​width",
+      "ids": [2, 64, 118, 242, 557, 215, 3]
+    },
+    {
+      "text": "é combining",
+      "ids": [2, 43, 681, 103, 119, 146, 3]
+    },
+    {
+      "text": "ｱｲｳ",
+      "ids": [2, 1, 3]
+    },
+    {
+      "text": "한국어 텍스트",
+      "ids": [2, 1, 1, 3]
+    },
+    {
+      "text": "Привет мир",
+      "ids": [2, 1, 1, 3]
+    },
+    {
+      "text": "مرحبا بالعالم",
+      "ids": [2, 1, 1, 3]
+    },
+    {
+      "text": "option id THE of parse run config name build of get",
+      "ids": [
+        2, 172, 92, 141, 47, 89, 177, 240, 597, 338, 129, 85, 164, 296, 298, 147, 89, 240, 45, 280,
+        3
+      ]
+    },
+    {
+      "text": "of parse list list parse node parse",
+      "ids": [2, 240, 597, 50, 206, 92, 50, 206, 92, 597, 279, 89, 86, 597, 3]
+    },
+    {
+      "text": "list of build config node THE THE build of build build id of node of run option file",
+      "ids": [
+        2, 50, 206, 92, 240, 298, 147, 89, 129, 85, 164, 279, 89, 86, 177, 177, 298, 147, 89, 240,
+        298, 147, 89, 298, 147, 89, 47, 89, 240, 279, 89, 86, 240, 338, 172, 92, 141, 685, 3
+      ]
+    },
+    {
+      "text": "option run config build file run OF result config build build THE value name",
+      "ids": [
+        2, 172, 92, 141, 338, 129, 85, 164, 298, 147, 89, 685, 338, 240, 494, 129, 85, 164, 298,
+        147, 89, 298, 147, 89, 177, 214, 296, 3
+      ]
+    },
+    {
+      "text": "run PARSE parse build",
+      "ids": [2, 338, 597, 597, 298, 147, 89, 3]
+    },
+    {
+      "text": "index value",
+      "ids": [2, 638, 214, 3]
+    },
+    {
+      "text": "OF run list OPTION path map build map name file node result PARSE OPTION node parse",
+      "ids": [
+        2, 240, 338, 50, 206, 92, 172, 92, 141, 614, 590, 298, 147, 89, 590, 296, 685, 279, 89, 86,
+        494, 597, 172, 92, 141, 279, 89, 86, 597, 3
+      ]
+    },
+    {
+      "text": "file get set path CONFIG map file index parse config get list result OPTION path option set list of",
+      "ids": [
+        2, 685, 45, 280, 648, 614, 129, 85, 164, 590, 685, 638, 597, 129, 85, 164, 45, 280, 50, 206,
+        92, 494, 172, 92, 141, 614, 172, 92, 141, 648, 50, 206, 92, 240, 3
+      ]
+    },
+    {
+      "text": "parse OPTION run build path path PARSE name index set build map parse parse tree set PARSE OF parse of CONFIG PARSE",
+      "ids": [
+        2, 597, 172, 92, 141, 338, 298, 147, 89, 614, 614, 597, 296, 638, 648, 298, 147, 89, 590,
+        597, 597, 417, 86, 86, 648, 597, 240, 597, 240, 129, 85, 164, 597, 3
+      ]
+    },
+    {
+      "text": "THE build OF map file PARSE id OF name the",
+      "ids": [2, 177, 298, 147, 89, 240, 590, 685, 597, 47, 89, 240, 296, 177, 3]
+    },
+    {
+      "text": "name result index config set of value OPTION file option CONFIG node id id set",
+      "ids": [
+        2, 296, 494, 638, 129, 85, 164, 648, 240, 214, 172, 92, 141, 685, 172, 92, 141, 129, 85,
+        164, 279, 89, 86, 47, 89, 47, 89, 648, 3
+      ]
+    },
+    {
+      "text": "result map id",
+      "ids": [2, 494, 590, 47, 89, 3]
+    },
+    {
+      "text": "tree option list run tree PARSE list name OF id node option parse result option node OF node",
+      "ids": [
+        2, 417, 86, 86, 172, 92, 141, 50, 206, 92, 338, 417, 86, 86, 597, 50, 206, 92, 296, 240, 47,
+        89, 279, 89, 86, 172, 92, 141, 597, 494, 172, 92, 141, 279, 89, 86, 240, 279, 89, 86, 3
+      ]
+    },
+    {
+      "text": "set",
+      "ids": [2, 648, 3]
+    },
+    {
+      "text": "build result tree file the option list run name index build path option PARSE get index THE OF CONFIG of map OPTION OF run id id id",
+      "ids": [
+        2, 298, 147, 89, 494, 417, 86, 86, 685, 177, 172, 92, 141, 50, 206, 92, 338, 296, 638, 298,
+        147, 89, 614, 172, 92, 141, 597, 45, 280, 638, 177, 240, 129, 85, 164, 240, 590, 172, 92,
+        141, 240, 338, 47, 89, 47, 89, 47, 89, 3
+      ]
+    },
+    {
+      "text": "config set THE id of value parse value map result config path index",
+      "ids": [
+        2, 129, 85, 164, 648, 177, 47, 89, 240, 214, 597, 214, 590, 494, 129, 85, 164, 614, 638, 3
+      ]
+    },
+    {
+      "text": "config the",
+      "ids": [2, 129, 85, 164, 177, 3]
+    },
+    {
+      "text": "option run config name index the parse value index id option THE tree name index name set config config",
+      "ids": [
+        2, 172, 92, 141, 338, 129, 85, 164, 296, 638, 177, 597, 214, 638, 47, 89, 172, 92, 141, 177,
+        417, 86, 86, 296, 638, 296, 648, 129, 85, 164, 129, 85, 164, 3
+      ]
+    },
+    {
+      "text": "set map set set file parse option config CONFIG path CONFIG tree set PARSE result get the value get name option PARSE run the OPTION get file THE",
+      "ids": [
+        2, 648, 590, 648, 648, 685, 597, 172, 92, 141, 129, 85, 164, 129, 85, 164, 614, 129, 85,
+        164, 417, 86, 86, 648, 597, 494, 45, 280, 177, 214, 45, 280, 296, 172, 92, 141, 597, 338,
+        177, 172, 92, 141, 45, 280, 685, 177, 3
+      ]
+    },
+    {
+      "text": "parse PARSE tree get name result name OPTION node run run OPTION get path THE node index OPTION value node id CONFIG node value get set name CONFIG",
+      "ids": [
+        2, 597, 597, 417, 86, 86, 45, 280, 296, 494, 296, 172, 92, 141, 279, 89, 86, 338, 338, 172,
+        92, 141, 45, 280, 614, 177, 279, 89, 86, 638, 172, 92, 141, 214, 279, 89, 86, 47, 89, 129,
+        85, 164, 279, 89, 86, 214, 45, 280, 648, 296, 129, 85, 164, 3
+      ]
+    },
+    {
+      "text": "the",
+      "ids": [2, 177, 3]
+    },
+    {
+      "text": "tree set tree value PARSE index name map CONFIG name name parse node config node set value path value set index index the set THE name",
+      "ids": [
+        2, 417, 86, 86, 648, 417, 86, 86, 214, 597, 638, 296, 590, 129, 85, 164, 296, 296, 597, 279,
+        89, 86, 129, 85, 164, 279, 89, 86, 648, 214, 614, 214, 648, 638, 638, 177, 648, 177, 296, 3
+      ]
+    },
+    {
+      "text": "THE parse OF config id PARSE OPTION value set result list THE path parse CONFIG id map id CONFIG parse CONFIG result result option the option",
+      "ids": [
+        2, 177, 597, 240, 129, 85, 164, 47, 89, 597, 172, 92, 141, 214, 648, 494, 50, 206, 92, 177,
+        614, 597, 129, 85, 164, 47, 89, 590, 47, 89, 129, 85, 164, 597, 129, 85, 164, 494, 494, 172,
+        92, 141, 177, 172, 92, 141, 3
+      ]
+    },
+    {
+      "text": "map THE option index index set OF name option run run option the the CONFIG THE config get CONFIG",
+      "ids": [
+        2, 590, 177, 172, 92, 141, 638, 638, 648, 240, 296, 172, 92, 141, 338, 338, 172, 92, 141,
+        177, 177, 129, 85, 164, 177, 129, 85, 164, 45, 280, 129, 85, 164, 3
+      ]
+    },
+    {
+      "text": "option list value value the tree value file get node OPTION build path tree run list option of CONFIG name map OF build get list get option run option get",
+      "ids": [
+        2, 172, 92, 141, 50, 206, 92, 214, 214, 177, 417, 86, 86, 214, 685, 45, 280, 279, 89, 86,
+        172, 92, 141, 298, 147, 89, 614, 417, 86, 86, 338, 50, 206, 92, 172, 92, 141, 240, 129, 85,
+        164, 296, 590, 240, 298, 147, 89, 45, 280, 50, 206, 92, 45, 280, 172, 92, 141, 338, 172, 92,
+        141, 45, 280, 3
+      ]
+    }
+  ],
+  "cased": [
+    {
+      "text": "",
+      "ids": [2, 3]
+    },
+    {
+      "text": " ",
+      "ids": [2, 3]
+    },
+    {
+      "text": "hello world",
+      "ids": [2, 70, 110, 254, 127, 475, 113, 130, 3]
+    },
+    {
+      "text": "Hello, World!",
+      "ids": [2, 41, 110, 254, 127, 14, 54, 168, 113, 130, 5, 3]
+    },
+    {
+      "text": "function parseConfig(opts: Options): Result {",
+      "ids": [
+        2, 397, 675, 360, 133, 210, 10, 536, 115, 112, 28, 47, 429, 554, 11, 28, 49, 195, 489, 89, 3
+      ]
+    },
+    {
+      "text": "const x = a.b.c(d[0], {e: 1});",
+      "ids": [
+        2, 202, 86, 31, 63, 16, 64, 16, 65, 10, 66, 58, 18, 59, 14, 89, 67, 28, 19, 91, 11, 29, 3
+      ]
+    },
+    {
+      "text": "snake_case_name and camelCaseName",
+      "ids": [
+        2, 81, 126, 538, 110, 61, 433, 61, 341, 316, 199, 190, 113, 136, 628, 119, 114, 190, 3
+      ]
+    },
+    {
+      "text": "HTTPServer parseURL",
+      "ids": [2, 41, 122, 122, 148, 153, 172, 308, 675, 151, 138, 150, 3]
+    },
+    {
+      "text": "Résumé naïve café",
+      "ids": [2, 49, 155, 112, 107, 108, 155, 291, 165, 455, 199, 133, 155, 3]
+    },
+    {
+      "text": "ÀÉÎÕÜ àéîõü",
+      "ids": [2, 1, 1, 3]
+    },
+    {
+      "text": "日本語のテキスト",
+      "ids": [2, 103, 104, 106, 95, 159, 160, 161, 162, 3]
+    },
+    {
+      "text": "hello 你好 world",
+      "ids": [2, 70, 110, 254, 127, 101, 102, 475, 113, 130, 3]
+    },
+    {
+      "text": "tab\tseparated\nlines\r\nand nbsp",
+      "ids": [2, 82, 450, 303, 129, 233, 330, 130, 74, 211, 112, 316, 76, 109, 112, 129, 3]
+    },
+    {
+      "text": "control\u0000char\u0007bell",
+      "ids": [2, 182, 219, 265, 281, 233, 109, 110, 254, 3]
+    },
+    {
+      "text": "emoji 🎉 and 😀 mixed",
+      "ids": [2, 67, 108, 127, 143, 116, 1, 316, 1, 75, 116, 128, 173, 3]
+    },
+    {
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "ids": [2, 1, 3]
+    },
+    {
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+      "ids": [
+        2, 86, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
+        128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
+        128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
+        128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
+        128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128,
+        128, 128, 128, 128, 128, 128, 128, 128, 128, 1, 3
+      ]
+    },
+    {
+      "text": "https://example.com/path?q=1&r=2#frag",
+      "ids": [
+        2, 70, 115, 115, 129, 112, 28, 17, 17, 67, 128, 114, 108, 632, 110, 16, 65, 127, 108, 17,
+        698, 33, 79, 31, 19, 8, 80, 31, 20, 1, 68, 111, 196, 3
+      ]
+    },
+    {
+      "text": "1234567890 3.14159 0xDEADBEEF",
+      "ids": [2, 1, 21, 16, 1, 18, 128, 149, 141, 139, 149, 152, 141, 141, 120, 3]
+    },
+    {
+      "text": "!@#$%^&*()_+-=[]{}|;':\",./<>?",
+      "ids": [
+        2, 5, 1, 1, 7, 1, 60, 8, 12, 10, 11, 61, 13, 15, 31, 58, 59, 89, 91, 90, 29, 9, 28, 6, 14,
+        16, 17, 30, 32, 33, 3
+      ]
+    },
+    {
+      "text": "  leading and trailing  ",
+      "ids": [2, 74, 206, 197, 316, 474, 215, 197, 3]
+    },
+    {
+      "text": "İstanbul ǅ ß ﬁ",
+      "ids": [2, 1, 1, 1, 1, 3]
+    },
+    {
+      "text": "Ｆｕｌｌｗｉｄｔｈ ｔｅｘｔ",
+      "ids": [2, 1, 1, 3]
+    },
+    {
+      "text": "mañana ÑANDÚ",
+      "ids": [2, 1, 1, 3]
+    },
+    {
+      "text": "// TODO: fix this\nreturn null;",
+      "ids": [2, 17, 17, 51, 132, 149, 132, 28, 68, 116, 128, 293, 245, 558, 29, 3]
+    },
+    {
+      "text": "if (a && b || !c) { throw new Error(`bad ${x}`); }",
+      "ids": [
+        2, 336, 10, 63, 8, 8, 64, 90, 90, 5, 65, 11, 89, 258, 256, 295, 10, 62, 618, 7, 89, 86, 91,
+        62, 11, 29, 91, 3
+      ]
+    },
+    {
+      "text": "SELECT * FROM users WHERE id = 1;",
+      "ids": [
+        2, 50, 141, 150, 141, 136, 122, 12, 39, 138, 132, 140, 83, 625, 112, 54, 157, 141, 138, 141,
+        71, 130, 31, 19, 29, 3
+      ]
+    },
+    {
+      "text": "def __init__(self, *args, **kwargs):",
+      "ids": [
+        2, 506, 61, 61, 315, 61, 61, 10, 303, 113, 133, 14, 12, 63, 298, 112, 14, 12, 12, 73, 142,
+        233, 117, 112, 11, 28, 3
+      ]
+    },
+    {
+      "text": "<div class=\"a\">text</div>",
+      "ids": [2, 30, 66, 306, 435, 31, 6, 63, 6, 32, 580, 30, 17, 66, 306, 32, 3]
+    },
+    {
+      "text": "​zero​width",
+      "ids": [2, 88, 172, 285, 630, 402, 3]
+    },
+    {
+      "text": "é combining",
+      "ids": [2, 1, 65, 127, 278, 170, 197, 3]
+    },
+    {
+      "text": "ｱｲｳ",
+      "ids": [2, 1, 3]
+    },
+    {
+      "text": "한국어 텍스트",
+      "ids": [2, 1, 1, 3]
+    },
+    {
+      "text": "Привет мир",
+      "ids": [2, 1, 1, 3]
+    },
+    {
+      "text": "مرحبا بالعالم",
+      "ids": [2, 1, 1, 3]
+    },
+    {
+      "text": "option id THE of parse run config name build of get",
+      "ids": [
+        2, 536, 115, 193, 71, 130, 51, 157, 141, 292, 675, 401, 182, 133, 210, 341, 380, 200, 130,
+        292, 69, 264, 3
+      ]
+    },
+    {
+      "text": "of parse list list parse node parse",
+      "ids": [2, 292, 675, 74, 255, 115, 74, 255, 115, 675, 690, 189, 675, 3]
+    },
+    {
+      "text": "list of build config node THE THE build of build build id of node of run option file",
+      "ids": [
+        2, 74, 255, 115, 292, 380, 200, 130, 182, 133, 210, 690, 189, 51, 157, 141, 51, 157, 141,
+        380, 200, 130, 292, 380, 200, 130, 380, 200, 130, 71, 130, 292, 690, 189, 292, 401, 536,
+        115, 193, 68, 517, 3
+      ]
+    },
+    {
+      "text": "option run config build file run OF result config build build THE value name",
+      "ids": [
+        2, 536, 115, 193, 401, 182, 133, 210, 380, 200, 130, 68, 517, 401, 47, 120, 432, 489, 182,
+        133, 210, 380, 200, 130, 380, 200, 130, 51, 157, 141, 259, 341, 3
+      ]
+    },
+    {
+      "text": "run PARSE parse build",
+      "ids": [2, 401, 48, 139, 138, 153, 141, 675, 380, 200, 130, 3]
+    },
+    {
+      "text": "index value",
+      "ids": [2, 214, 189, 128, 259, 3]
+    },
+    {
+      "text": "OF run list OPTION path map build map name file node result PARSE OPTION node parse",
+      "ids": [
+        2, 47, 120, 401, 74, 255, 115, 47, 148, 122, 121, 359, 698, 689, 380, 200, 130, 689, 341,
+        68, 517, 690, 189, 432, 489, 48, 139, 138, 153, 141, 47, 148, 122, 121, 359, 690, 189, 675,
+        3
+      ]
+    },
+    {
+      "text": "file get set path CONFIG map file index parse config get list result OPTION path option set list of",
+      "ids": [
+        2, 68, 517, 69, 264, 303, 115, 698, 36, 359, 120, 121, 154, 689, 68, 517, 214, 189, 128,
+        675, 182, 133, 210, 69, 264, 74, 255, 115, 432, 489, 47, 148, 122, 121, 359, 698, 536, 115,
+        193, 303, 115, 74, 255, 115, 292, 3
+      ]
+    },
+    {
+      "text": "parse OPTION run build path path PARSE name index set build map parse parse tree set PARSE OF parse of CONFIG PARSE",
+      "ids": [
+        2, 675, 47, 148, 122, 121, 359, 401, 380, 200, 130, 698, 698, 48, 139, 138, 153, 141, 341,
+        214, 189, 128, 303, 115, 380, 200, 130, 689, 675, 675, 474, 110, 110, 303, 115, 48, 139,
+        138, 153, 141, 47, 120, 675, 292, 36, 359, 120, 121, 154, 48, 139, 138, 153, 141, 3
+      ]
+    },
+    {
+      "text": "THE build OF map file PARSE id OF name the",
+      "ids": [
+        2, 51, 157, 141, 380, 200, 130, 47, 120, 689, 68, 517, 48, 139, 138, 153, 141, 71, 130, 47,
+        120, 341, 229, 3
+      ]
+    },
+    {
+      "text": "name result index config set of value OPTION file option CONFIG node id id set",
+      "ids": [
+        2, 341, 432, 489, 214, 189, 128, 182, 133, 210, 303, 115, 292, 259, 47, 148, 122, 121, 359,
+        68, 517, 536, 115, 193, 36, 359, 120, 121, 154, 690, 189, 71, 130, 71, 130, 303, 115, 3
+      ]
+    },
+    {
+      "text": "result map id",
+      "ids": [2, 432, 489, 689, 71, 130, 3]
+    },
+    {
+      "text": "tree option list run tree PARSE list name OF id node option parse result option node OF node",
+      "ids": [
+        2, 474, 110, 110, 536, 115, 193, 74, 255, 115, 401, 474, 110, 110, 48, 139, 138, 153, 141,
+        74, 255, 115, 341, 47, 120, 71, 130, 690, 189, 536, 115, 193, 675, 432, 489, 536, 115, 193,
+        690, 189, 47, 120, 690, 189, 3
+      ]
+    },
+    {
+      "text": "set",
+      "ids": [2, 303, 115, 3]
+    },
+    {
+      "text": "build result tree file the option list run name index build path option PARSE get index THE OF CONFIG of map OPTION OF run id id id",
+      "ids": [
+        2, 380, 200, 130, 432, 489, 474, 110, 110, 68, 517, 229, 536, 115, 193, 74, 255, 115, 401,
+        341, 214, 189, 128, 380, 200, 130, 698, 536, 115, 193, 48, 139, 138, 153, 141, 69, 264, 214,
+        189, 128, 51, 157, 141, 47, 120, 36, 359, 120, 121, 154, 292, 689, 47, 148, 122, 121, 359,
+        47, 120, 401, 71, 130, 71, 130, 71, 130, 3
+      ]
+    },
+    {
+      "text": "config set THE id of value parse value map result config path index",
+      "ids": [
+        2, 182, 133, 210, 303, 115, 51, 157, 141, 71, 130, 292, 259, 675, 259, 689, 432, 489, 182,
+        133, 210, 698, 214, 189, 128, 3
+      ]
+    },
+    {
+      "text": "config the",
+      "ids": [2, 182, 133, 210, 229, 3]
+    },
+    {
+      "text": "option run config name index the parse value index id option THE tree name index name set config config",
+      "ids": [
+        2, 536, 115, 193, 401, 182, 133, 210, 341, 214, 189, 128, 229, 675, 259, 214, 189, 128, 71,
+        130, 536, 115, 193, 51, 157, 141, 474, 110, 110, 341, 214, 189, 128, 341, 303, 115, 182,
+        133, 210, 182, 133, 210, 3
+      ]
+    },
+    {
+      "text": "set map set set file parse option config CONFIG path CONFIG tree set PARSE result get the value get name option PARSE run the OPTION get file THE",
+      "ids": [
+        2, 303, 115, 689, 303, 115, 303, 115, 68, 517, 675, 536, 115, 193, 182, 133, 210, 36, 359,
+        120, 121, 154, 698, 36, 359, 120, 121, 154, 474, 110, 110, 303, 115, 48, 139, 138, 153, 141,
+        432, 489, 69, 264, 229, 259, 69, 264, 341, 536, 115, 193, 48, 139, 138, 153, 141, 401, 229,
+        47, 148, 122, 121, 359, 69, 264, 68, 517, 51, 157, 141, 3
+      ]
+    },
+    {
+      "text": "parse PARSE tree get name result name OPTION node run run OPTION get path THE node index OPTION value node id CONFIG node value get set name CONFIG",
+      "ids": [
+        2, 675, 48, 139, 138, 153, 141, 474, 110, 110, 69, 264, 341, 432, 489, 341, 47, 148, 122,
+        121, 359, 690, 189, 401, 401, 47, 148, 122, 121, 359, 69, 264, 698, 51, 157, 141, 690, 189,
+        214, 189, 128, 47, 148, 122, 121, 359, 259, 690, 189, 71, 130, 36, 359, 120, 121, 154, 690,
+        189, 259, 69, 264, 303, 115, 341, 36, 359, 120, 121, 154, 3
+      ]
+    },
+    {
+      "text": "the",
+      "ids": [2, 229, 3]
+    },
+    {
+      "text": "tree set tree value PARSE index name map CONFIG name name parse node config node set value path value set index index the set THE name",
+      "ids": [
+        2, 474, 110, 110, 303, 115, 474, 110, 110, 259, 48, 139, 138, 153, 141, 214, 189, 128, 341,
+        689, 36, 359, 120, 121, 154, 341, 341, 675, 690, 189, 182, 133, 210, 690, 189, 303, 115,
+        259, 698, 259, 303, 115, 214, 189, 128, 214, 189, 128, 229, 303, 115, 51, 157, 141, 341, 3
+      ]
+    },
+    {
+      "text": "THE parse OF config id PARSE OPTION value set result list THE path parse CONFIG id map id CONFIG parse CONFIG result result option the option",
+      "ids": [
+        2, 51, 157, 141, 675, 47, 120, 182, 133, 210, 71, 130, 48, 139, 138, 153, 141, 47, 148, 122,
+        121, 359, 259, 303, 115, 432, 489, 74, 255, 115, 51, 157, 141, 698, 675, 36, 359, 120, 121,
+        154, 71, 130, 689, 71, 130, 36, 359, 120, 121, 154, 675, 36, 359, 120, 121, 154, 432, 489,
+        432, 489, 536, 115, 193, 229, 536, 115, 193, 3
+      ]
+    },
+    {
+      "text": "map THE option index index set OF name option run run option the the CONFIG THE config get CONFIG",
+      "ids": [
+        2, 689, 51, 157, 141, 536, 115, 193, 214, 189, 128, 214, 189, 128, 303, 115, 47, 120, 341,
+        536, 115, 193, 401, 401, 536, 115, 193, 229, 229, 36, 359, 120, 121, 154, 51, 157, 141, 182,
+        133, 210, 69, 264, 36, 359, 120, 121, 154, 3
+      ]
+    },
+    {
+      "text": "option list value value the tree value file get node OPTION build path tree run list option of CONFIG name map OF build get list get option run option get",
+      "ids": [
+        2, 536, 115, 193, 74, 255, 115, 259, 259, 229, 474, 110, 110, 259, 68, 517, 69, 264, 690,
+        189, 47, 148, 122, 121, 359, 380, 200, 130, 698, 474, 110, 110, 401, 74, 255, 115, 536, 115,
+        193, 292, 36, 359, 120, 121, 154, 341, 689, 47, 120, 380, 200, 130, 69, 264, 74, 255, 115,
+        69, 264, 536, 115, 193, 401, 536, 115, 193, 69, 264, 3
+      ]
+    }
+  ]
+}

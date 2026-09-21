@@ -1,0 +1,1 @@
+export const f = (p: Promise<void>) => p.catch(() => undefined);

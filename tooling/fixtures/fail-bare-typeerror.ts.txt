@@ -1,0 +1,1 @@
+export function f(x: unknown): never { throw new TypeError(String(x)); }

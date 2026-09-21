@@ -1,0 +1,275 @@
+import { CodeLensError, type Page } from '@sutras/code-lens-core';
+import {
+  type ChannelInfo,
+  type Diagnosis,
+  type Explanation,
+  fenceUntrusted,
+  type GrammarRow,
+  type IndexReport,
+  type ModelDoctor,
+  type ModelRow,
+  type SearchPage,
+  type SearchResult,
+  type Status,
+} from '@sutras/code-lens-retriever';
+
+/** JSON for machines: maps become objects, errors keep their code and context, trees are left out. */
+export function toJson(value: unknown): string {
+  return `${JSON.stringify(
+    value,
+    (key, item: unknown) => {
+      if (key === 'node') return undefined;
+      if (item instanceof Map) return Object.fromEntries(item);
+      if (item instanceof Set) return [...item];
+      if (item instanceof CodeLensError) return item.toJSON();
+      if (item instanceof Float32Array) return undefined;
+      if (item === Number.POSITIVE_INFINITY) return 'Infinity';
+      return item;
+    },
+    2,
+  )}\n`;
+}
+
+const lines = (...parts: (string | undefined)[]): string =>
+  `${parts.filter((part): part is string => part !== undefined).join('\n')}\n`;
+
+function pageFooter(page: Page<unknown>, label = 'results'): string {
+  const shown = page.items.length;
+  const of = page.total === null ? '' : ` of ${page.total}`;
+  const limit = `limit ${page.limit.applied} (${page.limit.source})`;
+  const next = page.nextCursor === null ? '' : `\nmore: --cursor ${page.nextCursor}`;
+  return `${shown}${of} ${label}, ${limit}${next}`;
+}
+
+function place(result: {
+  path: string;
+  line?: number | undefined;
+  endLine?: number | undefined;
+}): string {
+  if (result.line === undefined) return result.path;
+  return result.endLine !== undefined && result.endLine !== result.line
+    ? `${result.path}:${result.line}-${result.endLine}`
+    : `${result.path}:${result.line}`;
+}
+
+function renderResult(result: SearchResult, index: number): string {
+  const found = result.foundBy.map((c) => `${c.lane}#${c.rank}`).join(' ');
+  const head = `${String(index + 1).padStart(2)}. ${result.title}${result.kind ? ` (${result.kind})` : ''}  ${place(result)}  [${found}]`;
+  if (!result.card) return head;
+  const fenced = fenceUntrusted(result.card.text, {
+    source: result.card.source.path,
+    channel: result.card.channel,
+    trust: result.card.provenance.trust,
+  });
+  return `${head}\n${fenced.replace(/^/gm, '      ')}`;
+}
+
+export function renderSearch(page: SearchPage): string {
+  return lines(
+    ...page.items.map(renderResult),
+    pageFooter(page),
+    `lanes: ${page.lanes.map((l) => `${l.name} ${l.hits}`).join(', ')}`,
+    ...page.degraded.map((d) => `degraded: ${d.lane} — ${d.error.message}`),
+  );
+}
+
+export function renderRetrieved(
+  page: Page<{ card: SearchResult['card'] & object; score: number }>,
+): string {
+  const rows = page.items.map((hit, index) => {
+    const { card } = hit;
+    const at = card.source.span
+      ? `${card.source.path}:${card.source.span.startLine}`
+      : card.source.path;
+    const fenced = fenceUntrusted(card.text, {
+      source: card.source.path,
+      channel: card.channel,
+      trust: card.provenance.trust,
+    });
+    return `${String(index + 1).padStart(2)}. ${card.attrs.symbol ?? card.attrs.section ?? card.id}  ${at}  score ${hit.score.toFixed(3)}\n${fenced.replace(/^/gm, '      ')}`;
+  });
+  return lines(...rows, pageFooter(page, 'cards'));
+}
+
+export function renderStructural(
+  page: Page<{
+    path: string | undefined;
+    tag: string;
+    name: string | undefined;
+    startLine: number | undefined;
+    endLine: number | undefined;
+    signature: string | undefined;
+  }> & {
+    coverage: { files: number; missing: readonly string[] };
+  },
+): string {
+  const rows = page.items.map((hit) => {
+    const at = place({ path: hit.path ?? '', line: hit.startLine, endLine: hit.endLine });
+    return `${hit.tag} ${hit.name ?? ''}  ${at}${hit.signature ? `  ${hit.signature}` : ''}`;
+  });
+  const missing =
+    page.coverage.missing.length > 0
+      ? `${page.coverage.missing.length} indexed files have no cached outline and were not searched (run: code-lens index --force)`
+      : undefined;
+  return lines(
+    ...rows,
+    pageFooter(page, 'matches'),
+    `searched ${page.coverage.files} files`,
+    missing,
+  );
+}
+
+export function renderCallers(
+  symbol: { id: string },
+  page: Page<{
+    from: string;
+    path: string;
+    evidence: string;
+    package: string | undefined;
+    crossPackage: boolean;
+  }>,
+): string {
+  const rows = page.items.map((c) =>
+    `${c.from}  ${c.path}  ${c.evidence === 'name' ? '(guess by name)' : ''}${c.crossPackage ? ` (from ${c.package ?? 'another package'})` : ''}`.trimEnd(),
+  );
+  return lines(`callers of ${symbol.id}`, ...rows, pageFooter(page, 'callers'));
+}
+
+export function renderCallees(
+  symbol: { id: string },
+  page: Page<{ to: string; kind: string }>,
+): string {
+  return lines(
+    `callees of ${symbol.id}`,
+    ...page.items.map((c) => `${c.to}  (${c.kind})`),
+    pageFooter(page, 'callees'),
+  );
+}
+
+export function renderStatus(status: Status): string {
+  const { index } = status;
+  return lines(
+    `project ${status.root}`,
+    `files ${index.files}, quarantined ${index.quarantinedFiles}, symbols ${index.symbols}, calls ${index.calls}, imports ${index.imports}, edges ${index.edges}`,
+    `languages: ${index.byLanguage.map((l) => `${l.language} ${l.files}`).join(', ') || 'none'}`,
+    status.interrupted ? 'the last index run did not finish; run: code-lens index' : undefined,
+    `embedder: ${status.embedder ? `${status.embedder.id} (${status.embedder.dimensions} dims)` : 'none (structural queries only)'}`,
+    `structural: ${status.structural.files} files${status.structural.missing.length ? `, ${status.structural.missing.length} not searchable` : ''}`,
+    'channels:',
+    ...status.channels.map(renderChannelLine),
+  );
+}
+
+function renderChannelLine(channel: ChannelInfo): string {
+  const flags = [
+    channel.builtin ? 'built-in' : 'custom',
+    channel.enabled ? undefined : 'disabled',
+    channel.hasSource ? 'own source' : undefined,
+  ]
+    .filter(Boolean)
+    .join(', ');
+  return `  ${channel.name}  ${channel.cards} cards from ${channel.sources} sources${channel.quarantined ? `, ${channel.quarantined} quarantined` : ''}  weight ${channel.weight}  trust ${channel.trust}  (${flags})`;
+}
+
+export function renderChannels(channels: readonly ChannelInfo[]): string {
+  return lines(...channels.map(renderChannelLine));
+}
+
+export function renderChannel(channel: ChannelInfo): string {
+  return lines(
+    renderChannelLine(channel),
+    `  category ${channel.categoryId}`,
+    channel.module ? `  module ${channel.module}` : undefined,
+    `  transformers: ${channel.transformers.map((t) => `${t.name}@${t.version}`).join(', ') || 'none'}`,
+  );
+}
+
+export function renderIndex(result: {
+  report: IndexReport;
+  synced: readonly { channel: string; reports: readonly unknown[]; removed: readonly string[] }[];
+}): string {
+  const { report } = result;
+  const f = report.files;
+  return lines(
+    `indexed in ${(report.elapsedMs / 1000).toFixed(2)} s${report.resumedAfterInterruption ? ' (after an interrupted run)' : ''}`,
+    `files: ${f.added} added, ${f.modified} modified, ${f.unchanged} unchanged, ${f.touched} re-stamped, ${f.removed} removed, ${f.quarantined + f.stillQuarantined} quarantined`,
+    f.unsupported.size > 0
+      ? `not source: ${[...f.unsupported].map(([ext, n]) => `${ext || '(none)'} ${n}`).join(', ')}`
+      : undefined,
+    report.link
+      ? `linked ${report.relinked} files: ${report.link.calls.resolved} calls resolved, ${report.link.imports.dangling} imports dangling`
+      : undefined,
+    report.dense
+      ? `dense: ${report.dense.ingested} files embedded (${report.dense.cards} cards), ${report.dense.current} current, ${report.dense.quarantinedCards} cards quarantined, ${report.dense.failed.length} failed`
+      : undefined,
+    ...report.quarantined.map((q) => `quarantined ${q.path} (${q.reason}): ${q.message}`),
+    ...(report.dense?.failed ?? []).map((d) => `failed ${d.path} in ${d.channel}: ${d.message}`),
+    ...result.synced.map(
+      (s) => `synced ${s.channel}: ${s.reports.length} records, ${s.removed.length} removed`,
+    ),
+  );
+}
+
+export function renderExplain(explained: Explanation): string {
+  return lines(
+    `files ${explained.index.files}, symbols ${explained.index.symbols}, edges ${explained.index.edges}`,
+    `languages: ${explained.index.byLanguage.map((l) => `${l.language} ${l.files}`).join(', ')}`,
+    'packages:',
+    ...explained.packages.map(
+      (p) => `  ${p.name}  ${p.root || '.'}  (${p.kind}, ${p.files} files)`,
+    ),
+    'most imported files:',
+    ...explained.hubFiles.map((h) => `  ${h.importedBy}  ${h.path}`),
+    'most called symbols:',
+    ...explained.hubSymbols.map((h) => `  ${h.calledFrom}  ${h.id}`),
+    explained.danglingImports > 0
+      ? `${explained.danglingImports} imports do not resolve inside the workspace`
+      : undefined,
+    `(top ${explained.limit.applied}, ${explained.limit.source}${explained.limit.reached ? ', more exist' : ''})`,
+  );
+}
+
+export function renderDiagnosis(d: Diagnosis): string {
+  return lines(
+    d.verdict,
+    d.lostAt ? `lost at: ${d.lostAt}` : undefined,
+    `index: ${d.indexed.status} — ${d.indexed.detail}`,
+    ...d.channels.map(
+      (c) =>
+        `  ${c.channel}: ${c.cards} cards${c.quarantinedCards ? `, ${c.quarantinedCards} quarantined (${c.reasons.join('; ')})` : ''}`,
+    ),
+    ...d.ranks.map((r) => `  rank in ${r.lane}: ${r.rank ?? `below ${d.depth}`}`),
+    ...d.failed.map((f) => `  ${f.lane} failed: ${f.error.message}`),
+  );
+}
+
+export function renderModels(models: readonly ModelRow[]): string {
+  return lines(
+    ...models.map(
+      (m) =>
+        `${m.installed ? '*' : ' '} ${m.id}  ${m.tier}  ${m.dimensions}d  ${m.maxTokens} tokens  ${m.sizeMb} MB on disk, ~${m.estimatedMemoryMb} MB in memory  ${m.license}`,
+    ),
+    '* installed',
+  );
+}
+
+export function renderDoctor(d: ModelDoctor): string {
+  return lines(
+    `machine: ${d.probe.platform}/${d.probe.arch}, ${d.probe.cores} cores, ${Math.round(d.probe.availableMemoryMb)} of ${Math.round(d.probe.totalMemoryMb)} MB memory available`,
+    `suits: ${d.choice.spec.id} — ${d.choice.reason}`,
+    'problem' in d.resolved
+      ? `would use: nothing — ${d.resolved.problem}`
+      : `would use: ${d.resolved.id} — ${d.resolved.reason}`,
+    renderModels(d.models).trimEnd(),
+  );
+}
+
+export function renderGrammars(rows: readonly GrammarRow[]): string {
+  return lines(
+    ...rows.map(
+      (r) =>
+        `${r.state === 'ready' ? '*' : ' '} ${r.language.padEnd(12)} ${r.extensions.join(' ').padEnd(24)} ${r.state}: ${r.detail}`,
+    ),
+    '* usable',
+  );
+}

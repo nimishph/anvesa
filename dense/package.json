@@ -1,0 +1,20 @@
+{
+  "name": "@sutras/code-lens-dense",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Dense retrieval framework: Card, Transformer, red-team gate, embedder and channels.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@sutras/code-lens-core": "workspace:*",
+    "@sutras/code-lens-syntax": "workspace:*",
+    "@sutras/code-lens-structural": "workspace:*"
+  },
+  "devDependencies": {
+    "tree-sitter-javascript": "^0.25.0",
+    "tree-sitter-typescript": "^0.23.2"
+  },
+  "license": "MIT"
+}

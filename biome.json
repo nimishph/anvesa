@@ -1,0 +1,54 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
+  "root": true,
+  "files": {
+    "includes": ["**", "!**/node_modules", "!**/dist"]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100,
+    "lineEnding": "lf"
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "semicolons": "always",
+      "trailingCommas": "all"
+    }
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "suspicious": {
+        "noEmptyBlockStatements": "error",
+        "noConsole": "error",
+        "noExplicitAny": "error"
+      },
+      "style": {
+        "useThrowOnlyError": "error",
+        "useThrowNewError": "error",
+        "useNodejsImportProtocol": "error",
+        "noNonNullAssertion": "error"
+      },
+      "complexity": {
+        "noUselessCatch": "error"
+      }
+    }
+  },
+  "plugins": [
+    "./tooling/plugins/no-bare-error.grit",
+    "./tooling/plugins/no-swallowed-rejection.grit",
+    "./tooling/plugins/no-empty-catch.grit",
+    "./tooling/plugins/no-blind-truncation.grit"
+  ]
+}

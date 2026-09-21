@@ -1,0 +1,13 @@
+// A rejection handler that discards the failure hides it. Handle it, wrap it, or let it propagate.
+`$promise.catch($handler)` where {
+  $handler <: or {
+    `() => {}`,
+    `() => undefined`,
+    `() => null`,
+    `function () {}`,
+    `_ => {}`,
+    `(_) => {}`,
+    `(_error) => {}`
+  },
+  register_diagnostic(span=$handler, message="Do not swallow promise rejections. Handle the failure, wrap it with context, or propagate it.", severity="error")
+}

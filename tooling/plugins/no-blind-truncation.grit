@@ -1,0 +1,11 @@
+// Cutting a string or list to a literal length silently drops data. Derive the bound from a real
+// constraint and report it (see LimitReport in @sutras/code-lens-core), or split into more pieces.
+or {
+  `$target.slice($start, $end)` where { $end <: number() },
+  `$target.substring($start, $end)` where { $end <: number() },
+  `$target.substr($start, $end)` where { $end <: number() },
+  `$target.slice($cut)` where { $cut <: `-$_` },
+  `Math.min($_, $bound)` where { $bound <: number() }
+} as $match where {
+  register_diagnostic(span=$match, message="Blind truncation or literal cap. Derive the limit from a real constraint and report it (LimitReport), or split instead of cutting. If the bound is a true format width, suppress with a reason.", severity="error")
+}

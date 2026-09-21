@@ -1,0 +1,44 @@
+{
+  "name": "code-lens-workspace",
+  "private": true,
+  "type": "module",
+  "description": "code-lens: dense + structural code retrieval, as a set of subsystems. Self-contained so the whole directory can be extracted to its own repo.",
+  "workspaces": [
+    "core",
+    "syntax",
+    "structural",
+    "dense",
+    "indexer",
+    "retriever",
+    "cli",
+    "embedder",
+    "eval",
+    "tooling"
+  ],
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "boundaries": "depcruise --config .dependency-cruiser.cjs core/src syntax/src structural/src dense/src indexer/src retriever/src cli/src embedder/src eval/src",
+    "test": "bun test",
+    "check": "bun run lint && bun run typecheck && bun run boundaries && bun run test",
+    "eval": "bun run eval/src/run.ts",
+    "eval:retrieval": "bun run eval/src/retrieval-run.ts",
+    "package": "bun run tooling/package-release.ts",
+    "smoke": "bun run tooling/smoke-package.ts && bun run tooling/smoke-npm.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.14",
+    "@types/bun": "^1.4.2",
+    "dependency-cruiser": "^18.3.1",
+    "typescript": "^5.9.0"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "nimishph",
+    "url": "https://github.com/nimishph"
+  }
+}

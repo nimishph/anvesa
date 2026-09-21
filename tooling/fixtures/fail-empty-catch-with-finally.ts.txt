@@ -1,0 +1,1 @@
+export function f(g: () => void, h: () => void) { try { g(); } catch (e) { } finally { h(); } }

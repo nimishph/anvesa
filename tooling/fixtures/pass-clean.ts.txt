@@ -1,0 +1,32 @@
+import { CodeLensError, InvalidArgumentError, toCodeLensError } from '@sutras/code-lens-core';
+
+class ExampleError extends CodeLensError {
+  readonly code = 'CORE_EXAMPLE';
+  readonly subsystem = 'core';
+}
+
+export function throwsTyped(value: number): never {
+  throw new InvalidArgumentError('value', 'a positive number', value);
+}
+
+export function wraps(work: () => void): void {
+  try {
+    work();
+  } catch (failure) {
+    throw toCodeLensError(failure, 'wraps');
+  }
+}
+
+export function handles(work: () => void): 'ok' | 'failed' {
+  try {
+    work();
+    return 'ok';
+  } catch (failure) {
+    if (failure instanceof ExampleError) return 'failed';
+    throw toCodeLensError(failure, 'handles');
+  }
+}
+
+export const window = (xs: readonly number[], offset: number, end: number) => xs.slice(offset, end);
+export const rest = (s: string) => s.slice(1);
+export const propagates = (p: Promise<void>) => p.catch((failure) => Promise.reject(toCodeLensError(failure, 'propagates')));

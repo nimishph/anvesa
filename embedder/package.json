@@ -1,0 +1,16 @@
+{
+  "name": "@sutras/code-lens-embedder",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local ONNX text encoders: tokenizers, model cache, hardware tiers.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@sutras/code-lens-core": "workspace:*",
+    "@sutras/code-lens-dense": "workspace:*",
+    "onnxruntime-node": "^1.27.0"
+  },
+  "license": "MIT"
+}

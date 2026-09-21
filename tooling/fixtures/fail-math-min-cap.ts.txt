@@ -1,0 +1,1 @@
+export const capped = (n: number) => Math.min(n, 30);

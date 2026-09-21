@@ -1,0 +1,13 @@
+// Throw a CodeLensError subclass with a code, subsystem and context, never a built-in Error.
+`new $ctor($args)` where {
+  $ctor <: or {
+    `Error`,
+    `TypeError`,
+    `RangeError`,
+    `SyntaxError`,
+    `ReferenceError`,
+    `EvalError`,
+    `URIError`
+  },
+  register_diagnostic(span=$ctor, message="Do not construct built-in errors. Throw a CodeLensError subclass carrying a code, subsystem, context and cause (see @sutras/code-lens-core).", severity="error")
+}
