@@ -160,3 +160,27 @@ export class StoreClosedError extends IndexerSubsystemError {
     });
   }
 }
+
+/** `.code-lens/fragments.json` is unreadable or does not fit its schema. `location` is the field. */
+export class FragmentManifestError extends IndexerSubsystemError {
+  readonly code = 'INDEXER_FRAGMENT_MANIFEST';
+
+  constructor(path: string, location: string, problem: string, init: ErrorInit = {}) {
+    super(`Fragment manifest ${path} is invalid at ${location}: ${problem}`, {
+      ...init,
+      context: { path, location, problem, ...init.context },
+    });
+  }
+}
+
+/** Sharded storage cannot be opened or used as asked. */
+export class ShardError extends IndexerSubsystemError {
+  readonly code = 'INDEXER_SHARD';
+
+  constructor(problem: string, init: ErrorInit = {}) {
+    super(`Sharded index: ${problem}`, {
+      ...init,
+      context: { problem, ...init.context },
+    });
+  }
+}

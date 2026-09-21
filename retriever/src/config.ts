@@ -23,10 +23,15 @@ export interface ProjectConfig {
   readonly channels: Readonly<Record<string, ChannelConfig>>;
   /** The rank constant of fusion. Unset uses the standard one. */
   readonly fusionK: number | undefined;
+  /**
+   * Keep the index in one database per fragment of `.code-lens/fragments.json`, instead of one
+   * database. For repositories big enough that one file is a burden; off by default.
+   */
+  readonly fragments: boolean;
 }
 
 export function defaultProjectConfig(): ProjectConfig {
-  return { model: undefined, channels: {}, fusionK: undefined };
+  return { model: undefined, channels: {}, fusionK: undefined, fragments: false };
 }
 
 /** Read `.code-lens/config.json`. A project without one uses the defaults. */
@@ -60,7 +65,8 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
   };
   if (!isRecord(raw)) return fail('$', 'it must be an object');
   for (const key of Object.keys(raw)) {
-    if (!['model', 'channels', 'fusion'].includes(key)) fail(key, 'is not a known setting');
+    if (!['model', 'channels', 'fusion', 'indexing'].includes(key))
+      fail(key, 'is not a known setting');
   }
 
   const model = raw.model;
@@ -109,5 +115,21 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
     }
     fusionK = k as number | undefined;
   }
-  return { model: model as string | undefined, channels, fusionK };
+  let fragments = false;
+  if (raw.indexing !== undefined) {
+    if (!isRecord(raw.indexing)) fail('indexing', 'must be an object');
+    const indexing = raw.indexing as Record<string, unknown>;
+    for (const key of Object.keys(indexing)) {
+      if (key !== 'fragments') fail(`indexing.${key}`, 'is not a known setting');
+    }
+    if (
+      indexing.fragments !== undefined &&
+      indexing.fragments !== 'on' &&
+      indexing.fragments !== 'off'
+    ) {
+      fail('indexing.fragments', 'must be "on" or "off"');
+    }
+    fragments = indexing.fragments === 'on';
+  }
+  return { model: model as string | undefined, channels, fusionK, fragments };
 }

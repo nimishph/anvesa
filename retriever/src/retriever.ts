@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import {
   AggregateFailureError,
@@ -6,6 +6,7 @@ import {
   type Deadline,
   decodeCursor,
   encodeCursor,
+  InvalidArgumentError,
   type Page,
   type PageRequest,
   resolveLimit,
@@ -22,30 +23,46 @@ import {
   Ingester,
   type InputFile,
   type InputSource,
+  inputFile,
   type Preview,
   previewCards,
+  type RedTeamGate,
   retrieve as retrieveDense,
   type ScaffoldTemplate,
   type SearchHit,
   type SyncReport,
   scaffoldChannel,
   symbolsTransformer,
+  type VectorStore,
 } from '@sutras/code-lens-dense';
 import {
+  type DriftReport,
   FactExtractor,
   type FactExtractor as FactExtractorType,
+  type FragmentManifest,
   GraphQueries,
+  IMPORT_EDGE_KINDS,
   Indexer,
   type IndexReport,
   type IndexStats,
+  type IndexStore,
+  loadManifest,
+  proposeClustered,
+  proposePathPrior,
   type RunOptions,
+  ShardSet,
   SqliteIndexStore,
   SqliteVectorStore,
-  type SqliteVectorStore as SqliteVectorStoreType,
   type SymbolFact,
+  saveManifest,
   Workspace,
 } from '@sutras/code-lens-indexer';
-import { looksLikeWql, StructuralEngine, type WqlHit } from '@sutras/code-lens-structural';
+import {
+  looksLikeWql,
+  type MappingRegistry,
+  StructuralEngine,
+  type WqlHit,
+} from '@sutras/code-lens-structural';
 import type { SyntaxRuntime } from '@sutras/code-lens-syntax';
 import { loadChannelModule } from './channel-module.ts';
 import {
@@ -54,7 +71,12 @@ import {
   PROJECT_CONFIG_PATH,
   type ProjectConfig,
 } from './config.ts';
-import { EmbedderUnavailableError, NotIndexedError, TargetError } from './errors.ts';
+import {
+  EmbedderUnavailableError,
+  NotIndexedError,
+  ProjectConfigError,
+  TargetError,
+} from './errors.ts';
 import { type Contribution, DEFAULT_RRF_K, fuse } from './fuse.ts';
 import { createRuntime, type GrammarHost } from './grammars.ts';
 import {
@@ -66,8 +88,45 @@ import {
   type Status,
   statusOf,
 } from './insight.ts';
+import { mappingStoreFor } from './mappings.ts';
+import { gateForProject, loadPolicies } from './redteam.ts';
 import { type StructuralCoverage, StructuralLane } from './structural-lane.ts';
 import { workspaceSource } from './workspace-source.ts';
+
+/** One rule in force, with what each trust level does about it. */
+export interface RedTeamRuleInfo {
+  readonly id: string;
+  readonly category: string;
+  readonly severity: string;
+  readonly description: string;
+  /** `built in`, or the file or module the rule came from. */
+  readonly source: string;
+  readonly actions: Readonly<Record<'first-party' | 'third-party' | 'untrusted', string>>;
+}
+
+export interface RedTeamScan {
+  readonly files: number;
+  readonly cards: number;
+  readonly byRule: readonly {
+    readonly rule: string;
+    readonly flagged: number;
+    readonly sanitized: number;
+    readonly quarantined: number;
+  }[];
+  /** Every card the gate would refuse to index. */
+  readonly quarantined: readonly {
+    readonly path: string;
+    readonly channel: string;
+    readonly rules: readonly string[];
+  }[];
+}
+
+/** How an index is spread over fragments. */
+export interface FragmentStatus {
+  readonly enabled: boolean;
+  readonly algorithm: { readonly id: string; readonly version: number } | undefined;
+  readonly drift: DriftReport | undefined;
+}
 
 export interface RetrieverOptions {
   readonly root: string;
@@ -79,6 +138,8 @@ export interface RetrieverOptions {
   readonly runtime?: SyntaxRuntime;
   /** Where grammars come from when no `runtime` is given. */
   readonly grammars?: GrammarHost;
+  /** The mappings that decide what an outline holds. Defaults to the bundled ones with the project's and user's over them. */
+  readonly mappings?: MappingRegistry;
   /** Defaults to `<root>/.code-lens/index.db`. */
   readonly databasePath?: string;
   /** Index only these languages. */
@@ -104,6 +165,14 @@ export interface SearchResult {
 export interface SearchOptions extends PageRequest {
   /** Only these dense channels. Default: every enabled one. */
   readonly channels?: readonly string[];
+  /** Leave these lanes out (a channel name, or `structural`). */
+  readonly exclude?: readonly string[];
+  /**
+   * How much each lane counts in this search, over what the project config says (a channel name,
+   * or `structural`). A lane that is not named keeps its configured weight; 0 leaves it out. Use it
+   * to ask for code without documentation, or the reverse, for one question.
+   */
+  readonly weights?: Readonly<Record<string, number>>;
   readonly deadline?: Deadline;
 }
 
@@ -130,8 +199,8 @@ const BUILTIN_CHANNELS = ['symbols', 'docs'] as const;
 export class Retriever {
   readonly root: string;
   readonly workspace: Workspace;
-  readonly store: SqliteIndexStore;
-  readonly vectors: SqliteVectorStoreType;
+  readonly store: IndexStore;
+  readonly vectors: VectorStore;
   readonly registry: ChannelRegistry;
   readonly embedder: Embedder | undefined;
   readonly config: ProjectConfig;
@@ -145,12 +214,16 @@ export class Retriever {
   readonly #structure: StructuralLane;
   readonly #graph: GraphQueries;
   readonly #only: readonly string[] | undefined;
+  readonly #shards: ShardSet | undefined;
+  readonly #gate: RedTeamGate;
 
   private constructor(parts: {
     root: string;
     workspace: Workspace;
-    store: SqliteIndexStore;
-    vectors: SqliteVectorStoreType;
+    store: IndexStore;
+    vectors: VectorStore;
+    shards: ShardSet | undefined;
+    gate: RedTeamGate;
     registry: ChannelRegistry;
     embedder: Embedder | undefined;
     config: ProjectConfig;
@@ -170,6 +243,8 @@ export class Retriever {
     this.#runtime = parts.runtime;
     this.#ownsRuntime = parts.ownsRuntime;
     this.#only = parts.only;
+    this.#shards = parts.shards;
+    this.#gate = parts.gate;
     this.#extractor = new FactExtractor(parts.engine);
     this.#structure = new StructuralLane(parts.store);
     this.#graph = new GraphQueries(parts.store, (path) => parts.workspace.packageOf(path));
@@ -178,6 +253,7 @@ export class Retriever {
           registry: parts.registry,
           embedder: parts.embedder,
           store: parts.vectors,
+          gate: parts.gate,
           services: createTransformServices(parts.engine),
         })
       : undefined;
@@ -185,15 +261,40 @@ export class Retriever {
 
   static async open(options: RetrieverOptions): Promise<Retriever> {
     const config = options.config ?? (await loadProjectConfig(options.root));
+    // Mappings first: a mapping that is not what was recorded stops the open before anything is held.
+    const mappings =
+      options.mappings ?? (await mappingStoreFor(options.root, options.grammars).registry());
+    // The red-team policy too: a rule file that does not check out stops the open before anything is held.
+    const gate = await gateForProject(options.root);
     const workspace = await Workspace.open({ root: options.root });
     const databasePath = options.databasePath ?? join(options.root, '.code-lens', 'index.db');
-    const store = SqliteIndexStore.open(databasePath);
-    const vectors = new SqliteVectorStore(store.database);
+    // One database, or one per fragment when the project asks for that (and has said what they are).
+    let shards: ShardSet | undefined;
+    let store: IndexStore;
+    let vectors: VectorStore;
+    if (config.fragments) {
+      const manifest = await loadManifest(options.root);
+      if (!manifest) {
+        throw new ProjectConfigError(
+          join(options.root, PROJECT_CONFIG_PATH),
+          'indexing.fragments',
+          'is "on" but there is no .code-lens/fragments.json',
+          { hint: 'Run `code-lens fragments enable`, which proposes one and turns this on.' },
+        );
+      }
+      shards = await ShardSet.open({ directory: join(dirname(databasePath), 'shards'), manifest });
+      store = shards.index;
+      vectors = shards.vectors;
+    } else {
+      const single = SqliteIndexStore.open(databasePath);
+      store = single;
+      vectors = new SqliteVectorStore(single.database);
+    }
     const ownsRuntime = options.runtime === undefined;
     const runtime =
       options.runtime ??
       (await createRuntime(options.root, { npmFrom: import.meta.filename, ...options.grammars }));
-    const engine = new StructuralEngine({ runtime });
+    const engine = new StructuralEngine({ runtime, mappings });
 
     const registry = new ChannelRegistry();
     const retriever = new Retriever({
@@ -201,6 +302,8 @@ export class Retriever {
       workspace,
       store,
       vectors,
+      shards,
+      gate,
       registry,
       embedder: options.embedder,
       config,
@@ -236,7 +339,8 @@ export class Retriever {
   }
 
   async close(): Promise<void> {
-    await this.store.close();
+    if (this.#shards) await this.#shards.close();
+    else await this.store.close();
     if (this.#ownsRuntime) await this.#runtime.dispose();
   }
 
@@ -249,6 +353,7 @@ export class Retriever {
   async index(
     options: RunOptions = {},
   ): Promise<{ readonly report: IndexReport; readonly synced: readonly SyncReport[] }> {
+    await this.#settleShards();
     const indexer = new Indexer({
       workspace: this.workspace,
       store: this.store,
@@ -335,14 +440,36 @@ export class Retriever {
     const offset = options.cursor === undefined ? 0 : decodeCursor(options.cursor);
     const depth = offset + limit + 1;
     const wanted = options.channels ?? this.registry.channels();
+    const laneNames = new Set([...this.registry.channels(), 'structural']);
+    for (const [option, names] of [
+      ['exclude', options.exclude ?? []],
+      ['weights', Object.keys(options.weights ?? {})],
+    ] as const) {
+      for (const name of names) {
+        if (!laneNames.has(name)) {
+          throw new InvalidArgumentError(option, `lanes among ${[...laneNames].join(', ')}`, name);
+        }
+      }
+    }
+    for (const [name, weight] of Object.entries(options.weights ?? {})) {
+      if (!Number.isFinite(weight) || weight < 0) {
+        throw new InvalidArgumentError(`weights.${name}`, 'a number of at least 0', weight);
+      }
+    }
+    const weightOf = (lane: string, configured: number): number =>
+      options.weights?.[lane] ?? configured;
+    const left = (lane: string, configured: number): boolean =>
+      !(options.exclude ?? []).includes(lane) && weightOf(lane, configured) > 0;
 
     const runs: { name: string; weight: number; run: () => Promise<LaneHit[]> }[] = [];
     if (this.embedder) {
       for (const channel of wanted) {
         if (!this.registry.has(channel)) continue;
+        const configured = this.config.channels[channel]?.weight ?? 1;
+        if (!left(channel, configured)) continue;
         runs.push({
           name: channel,
-          weight: this.config.channels[channel]?.weight ?? 1,
+          weight: weightOf(channel, configured),
           run: async () =>
             (
               await retrieveDense({
@@ -357,10 +484,10 @@ export class Retriever {
         });
       }
     }
-    if (looksLikeWql(query)) {
+    if (looksLikeWql(query) && left('structural', 1)) {
       runs.push({
         name: 'structural',
-        weight: 1,
+        weight: weightOf('structural', 1),
         run: async () => {
           await this.#structure.refresh();
           return this.#structure
@@ -371,6 +498,13 @@ export class Retriever {
             .items.map(wqlHit);
         },
       });
+    }
+    if (runs.length === 0 && (options.exclude?.length || options.weights)) {
+      throw new InvalidArgumentError(
+        'exclude/weights',
+        'a search that keeps at least one lane',
+        [...(options.exclude ?? []), ...Object.keys(options.weights ?? {})].join(', '),
+      );
     }
     if (runs.length === 0) {
       throw new EmbedderUnavailableError(
@@ -548,6 +682,7 @@ export class Retriever {
         await previewCards(transformer, file, {
           budget: budgetFor(budgetSourceOf(embedder)),
           services: createTransformServices(this.engine),
+          gate: this.#gate,
           ...(deadline ? { deadline } : {}),
         }),
       );
@@ -624,8 +759,172 @@ export class Retriever {
         ]),
       ),
       ...(config.fusionK === undefined ? {} : { fusion: { k: config.fusionK } }),
+      ...(config.fragments ? { indexing: { fragments: 'on' } } : {}),
     };
     await writeFile(path, `${JSON.stringify(raw, null, 2)}\n`);
+  }
+
+  // --- red team ----------------------------------------------------------------------------------
+
+  /** The rules in force, and what each trust level does about each. */
+  async redTeamRules(): Promise<readonly RedTeamRuleInfo[]> {
+    const policies = await loadPolicies(this.root);
+    const custom = new Map<string, string>();
+    for (const policy of policies)
+      for (const rule of policy.rules) custom.set(rule.id, policy.source);
+    return this.#gate.rules.map((rule) => ({
+      id: rule.id,
+      category: rule.category,
+      severity: rule.severity,
+      description: rule.description,
+      source: custom.get(rule.id) ?? 'built in',
+      actions: Object.fromEntries(
+        (['first-party', 'third-party', 'untrusted'] as const).map((trust) => {
+          const profile = this.#gate.profileFor(trust);
+          return [trust, profile.rules[rule.id] ?? profile.fallback[rule.severity]];
+        }),
+      ) as RedTeamRuleInfo['actions'],
+    }));
+  }
+
+  /**
+   * Run every channel's transformers over the indexed files and report what the gate would flag,
+   * sanitize or quarantine, by rule. It writes nothing. Run after adding a rule: a rule that
+   * quarantines the project's own code is a false positive worth knowing about before an index run.
+   */
+  async redTeamScan(options: { readonly deadline?: Deadline } = {}): Promise<RedTeamScan> {
+    const paths: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await this.store.files({ status: 'indexed', ...(cursor ? { cursor } : {}) });
+      paths.push(...page.items.map((file) => file.path));
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor !== undefined);
+
+    const byRule = new Map<string, { flagged: number; sanitized: number; quarantined: number }>();
+    const quarantined: { path: string; channel: string; rules: string[] }[] = [];
+    let cards = 0;
+    for (const path of paths) {
+      options.deadline?.throwIfExpired(`scan ${path}`);
+      const content = await readFile(join(this.root, path), 'utf8');
+      const file = inputFile(path, content);
+      for (const channel of this.registry.channels()) {
+        for (const preview of await this.testChannel(channel, file, options.deadline)) {
+          cards += preview.cards.length;
+          for (const finding of preview.screened.findings) {
+            const entry = byRule.get(finding.ruleId) ?? {
+              flagged: 0,
+              sanitized: 0,
+              quarantined: 0,
+            };
+            if (finding.action === 'quarantine') entry.quarantined += 1;
+            else if (finding.action === 'sanitize') entry.sanitized += 1;
+            else entry.flagged += 1;
+            byRule.set(finding.ruleId, entry);
+          }
+          for (const held of preview.screened.quarantined) {
+            quarantined.push({
+              path,
+              channel,
+              rules: [...new Set(held.findings.map((finding) => finding.ruleId))],
+            });
+          }
+        }
+      }
+    }
+    return {
+      files: paths.length,
+      cards,
+      byRule: [...byRule]
+        .sort(([a], [b]) => (a < b ? -1 : 1))
+        .map(([rule, counts]) => ({ rule, ...counts })),
+      quarantined,
+    };
+  }
+
+  // --- fragments ---------------------------------------------------------------------------------
+
+  /**
+   * When the manifest changed since the shards were last settled, forget what sits in the wrong
+   * shard first, so this run indexes it where it now belongs. A first run only records the manifest.
+   */
+  async #settleShards(): Promise<void> {
+    if (!this.#shards) return;
+    if (await this.#shards.needsSettling()) await this.#shards.settle(this.registry.channels());
+    else await this.#shards.recordManifest();
+  }
+
+  /** How the index is spread over fragments, and what is out of place. */
+  async fragmentStatus(): Promise<FragmentStatus> {
+    if (!this.#shards) return { enabled: false, drift: undefined, algorithm: undefined };
+    return {
+      enabled: true,
+      drift: await this.#shards.drift(this.registry.channels()),
+      algorithm: this.#shards.assigner.manifest.algorithm,
+    };
+  }
+
+  /** Move what sits in the wrong shard, without indexing. */
+  async settleFragments(): Promise<
+    | {
+        readonly movedFiles: number;
+        readonly movedSources: number;
+        readonly removedShards: readonly string[];
+      }
+    | undefined
+  > {
+    return this.#shards?.settle(this.registry.channels());
+  }
+
+  /**
+   * A manifest proposed from what is indexed: `path` follows the layout (free, and where a small
+   * repository should stop), `clusters` follows the imports. Nothing is written; the caller decides.
+   */
+  async proposeFragments(options: {
+    readonly tier: 'path' | 'clusters';
+    readonly resolution?: number;
+    readonly labels?: Readonly<Record<string, string>>;
+  }): Promise<FragmentManifest> {
+    await this.#requireIndexed();
+    const files: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await this.store.files({ status: 'indexed', ...(cursor ? { cursor } : {}) });
+      files.push(...page.items.map((file) => file.path));
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor !== undefined);
+    const packageRoots = this.workspace.packages().map((pkg) => pkg.root);
+    if (options.tier === 'path') return proposePathPrior({ files, packageRoots });
+
+    const known = new Set(files);
+    const imports: [string, string][] = [];
+    let after: string | undefined;
+    do {
+      const page = await this.store.findEdges({
+        kinds: IMPORT_EDGE_KINDS,
+        ...(after ? { cursor: after } : {}),
+      });
+      for (const edge of page.items)
+        if (known.has(edge.from) && known.has(edge.to)) imports.push([edge.from, edge.to]);
+      after = page.nextCursor ?? undefined;
+    } while (after !== undefined);
+    return proposeClustered({
+      files,
+      packageRoots,
+      imports,
+      ...(options.resolution === undefined ? {} : { resolution: options.resolution }),
+      ...(options.labels ? { labels: options.labels } : {}),
+    });
+  }
+
+  /** Save a manifest to `.code-lens/fragments.json`. */
+  saveFragments(manifest: FragmentManifest): Promise<string> {
+    return saveManifest(this.root, manifest);
+  }
+
+  /** Turn sharded indexing on or off in the project config. Takes effect the next time it is opened. */
+  async setFragments(on: boolean): Promise<void> {
+    await this.#writeConfig({ ...this.config, fragments: on });
   }
 
   // --- internals --------------------------------------------------------------------------------

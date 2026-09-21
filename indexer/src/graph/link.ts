@@ -322,6 +322,28 @@ export class GraphLinker {
    * The symbol a file exports under `name`, following re-exports. `seen` stops a cycle of
    * re-exports from looping.
    */
+  /** A symbol by id, from whichever file declares it. */
+  symbolById(id: string): Promise<SymbolFact | undefined> {
+    return this.#store.symbol(id);
+  }
+
+  /**
+   * Follow `const a = b` to what `b` is, in the file that declares `a`, and on through `b` if it is
+   * an alias too. A chain that comes back on itself stops where it closes.
+   */
+  async resolveAlias(symbol: SymbolFact): Promise<SymbolFact> {
+    const seen = new Set<string>([symbol.id]);
+    let current = symbol;
+    while (current.aliasOf !== undefined) {
+      const table = await this.exportsOf(current.path);
+      const next = table?.byName.get(current.aliasOf)?.at(-1);
+      if (!next || seen.has(next.id)) break;
+      seen.add(next.id);
+      current = next;
+    }
+    return current;
+  }
+
   async exportedSymbol(
     path: string,
     name: string,
@@ -513,7 +535,7 @@ class FileLink {
 
   async #linkCall(call: CallFact): Promise<void> {
     const from = call.from ?? this.#facts.path;
-    const outcome = await this.#resolveCall(call);
+    const outcome = await this.#followAliases(await this.#resolveCall(call));
     this.#onCall?.(this.#facts.path, call, outcome);
     switch (outcome.kind) {
       case 'symbol':
@@ -533,6 +555,20 @@ class FileLink {
         this.calls.unresolved += 1;
         this.reasons.set(outcome.reason, (this.reasons.get(outcome.reason) ?? 0) + 1);
     }
+  }
+
+  /** A call to a name that is only another name is a call to what that name is. */
+  async #followAliases(outcome: CallOutcome): Promise<CallOutcome> {
+    if (outcome.kind !== 'symbol') return outcome;
+    const ids = new Set<string>();
+    for (const id of outcome.ids) ids.add(await this.#throughAlias(id));
+    return { kind: 'symbol', ids: [...ids] };
+  }
+
+  async #throughAlias(id: string): Promise<string> {
+    const symbol = this.#byId.get(id) ?? (await this.#linker.symbolById(id));
+    if (symbol?.aliasOf === undefined) return id;
+    return (await this.#linker.resolveAlias(symbol)).id;
   }
 
   async #resolveCall(call: CallFact): Promise<CallOutcome> {

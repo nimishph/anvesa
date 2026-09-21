@@ -37,8 +37,8 @@ export interface ModelSpec {
   /** Input window, in tokens, special tokens included. */
   readonly maxTokens: number;
   readonly pooling: Pooling;
-  /** Parameters, in millions: the honest proxy for compute cost. */
-  readonly paramsM: number;
+  /** Parameters, in millions: the honest proxy for compute cost. Unknown for a model brought in. */
+  readonly paramsM: number | undefined;
   readonly license: string;
   readonly notes: string;
 }

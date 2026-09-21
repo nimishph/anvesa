@@ -22,7 +22,7 @@ let dependenciesProvided = false;
  * project's `node_modules` (in a compiled binary it is not on disk at all). Serve the copy this
  * process already has, so a module and the retriever share one set of classes and one set of types.
  */
-function provideDependencies(): void {
+export function provideDependencies(): void {
   if (dependenciesProvided) return;
   Bun.plugin({
     name: 'code-lens-channel-dependencies',

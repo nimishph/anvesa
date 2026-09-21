@@ -34,6 +34,8 @@ export interface IndexReport {
   readonly complete: true;
   /** The previous run did not finish, so edges and cards were rebuilt instead of trusted. */
   readonly resumedAfterInterruption: boolean;
+  /** The extractor or a mapping changed since these files were last read, so every file was read again. */
+  readonly reextracted: boolean;
   readonly files: {
     readonly seen: number;
     /** Same size and modification time as last time: not read. */

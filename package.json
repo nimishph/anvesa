@@ -28,6 +28,7 @@
     "eval": "bun run eval/src/run.ts",
     "eval:retrieval": "bun run eval/src/retrieval-run.ts",
     "package": "bun run tooling/package-release.ts",
+    "stress": "bun run tooling/stress/cli.ts",
     "smoke": "bun run tooling/smoke-package.ts && bun run tooling/smoke-npm.ts"
   },
   "devDependencies": {

@@ -166,6 +166,54 @@ describe('a second run with nothing changed', () => {
   });
 });
 
+describe('when what facts are extracted with changes', () => {
+  /** The same extractor under a different signature, as after a mapping or a version change. */
+  class Changed extends CountingExtractor {
+    override get signature(): string {
+      return `changed-${super.signature}`;
+    }
+  }
+
+  test('every file is read again, though none changed, and only once', async () => {
+    const first = await setup(project);
+    expect((await first.indexer.index()).reextracted).toBe(false);
+
+    const workspace = await Workspace.open({ root: first.root, config: defaultConfig() });
+    const extractor = new Changed(new StructuralEngine({ runtime: newRuntime() }));
+    const indexer = new Indexer({ workspace, store: first.store, extractor });
+    const report = await indexer.index();
+    expect(report.reextracted).toBe(true);
+    expect(extractor.extracted.sort()).toEqual(['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/lone.ts']);
+    expect(report.link).toBeDefined();
+
+    extractor.extracted = [];
+    const again = await indexer.index();
+    expect(again.reextracted).toBe(false);
+    expect(extractor.extracted).toEqual([]);
+  });
+
+  test('an index made before the signature was recorded is read again once', async () => {
+    const { indexer, extractor, store } = await setup(project);
+    await indexer.index();
+    await store.deleteMeta('index.extraction');
+    extractor.extracted = [];
+    const report = await indexer.index();
+    expect(report.reextracted).toBe(true);
+    expect(extractor.extracted).toHaveLength(4);
+  });
+
+  test('a scoped run does not stamp the index as current for the files it left alone', async () => {
+    const first = await setup(project);
+    await first.indexer.index();
+    const workspace = await Workspace.open({ root: first.root, config: defaultConfig() });
+    const extractor = new Changed(new StructuralEngine({ runtime: newRuntime() }));
+    const indexer = new Indexer({ workspace, store: first.store, extractor });
+    await indexer.index({ scope: (path) => path === 'src/c.ts' });
+    extractor.extracted = [];
+    expect((await indexer.index()).reextracted).toBe(true);
+  });
+});
+
 describe('incremental runs', () => {
   test('a changed file is parsed again, and the files that depend on it are linked again', async () => {
     const { indexer, extractor, store, root } = await setup(project);

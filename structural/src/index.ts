@@ -44,6 +44,13 @@ export {
   MappingRegistry,
   validateMapping,
 } from './mapping.ts';
+export type {
+  MappingCheck,
+  MappingStoreOptions,
+  MappingTier,
+  StoredMapping,
+} from './mapping-store.ts';
+export { MappingStore, mappingFileText } from './mapping-store.ts';
 export type { LineRange, WalkEntry, WNode } from './node.ts';
 export {
   ATTR,
@@ -66,6 +73,30 @@ export {
   serializeWExpr,
   WEXPR_FORMAT_VERSION,
 } from './text.ts';
+export type {
+  Deduction,
+  Golden,
+  GoldenDifference,
+  GoldenSample,
+  TagCheck,
+  Topology,
+  TrainedMapping,
+  TrainingIssue,
+  TrainingReport,
+  TrainingSample,
+  TrainOptions,
+  TypeStats,
+  Verification,
+} from './training.ts';
+export {
+  checkGolden,
+  deduceMapping,
+  inspectTopology,
+  registryWith,
+  synthesizeGolden,
+  trainMapping,
+  verifyMapping,
+} from './training.ts';
 export type {
   MatchContext,
   WqlMatch,

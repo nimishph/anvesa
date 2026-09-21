@@ -25,6 +25,8 @@ export interface SymbolFact {
   /** Parameter names of a callable, as written (`a, ...rest`). What a bare name inside it may be. */
   readonly params?: string;
   readonly doc: string | undefined;
+  /** For a variable that is only another name (`const a = b`): that name, as written. */
+  readonly aliasOf?: string;
 }
 
 /** What a call is made on, when the source says. */

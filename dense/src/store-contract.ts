@@ -294,6 +294,23 @@ export function vectorStoreContract(
         expect(await store.sourcePaths('none')).toEqual([]);
       }));
 
+    test('says how many cards each source holds, smallest first', () =>
+      withStore(async (store) => {
+        await store.replaceSource(
+          update('a.md', [
+            stored('a.md', '1', 'one'),
+            stored('a.md', '2', 'two'),
+            stored('a.md', '3', 'three'),
+          ]),
+        );
+        await store.replaceSource(update('b.md', [stored('b.md', '1', 'four')]));
+        await store.replaceSource(
+          update('c.md', [stored('c.md', '1', 'five'), stored('c.md', '2', 'six')]),
+        );
+        expect(await store.cardCounts('demo')).toEqual([1, 2, 3]);
+        expect(await store.cardCounts('none')).toEqual([]);
+      }));
+
     test('stats report counts, the median cards per source and models', () =>
       withStore(async (store) => {
         await store.replaceSource(

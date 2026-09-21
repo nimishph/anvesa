@@ -10,7 +10,7 @@ import type { Category, Rule, RuleHit, Severity } from './types.ts';
  * untrusted data with their provenance, never as instructions.
  */
 
-interface RegexRuleSpec {
+export interface RegexRuleSpec {
   readonly id: string;
   readonly category: Category;
   readonly severity: Severity;
@@ -21,7 +21,7 @@ interface RegexRuleSpec {
   readonly replacement?: string;
 }
 
-function regexRule(spec: RegexRuleSpec): Rule {
+export function regexRule(spec: RegexRuleSpec): Rule {
   const global = spec.pattern.global
     ? spec.pattern
     : new RegExp(spec.pattern.source, `${spec.pattern.flags}g`);

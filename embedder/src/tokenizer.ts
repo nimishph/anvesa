@@ -1,21 +1,10 @@
 import { TokenizerInvalidError } from './errors.ts';
+import { bpeFromJson } from './tokenizer-bpe.ts';
+import { type HfTokenizerJson, parseHfJson } from './tokenizer-hf.ts';
+import type { Tokenizer } from './tokenizer-types.ts';
+import { unigramFromJson } from './tokenizer-unigram.ts';
 
-/**
- * Turns text into the ids a model reads. It is the model's own tokenizer, so `count` says exactly
- * how much of the model's window a text will take, and card budgets built on it are exact.
- */
-export interface Tokenizer {
-  /** Ids of the text itself, with none of the tokens the model adds around it. */
-  tokenize(text: string): number[];
-  /** Tokens `text` takes, not counting the ones the model adds around it. */
-  count(text: string): number;
-  /** `[CLS] text [SEP]`: what the model is given. */
-  encode(text: string): number[];
-  /** Tokens the model adds around every text. */
-  readonly specialTokens: number;
-  readonly padId: number;
-  readonly vocabSize: number;
-}
+export type { Tokenizer } from './tokenizer-types.ts';
 
 export interface WordPieceOptions {
   readonly vocab: ReadonlyMap<string, number>;
@@ -184,42 +173,37 @@ interface HfNormalizer {
   lowercase?: boolean;
 }
 
-interface HfTokenizer {
-  normalizer?: HfNormalizer | null;
-  pre_tokenizer?: { type?: string } | null;
-  model?: {
-    type?: string;
+/**
+ * A tokenizer from a Hugging Face `tokenizer.json`: WordPiece (BERT and its relatives), byte-level
+ * BPE (RoBERTa and most code models), or SentencePiece unigram (XLM-R and E5). Only what each
+ * reads is understood; a file that asks for anything else (another model type, a normaliser or
+ * pre-tokenizer it does not know) is refused with the part that is unsupported, because guessing
+ * would make every count and every vector wrong.
+ */
+export function tokenizerFromJson(text: string, source: string): Tokenizer {
+  const json = parseHfJson(text, source);
+  const model = json.model;
+  if (!model) throw new TokenizerInvalidError(source, 'model', 'it has no model');
+  // Older files leave the type out of a BPE model.
+  const type = model.type ?? (model.merges ? 'BPE' : undefined);
+  if (type === 'BPE') return bpeFromJson(json, source);
+  if (type === 'Unigram') return unigramFromJson(json, source);
+  if (type === 'WordPiece') return wordPieceFromJson(json, source);
+  throw new TokenizerInvalidError(
+    source,
+    'model.type',
+    `only WordPiece, BPE and Unigram are supported, this is ${type ?? 'missing'}`,
+  );
+}
+
+function wordPieceFromJson(json: HfTokenizerJson, source: string): WordPieceTokenizer {
+  const model = json.model as {
     vocab?: Record<string, number>;
     unk_token?: string;
     continuing_subword_prefix?: string;
     max_input_chars_per_word?: number;
   };
-  post_processor?: {
-    special_tokens?: Record<string, { ids?: number[] }>;
-  } | null;
-}
-
-/**
- * A tokenizer from a Hugging Face `tokenizer.json`. Only what this reads is understood; a file
- * that asks for anything else (a different model type, another normaliser) is refused with the
- * part that is unsupported, because guessing would make every count and every vector wrong.
- */
-export function tokenizerFromJson(text: string, source: string): WordPieceTokenizer {
-  let parsed: HfTokenizer;
-  try {
-    parsed = JSON.parse(text) as HfTokenizer;
-  } catch (failure) {
-    throw new TokenizerInvalidError(source, 'file', 'it is not JSON', { cause: failure });
-  }
-  const model = parsed.model;
-  if (!model || model.type !== 'WordPiece') {
-    throw new TokenizerInvalidError(
-      source,
-      'model.type',
-      `only WordPiece is supported, this is ${model?.type ?? 'missing'}`,
-    );
-  }
-  const normalizer = parsed.normalizer;
+  const normalizer = json.normalizer as HfNormalizer | null | undefined;
   if (normalizer && normalizer.type !== 'BertNormalizer') {
     throw new TokenizerInvalidError(
       source,
@@ -227,7 +211,7 @@ export function tokenizerFromJson(text: string, source: string): WordPieceTokeni
       `only BertNormalizer is supported, this is ${normalizer.type ?? 'unnamed'}`,
     );
   }
-  const preTokenizer = parsed.pre_tokenizer;
+  const preTokenizer = json.pre_tokenizer;
   if (preTokenizer && preTokenizer.type !== 'BertPreTokenizer') {
     throw new TokenizerInvalidError(
       source,

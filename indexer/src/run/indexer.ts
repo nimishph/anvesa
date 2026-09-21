@@ -28,6 +28,8 @@ import type { DenseReport, IndexEvent, IndexReport } from './report.ts';
 const DIRTY_KEY = 'index.dirty';
 /** What the dense channels were built with (transformer versions, model), after a complete run. */
 const DENSE_KEY = 'dense.signature';
+/** What the facts were extracted with (see `FactExtractor.signature`), after a complete run. */
+const EXTRACTION_KEY = 'index.extraction';
 
 /** When the previous run began, so files touched around then can be told from files left alone. */
 const STARTED_KEY = 'index.lastStartMs';
@@ -108,7 +110,14 @@ export class Indexer {
     // What cannot be trusted after an interrupted run or a change of model or transformer.
     const denseStale =
       this.#ingester !== undefined && (interrupted || previousSignature !== signature);
-    const rebuildEverything = options.force === true;
+    // A different extractor or mapping than the one that made the stored facts: read every file again.
+    const previousExtraction = await this.#store.getMeta(EXTRACTION_KEY);
+    const extraction = this.#extractor.signature;
+    const reextracted =
+      previousExtraction === extraction
+        ? false
+        : previousExtraction !== undefined || (await this.#store.stats()).files > 0;
+    const rebuildEverything = options.force === true || reextracted;
 
     const previousStart = Number(await this.#store.getMeta(STARTED_KEY));
     emit({ kind: 'started', interrupted });
@@ -239,7 +248,7 @@ export class Indexer {
       if (this.#ingester) {
         await this.#ingest(entry.path, content.content, entry.language, dense, {
           deadline,
-          force: rebuildEverything,
+          force: options.force === true,
         });
       }
     }
@@ -251,12 +260,16 @@ export class Indexer {
     const link = await this.#link(changes, interrupted || rebuildEverything, deadline, emit);
 
     if (this.#ingester && signature !== undefined) await this.#store.setMeta(DENSE_KEY, signature);
+    if (wholeWorkspace && this.#only === undefined) {
+      await this.#store.setMeta(EXTRACTION_KEY, extraction);
+    }
     await this.#store.deleteMeta(DIRTY_KEY);
 
     const summary = walk.summary;
     const report: IndexReport = {
       complete: true,
       resumedAfterInterruption: interrupted,
+      reextracted,
       files: {
         seen: seen.size,
         unchanged: counts.unchanged,

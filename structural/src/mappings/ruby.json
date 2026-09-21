@@ -1,0 +1,24 @@
+{
+  "name": "ruby",
+  "version": "1.0.0",
+  "extensions": [".rb"],
+  "nodeTypeMap": {
+    "class": "class",
+    "if": "if",
+    "lambda": "lambda",
+    "method": "method",
+    "module": "module",
+    "return": "return",
+    "singleton_method": "method",
+    "while": "while",
+    "yield": "yield"
+  },
+  "structuralTags": ["class", "if", "lambda", "method", "module", "return", "while", "yield"],
+  "nameExtractors": {
+    "class": "constant",
+    "method": "identifier",
+    "module": "constant",
+    "singleton_method": "identifier"
+  },
+  "callableTags": ["lambda", "method"]
+}

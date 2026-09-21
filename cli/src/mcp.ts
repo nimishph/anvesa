@@ -42,12 +42,28 @@ export function createMcpServer(retriever: Retriever): McpServer {
     {
       description:
         'Search the project by meaning (every dense channel) and, when the query is WQL, by structure, fused by rank. Results say which lane found each.',
-      inputSchema: { query: z.string(), channels: z.array(z.string()).optional(), ...page },
+      inputSchema: {
+        query: z.string(),
+        channels: z.array(z.string()).optional(),
+        exclude: z
+          .array(z.string())
+          .optional()
+          .describe('Lanes to leave out: a channel name, or structural.'),
+        weights: z
+          .record(z.string(), z.number().min(0))
+          .optional()
+          .describe(
+            'How much each lane counts for this search, e.g. {"docs": 0.25}. 0 leaves it out.',
+          ),
+        ...page,
+      },
     },
-    ({ query, channels, limit, cursor }) =>
+    ({ query, channels, exclude, weights, limit, cursor }) =>
       respond(() =>
         retriever.search(query, {
           ...(channels ? { channels } : {}),
+          ...(exclude ? { exclude } : {}),
+          ...(weights ? { weights } : {}),
           ...(limit ? { limit } : {}),
           ...(cursor ? { cursor } : {}),
         }),

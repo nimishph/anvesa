@@ -94,7 +94,7 @@ async function main(): Promise<void> {
     values.models ? resolve(values.models) : modelsDirectory(process.env),
   );
   const opened = await openProjectEmbedder(
-    { model: values.model, channels: {}, fusionK: undefined },
+    { model: values.model, channels: {}, fusionK: undefined, fragments: false },
     cache,
   );
   const embedder = opened.embedder;
@@ -126,10 +126,29 @@ async function main(): Promise<void> {
       cursor = page.nextCursor ?? undefined;
     } while (cursor !== undefined);
 
-    const queries = generateQueries(symbols, {
-      minWords: 3,
-      ...(perPopulation === undefined ? {} : { perPopulation }),
-    });
+    const documents: { path: string; content: string }[] = [];
+    let after: string | undefined;
+    do {
+      const page = await retriever.store.files({
+        status: 'indexed',
+        ...(after ? { cursor: after } : {}),
+      });
+      for (const file of page.items) {
+        if (file.path.toLowerCase().endsWith('.md')) {
+          documents.push({
+            path: file.path,
+            content: await Bun.file(join(root, file.path)).text(),
+          });
+        }
+      }
+      after = page.nextCursor ?? undefined;
+    } while (after !== undefined);
+
+    const queries = generateQueries(
+      symbols,
+      { minWords: 3, ...(perPopulation === undefined ? {} : { perPopulation }) },
+      documents,
+    );
 
     const lanes: Lane[] = [
       {
@@ -142,13 +161,37 @@ async function main(): Promise<void> {
       },
       {
         name: 'fused',
-        populations: ['identifier', 'intent', 'exact-name'],
+        populations: ['identifier', 'intent', 'exact-name', 'doc'],
         answer: async (q) =>
           (await retriever.search(q.text, { limit: DEPTH })).items.map((hit) => hit.path),
       },
       {
+        name: 'fused (docs 0.5)',
+        populations: ['identifier', 'intent', 'doc'],
+        answer: async (q) =>
+          (await retriever.search(q.text, { limit: DEPTH, weights: { docs: 0.5 } })).items.map(
+            (hit) => hit.path,
+          ),
+      },
+      {
+        name: 'fused (docs 0.25)',
+        populations: ['identifier', 'intent', 'doc'],
+        answer: async (q) =>
+          (await retriever.search(q.text, { limit: DEPTH, weights: { docs: 0.25 } })).items.map(
+            (hit) => hit.path,
+          ),
+      },
+      {
+        name: 'dense (docs)',
+        populations: ['doc'],
+        answer: async (q) =>
+          (await retriever.retrieve('docs', q.text, { limit: DEPTH })).items.map(
+            (hit) => hit.card.source.path,
+          ),
+      },
+      {
         name: 'fused (no docs)',
-        populations: ['identifier', 'intent', 'exact-name'],
+        populations: ['identifier', 'intent', 'exact-name', 'doc'],
         answer: async (q) =>
           (await retriever.search(q.text, { limit: DEPTH, channels: ['symbols'] })).items.map(
             (hit) => hit.path,
@@ -189,7 +232,7 @@ async function main(): Promise<void> {
       }
     }
 
-    const counts = (['identifier', 'intent', 'exact-name'] as const).map(
+    const counts = (['identifier', 'intent', 'exact-name', 'doc'] as const).map(
       (p) => `${p} ${queries.filter((q) => q.population === p).length}`,
     );
     process.stdout.write(

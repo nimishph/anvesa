@@ -1,21 +1,29 @@
+import { existsSync, readdirSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { isAbsolute, resolve } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { InvalidArgumentError, type PageRequest } from '@sutras/code-lens-core';
 import {
+  checkMapping,
   doctorModels,
   type Embedder,
   inputFile,
   installGrammarFor,
   installModel,
   listGrammars,
+  listMappings,
   listModels,
   loadProjectConfig,
   ModelCache,
+  mappingStoreFor,
   modelsDirectory,
   openProjectEmbedder,
   Retriever,
+  trainLanguage,
+  verifyMappings,
+  verifyModel,
 } from '@sutras/code-lens-retriever';
 import type { Environment } from './environment.ts';
+import { CommandFailedError } from './errors.ts';
 import { integerOption, type Parsed } from './options.ts';
 import * as show from './render.ts';
 
@@ -43,11 +51,13 @@ export function modelCache(ctx: Context): ModelCache {
 /** Open the project, with an embedder if a model is installed and one is wanted. */
 export async function openSession(
   ctx: Context,
-  options: { readonly embed: boolean },
+  options: { readonly embed: boolean; readonly monolith?: boolean },
 ): Promise<Session> {
   const projectRoot = root(ctx);
   const loaded = await loadProjectConfig(projectRoot);
-  const config = ctx.parsed.values.model ? { ...loaded, model: ctx.parsed.values.model } : loaded;
+  const named = ctx.parsed.values.model ? { ...loaded, model: ctx.parsed.values.model } : loaded;
+  // Working out what the fragments should be needs the index as it is, in one piece.
+  const config = options.monolith ? { ...named, fragments: false } : named;
   let embedder: (Embedder & { dispose(): Promise<void> }) | undefined;
   let embedderReason = 'not needed';
   if (options.embed && ctx.environment.embedder) {
@@ -105,7 +115,7 @@ function pageRequest(ctx: Context): PageRequest {
 /** Run a command against an open project, and close it whatever happens. */
 async function withProject<T>(
   ctx: Context,
-  options: { readonly embed: boolean },
+  options: { readonly embed: boolean; readonly monolith?: boolean },
   run: (session: Session) => Promise<T>,
 ): Promise<T> {
   const session = await openSession(ctx, options);
@@ -114,6 +124,21 @@ async function withProject<T>(
   } finally {
     await session.close();
   }
+}
+
+/** `--weight docs=0.25` (repeatable) as a lane-to-weight map. */
+function parseWeights(entries: readonly string[] | undefined): Record<string, number> | undefined {
+  if (!entries || entries.length === 0) return undefined;
+  const weights: Record<string, number> = {};
+  for (const entry of entries) {
+    const at = entry.lastIndexOf('=');
+    const weight = at === -1 ? Number.NaN : Number(entry.slice(at + 1));
+    if (at < 1 || !Number.isFinite(weight) || weight < 0) {
+      throw new InvalidArgumentError('--weight', 'lane=number, for example docs=0.25', entry);
+    }
+    weights[entry.slice(0, at)] = weight;
+  }
+  return weights;
 }
 
 export type Handler = (ctx: Context) => Promise<void>;
@@ -148,9 +173,13 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
   search: (ctx) =>
     withProject(ctx, { embed: true }, async ({ retriever }) => {
       const channels = ctx.parsed.values.channel;
+      const exclude = ctx.parsed.values.exclude;
+      const weights = parseWeights(ctx.parsed.values.weight);
       const page = await retriever.search(rest(ctx, 0) || need(ctx, 0, 'query'), {
         ...pageRequest(ctx),
         ...(channels ? { channels } : {}),
+        ...(exclude ? { exclude } : {}),
+        ...(weights ? { weights } : {}),
       });
       emit(ctx, page, () => show.renderSearch(page));
     }),
@@ -372,6 +401,265 @@ sha256 ${result.sha256}${result.matchedExistingLock ? ' (matches the lockfile)' 
   }
 }
 
+// --- redteam ---------------------------------------------------------------------------------
+
+export async function redteamCommand(ctx: Context): Promise<void> {
+  const [sub] = ctx.parsed.positionals;
+  switch (sub) {
+    case 'list':
+    case 'verify':
+      // Opening the project is what checks the policy: its rules, its sources and every fixture.
+      return withProject(ctx, { embed: false }, async ({ retriever }) => {
+        const rules = await retriever.redTeamRules();
+        if (sub === 'verify') {
+          const custom = rules.filter((rule) => rule.source !== 'built in');
+          emit(
+            ctx,
+            { ok: true, rules: rules.length, custom: custom.length },
+            () =>
+              `${rules.length} rules in force, ${custom.length} added by policy, every fixture holds\n`,
+          );
+          return;
+        }
+        emit(ctx, rules, () => show.renderRedTeamRules(rules));
+      });
+    case 'scan':
+      return withProject(ctx, { embed: true }, async ({ retriever }) => {
+        const scan = await retriever.redTeamScan();
+        emit(ctx, scan, () => show.renderRedTeamScan(scan));
+        if (scan.quarantined.length > 0) {
+          throw new CommandFailedError(
+            'redteam scan',
+            `${scan.quarantined.length} cards of this project would be quarantined`,
+            {
+              hint: 'If they are not attacks, loosen the rule that fired in .code-lens/redteam.json.',
+            },
+          );
+        }
+      });
+    default:
+      throw new InvalidArgumentError('redteam', 'list, verify or scan', sub);
+  }
+}
+
+// --- fragments -------------------------------------------------------------------------------
+
+export async function fragmentsCommand(ctx: Context): Promise<void> {
+  const [sub] = ctx.parsed.positionals;
+  const manifestPath = join(root(ctx), '.code-lens', 'fragments.json');
+  const tier = ctx.parsed.values.tier ?? 'path';
+  if (tier !== 'path' && tier !== 'clusters') {
+    throw new InvalidArgumentError('--tier', 'path or clusters', tier);
+  }
+  const resolutionText = ctx.parsed.values.resolution;
+  const resolution = resolutionText === undefined ? undefined : Number(resolutionText);
+  if (resolution !== undefined && !(Number.isFinite(resolution) && resolution > 0)) {
+    throw new InvalidArgumentError('--resolution', 'a number above 0', resolutionText);
+  }
+  const labels = ctx.parsed.values.labels
+    ? (JSON.parse(
+        await readFile(resolve(ctx.environment.cwd, ctx.parsed.values.labels), 'utf8'),
+      ) as Record<string, string>)
+    : undefined;
+  // Without a manifest a project that asks for shards cannot be opened as shards, but it can be
+  // opened as one index to have one proposed.
+  const shardsDirectory = join(root(ctx), '.code-lens', 'shards');
+  const shardsBuilt =
+    existsSync(shardsDirectory) &&
+    readdirSync(shardsDirectory).some((name) => name.endsWith('.db') && name !== '_meta.db');
+  // A proposal is made from the index, wherever it is: the shards once they hold it, else the
+  // single database (which is also all there is when the manifest does not exist yet).
+  const needsMonolith = !existsSync(manifestPath) || !shardsBuilt;
+
+  switch (sub) {
+    case 'status':
+      return withProject(ctx, { embed: false }, async ({ retriever }) => {
+        const status = await retriever.fragmentStatus();
+        emit(ctx, status, () => show.renderFragmentStatus(status));
+      });
+    case 'propose':
+      return withProject(ctx, { embed: false, monolith: needsMonolith }, async ({ retriever }) => {
+        const manifest = await retriever.proposeFragments({
+          tier,
+          ...(resolution === undefined ? {} : { resolution }),
+          ...(labels ? { labels } : {}),
+        });
+        let written: string | undefined;
+        if (ctx.parsed.values.write) {
+          if (existsSync(manifestPath) && !ctx.parsed.values.force) {
+            throw new CommandFailedError(
+              'fragments propose',
+              `${manifestPath} already exists, and it is what every machine follows`,
+              { hint: 'Review the proposal, then pass --force to replace it.' },
+            );
+          }
+          written = await retriever.saveFragments(manifest);
+        }
+        emit(ctx, { manifest, written }, () => show.renderProposal(manifest, written));
+      });
+    case 'enable':
+      return withProject(ctx, { embed: false, monolith: needsMonolith }, async ({ retriever }) => {
+        let written: string | undefined;
+        if (!existsSync(manifestPath)) {
+          const manifest = await retriever.proposeFragments({
+            tier,
+            ...(resolution === undefined ? {} : { resolution }),
+            ...(labels ? { labels } : {}),
+          });
+          written = await retriever.saveFragments(manifest);
+        }
+        await retriever.setFragments(true);
+        emit(
+          ctx,
+          { enabled: true, written },
+          () =>
+            `${written ? `wrote ${written}\n` : 'kept the existing manifest\n'}sharded indexing is on. Run: code-lens index (this builds the shards; the old index.db is no longer read)\n`,
+        );
+      });
+    case 'disable':
+      return withProject(ctx, { embed: false, monolith: true }, async ({ retriever }) => {
+        await retriever.setFragments(false);
+        emit(
+          ctx,
+          { enabled: false },
+          () => 'sharded indexing is off. Run: code-lens index --force\n',
+        );
+      });
+    case 'settle':
+      return withProject(ctx, { embed: false }, async ({ retriever }) => {
+        const settled = await retriever.settleFragments();
+        emit(ctx, settled ?? { enabled: false }, () =>
+          settled
+            ? `${settled.movedFiles} files and ${settled.movedSources} embedded sources forgotten where they were, to be indexed where they belong; ${settled.removedShards.length} orphan shards removed\n`
+            : 'sharded indexing is off\n',
+        );
+      });
+    default:
+      throw new InvalidArgumentError(
+        'fragments',
+        'status, propose, enable, disable or settle',
+        sub,
+      );
+  }
+}
+
+// --- mapping ---------------------------------------------------------------------------------
+
+export async function mappingCommand(ctx: Context): Promise<void> {
+  const [sub, ...names] = ctx.parsed.positionals;
+  const inner: Context = { ...ctx, parsed: { ...ctx.parsed, positionals: names } };
+  const host = ctx.environment.grammars ?? {};
+  const tier = ctx.parsed.values.user ? 'user' : 'project';
+  const store = () => mappingStoreFor(root(ctx), host);
+  switch (sub) {
+    case 'list': {
+      const listed = await listMappings(root(ctx), host);
+      emit(ctx, listed, () => show.renderMappings(listed));
+      return;
+    }
+    case 'show': {
+      const language = need(inner, 0, 'language');
+      const found = (await listMappings(root(ctx), host))
+        .filter((entry) => entry.languages.includes(language))
+        .at(-1);
+      if (!found) {
+        throw new InvalidArgumentError(
+          'language',
+          `one of ${[...new Set((await listMappings(root(ctx), host)).flatMap((entry) => entry.languages))].join(', ')}`,
+          language,
+        );
+      }
+      // The mapping itself, as it would be kept in a file.
+      ctx.environment.stdout(`${JSON.stringify(found.mapping, null, 2)}\n`);
+      return;
+    }
+    case 'train': {
+      const language = need(inner, 0, 'language');
+      const samples = ctx.parsed.values.samples;
+      if (!samples || samples.length === 0) {
+        throw new InvalidArgumentError(
+          '--samples',
+          'a file or folder of code to learn from',
+          undefined,
+        );
+      }
+      const minShare = ctx.parsed.values['min-share'];
+      const result = await trainLanguage(
+        root(ctx),
+        {
+          language,
+          samples: samples.map((sample) => resolve(ctx.environment.cwd, sample)),
+          ...(ctx.parsed.values.name ? { name: ctx.parsed.values.name } : {}),
+          ...(ctx.parsed.values.user ? { user: true } : {}),
+          ...(ctx.parsed.values['dry-run'] ? { dryRun: true } : {}),
+          ...(ctx.parsed.values.force ? { force: true } : {}),
+          ...(minShare === undefined ? {} : { minShare: Number(minShare) }),
+        },
+        host,
+      );
+      emit(ctx, result, () => show.renderTraining(result));
+      if (result.refused !== undefined && !ctx.parsed.values['dry-run']) {
+        throw new CommandFailedError('mapping train', result.refused);
+      }
+      return;
+    }
+    case 'fork': {
+      const language = need(inner, 0, 'language');
+      const forked = await store().fork(language, {
+        tier,
+        ...(ctx.parsed.values.name ? { name: ctx.parsed.values.name } : {}),
+      });
+      emit(
+        ctx,
+        forked,
+        () =>
+          `forked ${forked.mapping.name} for ${forked.languages.join(', ')} to ${forked.path}\nedit it, then: code-lens mapping lock ${forked.mapping.name}${ctx.parsed.values.user ? ' --user' : ''}\n`,
+      );
+      return;
+    }
+    case 'lock': {
+      const locked = await store().lock(need(inner, 0, 'name'), tier);
+      emit(ctx, locked, () => `recorded ${locked.mapping.name} (${locked.sha256})\n`);
+      return;
+    }
+    case 'remove': {
+      const removed = await store().remove(need(inner, 0, 'name'), tier);
+      emit(ctx, { removed }, () => (removed ? 'removed\n' : 'nothing to remove\n'));
+      return;
+    }
+    case 'verify': {
+      const checks = await verifyMappings(root(ctx), host);
+      emit(ctx, checks, () => show.renderMappingChecks(checks));
+      const bad = checks.filter((check) => check.status !== 'ok');
+      if (bad.length > 0) {
+        throw new CommandFailedError(
+          'mapping verify',
+          bad.map((check) => `${check.name} is ${check.status}`).join(', '),
+          { hint: 'Record a change that was meant with `code-lens mapping lock <name>`.' },
+        );
+      }
+      return;
+    }
+    case 'check': {
+      const checked = await checkMapping(root(ctx), need(inner, 0, 'name'), tier, host);
+      emit(ctx, checked, () => show.renderGoldenCheck(checked));
+      if (checked.differences.length > 0) {
+        throw new CommandFailedError(
+          'mapping check',
+          `${checked.differences.length} samples no longer come out as recorded`,
+        );
+      }
+      return;
+    }
+    default:
+      throw new InvalidArgumentError(
+        'mapping',
+        'list, show, train, fork, lock, remove, verify or check',
+        sub,
+      );
+  }
+}
+
 // --- model -----------------------------------------------------------------------------------
 
 export async function modelCommand(ctx: Context): Promise<void> {
@@ -402,9 +690,17 @@ export async function modelCommand(ctx: Context): Promise<void> {
           undefined,
         );
       }
+      const pooling = ctx.parsed.values.pooling;
+      if (pooling !== undefined && pooling !== 'mean' && pooling !== 'cls') {
+        throw new InvalidArgumentError('--pooling', 'mean or cls', pooling);
+      }
+      const maxTokens = integerOption('max-tokens', ctx.parsed.values['max-tokens']);
       const installed = await installModel(cache, id, {
         ...(from ? { from } : {}),
         ...(ctx.parsed.values.download ? { download: true } : {}),
+        ...(pooling ? { pooling } : {}),
+        ...(maxTokens === undefined ? {} : { maxTokens }),
+        ...(ctx.parsed.values.force ? { replace: true } : {}),
       });
       emit(
         ctx,
@@ -414,7 +710,13 @@ export async function modelCommand(ctx: Context): Promise<void> {
       );
       return;
     }
+    case 'verify': {
+      const id = need(inner, 0, 'model');
+      const verified = await verifyModel(cache, id);
+      emit(ctx, verified, () => `${id}: every file matches its recorded checksum\n`);
+      return;
+    }
     default:
-      throw new InvalidArgumentError('model', 'list, install or doctor', sub);
+      throw new InvalidArgumentError('model', 'list, install, verify or doctor', sub);
   }
 }

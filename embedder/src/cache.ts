@@ -12,7 +12,7 @@ import {
   ModelUnavailableError,
   NetworkForbiddenError,
 } from './errors.ts';
-import type { ModelFileSpec, ModelSpec } from './models.ts';
+import type { ModelFileSpec, ModelSpec, Pooling } from './models.ts';
 
 /** A model on disk, ready to load. */
 export interface InstalledModel {
@@ -30,6 +30,45 @@ interface Manifest {
 const MODEL_FILE = 'model.onnx';
 const TOKENIZER_FILE = 'tokenizer.json';
 const MANIFEST_FILE = 'manifest.json';
+const CUSTOM_FILE = 'custom.json';
+
+/**
+ * What is remembered of a model the user brought: the checksums of its files at the first install
+ * (trust on first use: any later change to them is an integrity failure, not a silent update) and
+ * what the loader must be told about it.
+ */
+export interface CustomRecord {
+  readonly id: string;
+  readonly dimensions: number;
+  readonly maxTokens: number;
+  readonly pooling: Pooling;
+  /** Where it was installed from, for a person to read. */
+  readonly source: string;
+  readonly installedAt: string;
+  readonly model: { readonly bytes: number; readonly sha256: string };
+  readonly tokenizer: { readonly bytes: number; readonly sha256: string };
+}
+
+export interface CustomInstall {
+  readonly id: string;
+  readonly maxTokens: number;
+  readonly pooling: Pooling;
+  /** Where it came from, for a person to read. */
+  readonly source: string;
+  /** The model and tokenizer files to copy in. */
+  readonly files: { readonly model: string; readonly tokenizer: string };
+  /**
+   * Runs on the copies before anything is committed, and gives the number of dimensions the model
+   * really produces. A model that fails here is not installed and nothing existing is touched.
+   */
+  readonly validate: (staged: {
+    readonly modelPath: string;
+    readonly tokenizerPath: string;
+  }) => Promise<number>;
+  /** Accept files that differ from what an earlier install of this id recorded. */
+  readonly replace?: boolean;
+  readonly deadline?: Deadline;
+}
 
 /**
  * Where models live: `CODE_LENS_MODELS`, else `$CODE_LENS_HOME/models`, else `~/.code-lens/models`.
@@ -228,6 +267,95 @@ export class ModelCache {
     });
   }
 
+  /**
+   * Install a model the user brought. It is copied and hashed, checked by `validate`, and pinned by
+   * those hashes: a later install of the same id with other bytes is refused unless `replace` says
+   * the change is meant. Nothing is committed unless all of that succeeds.
+   */
+  async installCustom(install: CustomInstall): Promise<ModelSpec> {
+    const existing = await this.#customRecord(this.directoryOf(install.id));
+    await mkdir(this.root, { recursive: true });
+    const staging = join(this.root, `.installing-${install.id}-${process.pid}-${Date.now()}`);
+    await mkdir(staging, { recursive: true });
+    try {
+      const model = await copyHashed(install.files.model, join(staging, MODEL_FILE), install);
+      const tokenizer = await copyHashed(
+        install.files.tokenizer,
+        join(staging, TOKENIZER_FILE),
+        install,
+      );
+      if (existing && !install.replace) {
+        for (const [name, now, before] of [
+          [MODEL_FILE, model, existing.model],
+          [TOKENIZER_FILE, tokenizer, existing.tokenizer],
+        ] as const) {
+          if (now.sha256 !== before.sha256) {
+            throw new ModelIntegrityError(install.id, name, before.sha256, now.sha256, {
+              hint: 'These are not the files installed before. If the change is meant, install again with --force.',
+            });
+          }
+        }
+      }
+      const dimensions = await install.validate({
+        modelPath: join(staging, MODEL_FILE),
+        tokenizerPath: join(staging, TOKENIZER_FILE),
+      });
+      const record: CustomRecord = {
+        id: install.id,
+        dimensions,
+        maxTokens: install.maxTokens,
+        pooling: install.pooling,
+        source: install.source,
+        installedAt: existing?.installedAt ?? new Date().toISOString(),
+        model,
+        tokenizer,
+      };
+      const manifest: Manifest = {
+        id: install.id,
+        files: [
+          { name: MODEL_FILE, ...model },
+          { name: TOKENIZER_FILE, ...tokenizer },
+        ],
+      };
+      await writeFile(join(staging, MANIFEST_FILE), JSON.stringify(manifest, null, 2));
+      await writeFile(join(staging, CUSTOM_FILE), JSON.stringify(record, null, 2));
+      const destination = this.directoryOf(install.id);
+      await rm(destination, { recursive: true, force: true });
+      await rename(staging, destination);
+      return customSpec(record);
+    } catch (failure) {
+      await rm(staging, { recursive: true, force: true });
+      throw failure;
+    }
+  }
+
+  /** A model the user brought, if one is installed under this id. */
+  async findCustom(id: string): Promise<ModelSpec | undefined> {
+    const record = await this.#customRecord(this.directoryOf(id));
+    return record ? customSpec(record) : undefined;
+  }
+
+  /** Every model the user brought. */
+  async customModels(): Promise<readonly ModelSpec[]> {
+    const specs: ModelSpec[] = [];
+    for (const id of await this.list()) {
+      const found = await this.findCustom(id);
+      if (found) specs.push(found);
+    }
+    return specs;
+  }
+
+  async #customRecord(directory: string): Promise<CustomRecord | undefined> {
+    const path = join(directory, CUSTOM_FILE);
+    if (!existsSync(path)) return undefined;
+    try {
+      return JSON.parse(await readFile(path, 'utf8')) as CustomRecord;
+    } catch {
+      // A record that cannot be read means the model cannot be trusted: as good as absent.
+      return undefined;
+    }
+  }
+
   async list(): Promise<readonly string[]> {
     if (!existsSync(this.root)) return [];
     const entries = await readdir(this.root, { withFileTypes: true });
@@ -328,4 +456,51 @@ async function hashFile(path: string, deadline?: Deadline): Promise<string> {
     hash.update(chunk as Buffer);
   }
   return hash.digest('hex');
+}
+
+/** The spec of a custom model: the same shape as a built-in one, pinned by the first install. */
+function customSpec(record: CustomRecord): ModelSpec {
+  return {
+    id: record.id,
+    tier: undefined,
+    repo: `local:${record.source}`,
+    model: { path: MODEL_FILE, ...record.model },
+    tokenizer: { path: TOKENIZER_FILE, ...record.tokenizer },
+    dimensions: record.dimensions,
+    maxTokens: record.maxTokens,
+    pooling: record.pooling,
+    paramsM: undefined,
+    license: 'not recorded',
+    notes: `Installed from ${record.source} on ${record.installedAt}.`,
+  };
+}
+
+/** Copy a file, hashing the bytes as they pass, and report what was written. */
+async function copyHashed(
+  from: string,
+  to: string,
+  install: CustomInstall,
+): Promise<{ bytes: number; sha256: string }> {
+  const hash = createHash('sha256');
+  let bytes = 0;
+  try {
+    await pipeline(
+      createReadStream(from),
+      async function* (chunks: AsyncIterable<Buffer>) {
+        for await (const chunk of chunks) {
+          install.deadline?.throwIfExpired(`install ${install.id}`);
+          hash.update(chunk);
+          bytes += chunk.length;
+          yield chunk;
+        }
+      },
+      createWriteStream(to),
+    );
+  } catch (failure) {
+    install.deadline?.throwIfExpired(`install ${install.id}`);
+    throw new ModelInstallError(install.id, `cannot copy ${from}`, {
+      cause: toCodeLensError(failure, `copy ${from}`),
+    });
+  }
+  return { bytes, sha256: hash.digest('hex') };
 }

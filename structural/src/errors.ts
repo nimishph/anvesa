@@ -109,3 +109,53 @@ export class QuerySpecError extends StructuralSubsystemError {
     });
   }
 }
+
+/** A mapping could not be learned from the samples given. */
+export class MappingTrainingError extends StructuralSubsystemError {
+  readonly code = 'STRUCTURAL_MAPPING_TRAINING';
+
+  constructor(language: string, problem: string, init: ErrorInit = {}) {
+    super(`Cannot learn a mapping for "${language}": ${problem}`, {
+      ...init,
+      context: { language, problem, ...init.context },
+    });
+  }
+}
+
+/** A stored mapping is not the file that was recorded for it: it was changed, or it is gone. */
+export class MappingIntegrityError extends StructuralSubsystemError {
+  readonly code = 'STRUCTURAL_MAPPING_INTEGRITY';
+
+  constructor(
+    mapping: string,
+    path: string,
+    expectedSha256: string | undefined,
+    actualSha256: string | undefined,
+    init: ErrorInit = {},
+  ) {
+    super(
+      expectedSha256 === undefined
+        ? `Mapping "${mapping}" at ${path} is not recorded in the lockfile`
+        : actualSha256 === undefined
+          ? `Mapping "${mapping}" is recorded in the lockfile but ${path} is missing`
+          : `Mapping "${mapping}" at ${path} differs from the recorded checksum`,
+      {
+        hint: 'If the change is meant, record it again with `code-lens mapping lock`. Otherwise restore the file.',
+        ...init,
+        context: { mapping, path, expectedSha256, actualSha256, ...init.context },
+      },
+    );
+  }
+}
+
+/** The mapping lockfile cannot be read or written. */
+export class MappingLockError extends StructuralSubsystemError {
+  readonly code = 'STRUCTURAL_MAPPING_LOCK';
+
+  constructor(path: string, problem: string, init: ErrorInit = {}) {
+    super(`Mapping lockfile ${path} is unusable: ${problem}`, {
+      ...init,
+      context: { path, problem, ...init.context },
+    });
+  }
+}

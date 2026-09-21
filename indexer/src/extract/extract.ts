@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { type Deadline, InvariantViolationError } from '@sutras/code-lens-core';
 import {
   ATTR,
@@ -5,6 +6,7 @@ import {
   outlineSymbols,
   type StructuralEngine,
   serializeWExpr,
+  WEXPR_FORMAT_VERSION,
 } from '@sutras/code-lens-structural';
 import type { SyntaxNode } from '@sutras/code-lens-syntax';
 import { CallCollector } from './calls.ts';
@@ -29,6 +31,12 @@ export interface Extracted {
   readonly wexpr: string;
 }
 
+/**
+ * Bump when what is extracted from the same outline changes (a new fact, a different rule), so
+ * indexes built before it are extracted again instead of quietly lacking it.
+ */
+const FACTS_VERSION = 2;
+
 /** Offsets locate nodes in the source; a cached outline does not need them. */
 const CACHE_OMITS: ReadonlySet<string> = new Set([ATTR.startIndex, ATTR.endIndex]);
 
@@ -47,9 +55,27 @@ interface PlacedSymbol extends Span {
  */
 export class FactExtractor {
   readonly #engine: StructuralEngine;
+  #signature: string | undefined;
 
   constructor(engine: StructuralEngine) {
     this.#engine = engine;
+  }
+
+  /**
+   * What the facts of a file depend on besides the file: how facts are read from an outline, the
+   * outline format, and every mapping in use (a project's or a user's included). When it changes,
+   * facts stored under the old one are out of date even though no file changed.
+   */
+  get signature(): string {
+    if (this.#signature === undefined) {
+      const hash = createHash('sha256');
+      hash.update(`facts=${FACTS_VERSION};wexpr=${WEXPR_FORMAT_VERSION}`);
+      for (const language of [...this.#engine.mappings.languages()].sort()) {
+        hash.update(`\n${language}=${JSON.stringify(this.#engine.mappings.mappingFor(language))}`);
+      }
+      this.#signature = hash.digest('hex');
+    }
+    return this.#signature;
   }
 
   async extract(path: string, source: string, options: ExtractOptions = {}): Promise<FileFacts> {
@@ -164,6 +190,7 @@ function symbolFacts(path: string, placed: readonly PlacedSymbol[]): SymbolFact[
       signature: symbol.signature,
       ...(symbol.params === undefined ? {} : { params: symbol.params }),
       doc: symbol.doc,
+      ...(symbol.aliasOf === undefined ? {} : { aliasOf: symbol.aliasOf }),
     });
     open.push(current);
   }
