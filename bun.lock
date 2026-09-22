@@ -13,7 +13,7 @@
     },
     "cli": {
       "name": "@cntxt-labs/code-lens",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "bin": {
         "code-lens": "bin/code-lens.cjs",
       },
@@ -29,10 +29,10 @@
         "zod": "^4.0.0",
       },
       "optionalDependencies": {
-        "@cntxt-labs/code-lens-darwin-arm64": "0.1.0",
-        "@cntxt-labs/code-lens-linux-arm64": "0.1.0",
-        "@cntxt-labs/code-lens-linux-x64": "0.1.0",
-        "@cntxt-labs/code-lens-win32-x64": "0.1.0",
+        "@cntxt-labs/code-lens-darwin-arm64": "0.1.1",
+        "@cntxt-labs/code-lens-linux-arm64": "0.1.1",
+        "@cntxt-labs/code-lens-linux-x64": "0.1.1",
+        "@cntxt-labs/code-lens-win32-x64": "0.1.1",
       },
     },
     "core": {
