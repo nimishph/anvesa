@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
-import { isAbsolute, join, resolve } from 'node:path';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { InvalidArgumentError, type PageRequest } from '@cntxt-labs/code-lens-core';
 import {
   checkMapping,
@@ -17,6 +17,7 @@ import {
   mappingStoreFor,
   modelsDirectory,
   openProjectEmbedder,
+  PROJECT_CONFIG_PATH,
   Retriever,
   trainLanguage,
   verifyMappings,
@@ -141,9 +142,70 @@ function parseWeights(entries: readonly string[] | undefined): Record<string, nu
   return weights;
 }
 
+interface ScaffoldFile {
+  readonly path: string;
+  readonly content: string;
+}
+
+/** `init`'s starter files: valid, minimal, and safe to run `code-lens index` against as-is. */
+function scaffoldFiles(): readonly ScaffoldFile[] {
+  return [
+    {
+      path: '.code-lensignore',
+      content:
+        '# code-lens reads this like .gitignore, at every directory level, alongside .gitignore\n' +
+        '# itself. node_modules, .code-lens, .sutra and __pycache__ are already skipped by\n' +
+        "# default; add patterns below for anything else this project doesn't want indexed.\n",
+    },
+    {
+      // Hardcoded rather than imported: cli may depend on retriever but not indexer directly
+      // (see .dependency-cruiser.cjs), and this is the one file whose schema lives there.
+      path: '.code-lens/workspace.json',
+      content: `${JSON.stringify(
+        {
+          version: 1,
+          packages: [],
+          discover: true,
+          exclude: [],
+          nestedRepos: 'include',
+          followSymlinks: false,
+        },
+        null,
+        2,
+      )}\n`,
+    },
+    {
+      path: PROJECT_CONFIG_PATH,
+      content: `${JSON.stringify({ channels: {} }, null, 2)}\n`,
+    },
+  ];
+}
+
 export type Handler = (ctx: Context) => Promise<void>;
 
 export const COMMANDS: Readonly<Record<string, Handler>> = {
+  init: async (ctx) => {
+    const projectRoot = root(ctx);
+    const created: string[] = [];
+    const kept: string[] = [];
+    for (const file of scaffoldFiles()) {
+      const absolute = join(projectRoot, file.path);
+      if (existsSync(absolute) && !ctx.parsed.values.force) {
+        kept.push(file.path);
+        continue;
+      }
+      await mkdir(dirname(absolute), { recursive: true });
+      await writeFile(absolute, file.content, 'utf8');
+      created.push(file.path);
+    }
+    emit(
+      ctx,
+      { created, kept },
+      () =>
+        `${created.map((f) => `created ${f}`).join('\n')}${created.length ? '\n' : ''}${kept.map((f) => `kept ${f} (already exists; use --force to overwrite)`).join('\n')}${kept.length ? '\n' : ''}`,
+    );
+  },
+
   index: (ctx) =>
     withProject(ctx, { embed: true }, async ({ retriever, embedderReason }) => {
       if (!retriever.embedder)

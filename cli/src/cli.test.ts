@@ -117,6 +117,45 @@ describe('command line', () => {
     expect(ran.out).toMatch(/^code-lens \d+\.\d+\.\d+/);
   });
 
+  test('init scaffolds the ignore file and both configs, keeps them on a second run, and --force overwrites', async () => {
+    const root = makeProject();
+    const first = await cli(root, 'init', '--json');
+    expect(first.code).toBe(0);
+    expect(json(first)).toEqual({
+      created: ['.code-lensignore', '.code-lens/workspace.json', '.code-lens/config.json'],
+      kept: [],
+    });
+    expect(readFileSync(join(root, '.code-lensignore'), 'utf8')).toContain('node_modules');
+    expect(JSON.parse(readFileSync(join(root, '.code-lens/workspace.json'), 'utf8'))).toEqual({
+      version: 1,
+      packages: [],
+      discover: true,
+      exclude: [],
+      nestedRepos: 'include',
+      followSymlinks: false,
+    });
+    expect(JSON.parse(readFileSync(join(root, '.code-lens/config.json'), 'utf8'))).toEqual({
+      channels: {},
+    });
+    // A scaffolded workspace.json is what index actually reads without erroring.
+    expect((await cli(root, 'index')).code).toBe(0);
+
+    writeFileSync(join(root, '.code-lensignore'), '# edited by hand\n');
+    const second = await cli(root, 'init', '--json');
+    expect(json(second)).toEqual({
+      created: [],
+      kept: ['.code-lensignore', '.code-lens/workspace.json', '.code-lens/config.json'],
+    });
+    expect(readFileSync(join(root, '.code-lensignore'), 'utf8')).toBe('# edited by hand\n');
+
+    const forced = await cli(root, 'init', '--force', '--json');
+    expect(json(forced)).toEqual({
+      created: ['.code-lensignore', '.code-lens/workspace.json', '.code-lens/config.json'],
+      kept: [],
+    });
+    expect(readFileSync(join(root, '.code-lensignore'), 'utf8')).toContain('node_modules');
+  });
+
   test('an unknown command or option is a usage error that says what was wrong', async () => {
     const root = makeProject();
     const unknown = await cli(root, 'frobnicate');

@@ -18,6 +18,8 @@ export const HELP = `code-lens — dense and structural code retrieval
 
 usage: code-lens <command> [arguments] [options]
 
+  init                      scaffold .code-lensignore, .code-lens/workspace.json, .code-lens/config.json
+                            (--force to overwrite files that already exist)
   index                     bring the index up to date (--force, --retry-quarantined, --scope <path>)
   status                    what is indexed, and by which channels and model
   search <question>         fused search over every channel and, for WQL, the structure
