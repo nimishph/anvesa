@@ -1,6 +1,6 @@
 {
   "name": "@cntxt-labs/code-lens",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Find code by meaning and by structure, from the command line or over MCP. Works offline.",
   "keywords": [
     "code-search",
@@ -39,10 +39,10 @@
     "node": ">=18"
   },
   "optionalDependencies": {
-    "@cntxt-labs/code-lens-linux-x64": "0.1.0",
-    "@cntxt-labs/code-lens-linux-arm64": "0.1.0",
-    "@cntxt-labs/code-lens-darwin-arm64": "0.1.0",
-    "@cntxt-labs/code-lens-win32-x64": "0.1.0"
+    "@cntxt-labs/code-lens-linux-x64": "0.1.1",
+    "@cntxt-labs/code-lens-linux-arm64": "0.1.1",
+    "@cntxt-labs/code-lens-darwin-arm64": "0.1.1",
+    "@cntxt-labs/code-lens-win32-x64": "0.1.1"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
