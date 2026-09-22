@@ -6,6 +6,7 @@ import {
   parseWExpr,
   StructuralIndex,
   WEXPR_FORMAT_VERSION,
+  type WqlQuery,
 } from '@cntxt-labs/code-lens-structural';
 
 /** What the structural lane knows about its own coverage. */
@@ -70,7 +71,7 @@ export class StructuralLane {
     return { files: this.#index.fileCount, missing: this.#missing };
   }
 
-  query(wql: string, options: IndexQueryOptions = {}): IndexQueryResult {
+  query(wql: string | WqlQuery, options: IndexQueryOptions = {}): IndexQueryResult {
     return this.#index.query(wql, options);
   }
 }

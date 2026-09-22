@@ -47,6 +47,13 @@ export const ATTR = {
 } as const;
 
 /**
+ * Every attribute name a query predicate can legitimately test: what the encoder writes, plus
+ * `path`, which is answered from context even on the nodes that do not carry it themselves (see
+ * `wql.ts`).
+ */
+export const KNOWN_ATTRIBUTES: ReadonlySet<string> = new Set([...Object.values(ATTR), 'path']);
+
+/**
  * Hex characters kept from a SHA-256 digest when it is stored as an attribute: 64 bits. This is a
  * fixed format width, not a cap on data. Across the functions of a workspace (millions at most) a
  * 64-bit hash makes an accidental collision vanishingly unlikely, and the short form keeps stored
