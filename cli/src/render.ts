@@ -64,7 +64,8 @@ function place(result: {
 function renderResult(result: SearchResult, index: number): string {
   const found = result.foundBy.map((c) => `${c.lane}#${c.rank}`).join(' ');
   const signature = result.card?.attrs.signature;
-  const head = `${String(index + 1).padStart(2)}. ${result.title}${result.kind ? ` (${result.kind})` : ''}  ${place(result)}${signature ? `  ${signature}` : ''}  [${found}]`;
+  const best = result.bestScore === undefined ? '' : `  best ${result.bestScore.toFixed(3)}`;
+  const head = `${String(index + 1).padStart(2)}. ${result.title}${result.kind ? ` (${result.kind})` : ''}  ${place(result)}${signature ? `  ${signature}` : ''}  [${found}]${best}`;
   if (!result.card) return head;
   const fenced = fenceUntrusted(result.card.text, {
     source: result.card.source.path,

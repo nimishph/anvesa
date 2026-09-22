@@ -30,7 +30,20 @@ export interface Contribution {
 export interface Fused<T> {
   readonly key: string;
   readonly item: T;
+  /**
+   * Reciprocal rank fusion score: position across lanes, not similarity. Two unrelated queries
+   * can land the same top `score` if their best hit ranks first in as many lanes — it says "this
+   * beat the others in this search," never "this is a good match." Compare items within one
+   * result page with it; never compare it across queries, and never read it as a confidence level.
+   */
   readonly score: number;
+  /**
+   * The strongest real similarity any lane reported for this item (e.g. a dense channel's cosine
+   * score), or `undefined` when every lane that found it only ranks (structural has no such
+   * score). This is the number to check for "is this actually relevant," since `score` cannot
+   * answer that.
+   */
+  readonly bestScore: number | undefined;
   /** Which lanes found it and where: why it ranks where it does. */
   readonly foundBy: readonly Contribution[];
 }
@@ -53,11 +66,11 @@ export function fuse<T>(lanes: readonly Lane<T>[], k: number = DEFAULT_RRF_K): F
     });
   }
   return [...combined.entries()]
-    .map(([key, entry]) => ({ key, ...entry }))
+    .map(([key, entry]) => ({ key, ...entry, bestScore: bestRawScore(entry.foundBy) }))
     .sort(
       (a, b) =>
         b.score - a.score ||
-        bestRawScore(b.foundBy) - bestRawScore(a.foundBy) ||
+        (b.bestScore ?? Number.NEGATIVE_INFINITY) - (a.bestScore ?? Number.NEGATIVE_INFINITY) ||
         (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
     );
 }
@@ -66,9 +79,7 @@ export function fuse<T>(lanes: readonly Lane<T>[], k: number = DEFAULT_RRF_K): F
  * Rank alone cannot tell a strong top hit from a weak one: two lanes with a different number-one
  * tie. When they do, the one a lane scored higher wins, and only then the key, so order is stable.
  */
-function bestRawScore(found: readonly Contribution[]): number {
-  return Math.max(
-    Number.NEGATIVE_INFINITY,
-    ...found.map((entry) => entry.score ?? Number.NEGATIVE_INFINITY),
-  );
+function bestRawScore(found: readonly Contribution[]): number | undefined {
+  const scored = found.map((entry) => entry.score).filter((score) => score !== undefined);
+  return scored.length === 0 ? undefined : Math.max(...scored);
 }
