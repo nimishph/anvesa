@@ -156,6 +156,23 @@ describe('command line', () => {
     expect(readFileSync(join(root, '.code-lensignore'), 'utf8')).toContain('node_modules');
   });
 
+  test('index reports live progress on stderr, never on stdout', async () => {
+    const root = makeProject();
+    // Non-interactive (the default for a pipe or a log): a plain "linking" line, no \r rewriting.
+    const piped = await cliWith({ isTTY: false }, root, 'index', '--json');
+    expect(piped.code).toBe(0);
+    expect(piped.err).toContain('linking');
+    expect(piped.err).not.toContain('\r');
+    expect(() => JSON.parse(piped.out)).not.toThrow();
+
+    // A terminal: the running count is written in place with \r, ending in "— linking".
+    const tty = await cliWith({ isTTY: true }, root, 'index', '--force');
+    expect(tty.code).toBe(0);
+    expect(tty.err).toContain('\r');
+    expect(tty.err).toContain('indexing:');
+    expect(tty.err).toContain('— linking\n');
+  });
+
   test('an unknown command or option is a usage error that says what was wrong', async () => {
     const root = makeProject();
     const unknown = await cli(root, 'frobnicate');
