@@ -58,10 +58,13 @@ import {
   Workspace,
 } from '@cntxt-labs/code-lens-indexer';
 import {
+  KNOWN_ATTRIBUTES,
   looksLikeWql,
   type MappingRegistry,
+  parseWql,
   StructuralEngine,
   type WqlHit,
+  WqlUnknownNameError,
 } from '@cntxt-labs/code-lens-structural';
 import type { SyntaxRuntime } from '@cntxt-labs/code-lens-syntax';
 import { loadChannelModule } from './channel-module.ts';
@@ -421,7 +424,19 @@ export class Retriever {
   ): Promise<Page<WqlHit> & { readonly coverage: StructuralCoverage }> {
     await this.#requireIndexed();
     const coverage = await this.#structure.refresh();
-    const result = this.#structure.query(wql, {
+    const parsed = parseWql(wql);
+    const knownTags = this.engine.mappings.knownTags();
+    for (const step of parsed.steps) {
+      if (step.tag !== '*' && !knownTags.has(step.tag)) {
+        throw new WqlUnknownNameError(wql, 'tag', step.tag, [...knownTags]);
+      }
+      for (const predicate of step.predicates) {
+        if (!KNOWN_ATTRIBUTES.has(predicate.attr)) {
+          throw new WqlUnknownNameError(wql, 'attribute', predicate.attr, [...KNOWN_ATTRIBUTES]);
+        }
+      }
+    }
+    const result = this.#structure.query(parsed, {
       ...(options.limit === undefined ? {} : { limit: options.limit }),
       ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
       ...(options.deadline ? { deadline: options.deadline } : {}),

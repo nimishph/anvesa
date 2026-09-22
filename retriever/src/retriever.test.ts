@@ -370,6 +370,20 @@ describe('structural queries', () => {
     expect(page.coverage).toMatchObject({ files: 4, missing: [] });
   });
 
+  test('a tag or attribute no mapping declares is refused, not silently zero results', async () => {
+    const r = await indexed();
+    await expect(r.query('//bogus_tag[@name="x"]')).rejects.toThrow(
+      /tag "bogus_tag" is not one this project has/,
+    );
+    await expect(r.query('//function[@bogus_attr="x"]')).rejects.toThrow(
+      /attribute "bogus_attr" is not one this project has/,
+    );
+    // A real tag and attribute that simply match nothing is not an error.
+    await expect(r.query('//function[@name="doesNotExistXyz123"]')).resolves.toMatchObject({
+      items: [],
+    });
+  });
+
   test('follow the index when a file changes', async () => {
     const root = makeProject();
     const r = await retriever(root);

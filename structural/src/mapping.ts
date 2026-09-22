@@ -337,6 +337,15 @@ export class MappingRegistry {
   languages(): readonly string[] {
     return [...this.#byLanguage.keys()];
   }
+
+  /** Every structural tag any registered mapping declares, across every language. */
+  knownTags(): ReadonlySet<string> {
+    const tags = new Set<string>();
+    for (const compiled of this.#byName.values()) {
+      for (const tag of compiled.mapping.structuralTags) tags.add(tag);
+    }
+    return tags;
+  }
 }
 
 /** The mappings that ship with the package, already validated. */

@@ -57,6 +57,7 @@ export {
   attrOf,
   countNodes,
   DIGEST_HEX_LENGTH,
+  KNOWN_ATTRIBUTES,
   lineRange,
   makeNode,
   shortDigest,

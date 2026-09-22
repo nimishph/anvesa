@@ -149,4 +149,22 @@ describe('MappingRegistry', () => {
     a.register(validateMapping(valid()));
     expect(b.has('demo')).toBe(false);
   });
+
+  test('knownTags is the union of every registered mapping, not just one language', () => {
+    const registry = new MappingRegistry();
+    const tags = registry.knownTags();
+    expect(tags.has('function')).toBe(true);
+    expect(tags.has('class')).toBe(true);
+    expect(tags.has('bogus_tag')).toBe(false);
+
+    registry.register(
+      validateMapping({
+        ...valid(),
+        nodeTypeMap: { fn_decl: 'function', widget_decl: 'widget' },
+        structuralTags: ['function', 'widget'],
+      }),
+      { languages: ['demo'] },
+    );
+    expect(registry.knownTags().has('widget')).toBe(true);
+  });
 });

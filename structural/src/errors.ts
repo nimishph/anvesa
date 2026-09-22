@@ -33,6 +33,28 @@ export class WqlSyntaxError extends StructuralSubsystemError {
   }
 }
 
+/**
+ * A WQL query names a tag no loaded mapping declares, or an attribute nothing ever writes.
+ * Likely a typo: without this, the query just runs and quietly matches nothing.
+ */
+export class WqlUnknownNameError extends StructuralSubsystemError {
+  readonly code = 'STRUCTURAL_WQL_UNKNOWN_NAME';
+
+  constructor(
+    query: string,
+    kind: 'tag' | 'attribute',
+    name: string,
+    known: readonly string[],
+    init: ErrorInit = {},
+  ) {
+    super(`Invalid WQL: ${kind} ${JSON.stringify(name)} is not one this project has`, {
+      hint: `Known ${kind}s: ${[...known].sort().join(', ')}`,
+      ...init,
+      context: { query, kind, name, known, ...init.context },
+    });
+  }
+}
+
 /** A `~=` predicate whose pattern is not a valid regular expression. */
 export class WqlRegexError extends StructuralSubsystemError {
   readonly code = 'STRUCTURAL_WQL_REGEX';
