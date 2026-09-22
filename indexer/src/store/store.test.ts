@@ -2,8 +2,8 @@ import { Database } from 'bun:sqlite';
 import { afterAll, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { Deadline, InvalidArgumentError, OperationAbortedError } from '@sutras/code-lens-core';
-import { inputFile, makeCard, vectorStoreContract } from '@sutras/code-lens-dense';
+import { Deadline, InvalidArgumentError, OperationAbortedError } from '@cntxt-labs/code-lens-core';
+import { inputFile, makeCard, vectorStoreContract } from '@cntxt-labs/code-lens-dense';
 import {
   StoreClosedError,
   StoreCorruptError,

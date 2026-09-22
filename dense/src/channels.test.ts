@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { Deadline, OperationAbortedError } from '@sutras/code-lens-core';
+import { Deadline, OperationAbortedError } from '@cntxt-labs/code-lens-core';
 import { budgetFor } from './budget.ts';
 import { type CardDraft, defineTransformer, inputFile, type Transformer } from './card.ts';
 import { ChannelRegistry } from './channel.ts';
@@ -506,7 +506,7 @@ describe('scaffolded channels work', () => {
     const scaffold = scaffoldChannel(channel, template);
     const transformerFile = scaffold.files.find((file) => file.path === 'transformer.ts');
     const source = String(transformerFile?.content).replaceAll(
-      "'@sutras/code-lens-dense'",
+      "'@cntxt-labs/code-lens-dense'",
       "'../index.ts'",
     );
     const path = join(probe, `${channel}.ts`);

@@ -1,4 +1,4 @@
-import { InvalidArgumentError } from '@sutras/code-lens-core';
+import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
 import { splitSentences } from './text.ts';
 
 /**

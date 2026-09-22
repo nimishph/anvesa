@@ -1,5 +1,5 @@
-import { ATTR, outlineSymbols } from '@sutras/code-lens-structural';
-import { LanguageRegistry } from '@sutras/code-lens-syntax';
+import { ATTR, outlineSymbols } from '@cntxt-labs/code-lens-structural';
+import { LanguageRegistry } from '@cntxt-labs/code-lens-syntax';
 import { packCards } from '../budget.ts';
 import { type CardDraft, defineTransformer, type Transformer } from '../card.ts';
 import { decomposeIdentifier, decomposePath, normalizeDoc } from '../text.ts';

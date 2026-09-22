@@ -1,7 +1,7 @@
 import { Database, type SQLQueryBindings } from 'bun:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { CodeLensError, InvalidArgumentError } from '@sutras/code-lens-core';
+import { CodeLensError, InvalidArgumentError } from '@cntxt-labs/code-lens-core';
 import {
   StoreClosedError,
   StoreOpenError,

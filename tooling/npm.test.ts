@@ -79,9 +79,9 @@ describe('the launcher', () => {
 
   test('finds the program in the platform package', () => {
     const found = launcher.locate('linux', 'x64', (specifier) => `/modules/${specifier}`);
-    expect(found.program).toBe('/modules/@sutras/code-lens-linux-x64/bin/code-lens');
+    expect(found.program).toBe('/modules/@cntxt-labs/code-lens-linux-x64/bin/code-lens');
     const windows = launcher.locate('win32', 'x64', (specifier) => `/modules/${specifier}`);
-    expect(windows.program).toBe('/modules/@sutras/code-lens-win32-x64/bin/code-lens.exe');
+    expect(windows.program).toBe('/modules/@cntxt-labs/code-lens-win32-x64/bin/code-lens.exe');
   });
 
   test('says what is wrong on an unsupported platform and when the package is missing', () => {
@@ -92,7 +92,7 @@ describe('the launcher', () => {
     const missing = launcher.locate('linux', 'x64', () => {
       throw new ModuleNotFound();
     });
-    expect(missing.problem).toContain('@sutras/code-lens-linux-x64 package is not installed');
+    expect(missing.problem).toContain('@cntxt-labs/code-lens-linux-x64 package is not installed');
     expect(missing.problem).toContain('--no-optional');
   });
 });

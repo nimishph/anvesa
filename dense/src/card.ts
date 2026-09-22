@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import type { Deadline } from '@sutras/code-lens-core';
-import type { EncodedFile } from '@sutras/code-lens-structural';
-import type { SyntaxTree } from '@sutras/code-lens-syntax';
+import type { Deadline } from '@cntxt-labs/code-lens-core';
+import type { EncodedFile } from '@cntxt-labs/code-lens-structural';
+import type { SyntaxTree } from '@cntxt-labs/code-lens-syntax';
 import type { TokenBudget } from './budget.ts';
 import { DefinitionInvalidError } from './errors.ts';
 

@@ -1,4 +1,4 @@
-import { CodeLensError, toCodeLensError } from '@sutras/code-lens-core';
+import { CodeLensError, toCodeLensError } from '@cntxt-labs/code-lens-core';
 import {
   COMMANDS,
   type Context,

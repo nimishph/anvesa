@@ -17,9 +17,9 @@ export const PLATFORMS: readonly Platform[] = [
   { os: 'win32', cpu: 'x64', runner: 'windows-latest' },
 ];
 
-export const SCOPE = '@sutras';
+export const SCOPE = '@cntxt-labs';
 export const MAIN_PACKAGE = `${SCOPE}/code-lens`;
 
-/** `@sutras/code-lens-linux-x64`: the package that holds the program for one platform. */
+/** `@cntxt-labs/code-lens-linux-x64`: the package that holds the program for one platform. */
 export const platformPackage = (platform: Pick<Platform, 'os' | 'cpu'>): string =>
   `${MAIN_PACKAGE}-${platform.os}-${platform.cpu}`;

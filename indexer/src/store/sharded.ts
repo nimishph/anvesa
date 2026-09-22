@@ -3,7 +3,7 @@ import {
   type Page,
   type PageRequest,
   resolveLimit,
-} from '@sutras/code-lens-core';
+} from '@cntxt-labs/code-lens-core';
 import {
   type ChannelStats,
   DimensionMismatchError,
@@ -14,7 +14,7 @@ import {
   type SourceUpdate,
   TopKCollector,
   type VectorStore,
-} from '@sutras/code-lens-dense';
+} from '@cntxt-labs/code-lens-dense';
 import type { FileFacts, SymbolFact } from '../extract/index.ts';
 import type { FragmentAssigner } from '../fragments/manifest.ts';
 import { comparePaths } from './memory-index-store.ts';

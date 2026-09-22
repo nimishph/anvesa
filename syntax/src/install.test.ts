@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { Deadline, DeadlineExceededError } from '@sutras/code-lens-core';
+import { Deadline, DeadlineExceededError } from '@cntxt-labs/code-lens-core';
 import {
   GrammarInstallError,
   GrammarIntegrityError,

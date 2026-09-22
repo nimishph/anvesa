@@ -5,7 +5,7 @@ import {
   type Page,
   type PageRequest,
   resolveLimit,
-} from '@sutras/code-lens-core';
+} from '@cntxt-labs/code-lens-core';
 import { StoreCorruptError } from '../errors.ts';
 import type {
   CallFact,

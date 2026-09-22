@@ -1,4 +1,4 @@
-import { type CodeLensError, toCodeLensError } from '@sutras/code-lens-core';
+import { type CodeLensError, toCodeLensError } from '@cntxt-labs/code-lens-core';
 import { globToRegExp } from './ignore.ts';
 import {
   bazelDependencies,

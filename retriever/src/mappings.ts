@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
-import { type Deadline, InvalidArgumentError } from '@sutras/code-lens-core';
+import { type Deadline, InvalidArgumentError } from '@cntxt-labs/code-lens-core';
 import {
   checkGolden,
   type Golden,
@@ -12,7 +12,7 @@ import {
   type TrainingReport,
   type TrainingSample,
   trainMapping,
-} from '@sutras/code-lens-structural';
+} from '@cntxt-labs/code-lens-structural';
 import { createRuntime, type GrammarHost } from './grammars.ts';
 
 export interface MappingHost extends GrammarHost {}

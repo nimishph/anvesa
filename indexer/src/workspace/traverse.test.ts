@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { Deadline, OperationAbortedError } from '@sutras/code-lens-core';
+import { Deadline, OperationAbortedError } from '@cntxt-labs/code-lens-core';
 import { cleanupRepos, gitAvailable, materialise, scenarios } from '../test-support.ts';
 import { DEFAULT_EXCLUDES, Traversal, type TraverseOptions } from './traverse.ts';
 

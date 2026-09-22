@@ -1,5 +1,5 @@
 {
-  "name": "@sutras/code-lens-core",
+  "name": "@cntxt-labs/code-lens-core",
   "version": "0.0.0",
   "private": true,
   "type": "module",

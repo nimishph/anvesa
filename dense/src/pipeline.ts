@@ -1,4 +1,4 @@
-import { type CodeLensError, Deadline, toCodeLensError } from '@sutras/code-lens-core';
+import { type CodeLensError, Deadline, toCodeLensError } from '@cntxt-labs/code-lens-core';
 import { budgetFor } from './budget.ts';
 import {
   type Card,

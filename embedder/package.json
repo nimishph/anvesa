@@ -1,5 +1,5 @@
 {
-  "name": "@sutras/code-lens-embedder",
+  "name": "@cntxt-labs/code-lens-embedder",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,8 +8,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@sutras/code-lens-core": "workspace:*",
-    "@sutras/code-lens-dense": "workspace:*",
+    "@cntxt-labs/code-lens-core": "workspace:*",
+    "@cntxt-labs/code-lens-dense": "workspace:*",
     "onnxruntime-node": "^1.27.0"
   },
   "license": "MIT"

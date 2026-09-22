@@ -1,5 +1,5 @@
 import { parseArgs } from 'node:util';
-import { InvalidArgumentError } from '@sutras/code-lens-core';
+import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
 
 /** Every option any command takes. A command that does not use one ignores it. */
 const OPTIONS = {

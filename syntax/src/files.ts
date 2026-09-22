@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { toCodeLensError } from '@sutras/code-lens-core';
+import { toCodeLensError } from '@cntxt-labs/code-lens-core';
 
 const WASM_MAGIC = [0x00, 0x61, 0x73, 0x6d];
 

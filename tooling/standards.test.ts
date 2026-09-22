@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { copyFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { InvariantViolationError } from '@sutras/code-lens-core';
+import { InvariantViolationError } from '@cntxt-labs/code-lens-core';
 
 /**
  * Proves the standards enforcement (Biome rules plus the Grit plugins in tooling/plugins) does what

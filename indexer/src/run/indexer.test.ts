@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from 'bun:test';
 import { readdirSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { Deadline, DeadlineExceededError, OperationAbortedError } from '@sutras/code-lens-core';
+import { Deadline, DeadlineExceededError, OperationAbortedError } from '@cntxt-labs/code-lens-core';
 import {
   ChannelRegistry,
   createTransformServices,
@@ -9,9 +9,13 @@ import {
   Ingester,
   MemoryVectorStore,
   symbolsTransformer,
-} from '@sutras/code-lens-dense';
-import { parseWExpr, StructuralEngine, WEXPR_FORMAT_VERSION } from '@sutras/code-lens-structural';
-import { npmPackageSource, SyntaxRuntime } from '@sutras/code-lens-syntax';
+} from '@cntxt-labs/code-lens-dense';
+import {
+  parseWExpr,
+  StructuralEngine,
+  WEXPR_FORMAT_VERSION,
+} from '@cntxt-labs/code-lens-structural';
+import { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/code-lens-syntax';
 import { FactExtractor } from '../extract/extract.ts';
 import { EDGE } from '../graph/edges.ts';
 import { MemoryIndexStore } from '../store/memory-index-store.ts';

@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { InvalidArgumentError } from '@sutras/code-lens-core';
+import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
 import { MappingIntegrityError, MappingInvalidError, MappingLockError } from './errors.ts';
 import { type LanguageMapping, MappingRegistry, validateMapping } from './mapping.ts';
 

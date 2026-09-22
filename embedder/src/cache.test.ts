@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Deadline, OperationAbortedError } from '@sutras/code-lens-core';
+import { Deadline, OperationAbortedError } from '@cntxt-labs/code-lens-core';
 import { type FetchLike, ModelCache, modelsDirectory } from './cache.ts';
 import {
   ModelInstallError,

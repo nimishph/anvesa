@@ -1,4 +1,4 @@
-import { CodeLensError, type ErrorInit } from '@sutras/code-lens-core';
+import { CodeLensError, type ErrorInit } from '@cntxt-labs/code-lens-core';
 
 /** Every failure in this package. Codes are `SYNTAX_<REASON>`. */
 export abstract class SyntaxSubsystemError extends CodeLensError {

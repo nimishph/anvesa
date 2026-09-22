@@ -1,8 +1,8 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { StructuralEngine } from '@sutras/code-lens-structural';
-import { npmPackageSource, SyntaxRuntime } from '@sutras/code-lens-syntax';
+import { StructuralEngine } from '@cntxt-labs/code-lens-structural';
+import { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/code-lens-syntax';
 import { FactExtractor } from './extract/extract.ts';
 import { DiskEnvironment, GraphLinker, GraphQueries, ImportResolver } from './graph/index.ts';
 import { MemoryIndexStore } from './store/memory-index-store.ts';

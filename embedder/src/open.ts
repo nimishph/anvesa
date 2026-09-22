@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { InvalidArgumentError } from '@sutras/code-lens-core';
+import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
 import { openOnnx } from './backend.ts';
 import { ModelCache } from './cache.ts';
 import { batchTokensFor, LocalEmbedder } from './encoder.ts';

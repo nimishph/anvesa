@@ -1,12 +1,12 @@
-import type { Page } from '@sutras/code-lens-core';
-import type { FileState, IndexStore } from '@sutras/code-lens-indexer';
+import type { Page } from '@cntxt-labs/code-lens-core';
+import type { FileState, IndexStore } from '@cntxt-labs/code-lens-indexer';
 import {
   type IndexQueryOptions,
   type IndexQueryResult,
   parseWExpr,
   StructuralIndex,
   WEXPR_FORMAT_VERSION,
-} from '@sutras/code-lens-structural';
+} from '@cntxt-labs/code-lens-structural';
 
 /** What the structural lane knows about its own coverage. */
 export interface StructuralCoverage {

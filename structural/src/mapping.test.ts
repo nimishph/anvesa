@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { InvariantViolationError } from '@sutras/code-lens-core';
+import { InvariantViolationError } from '@cntxt-labs/code-lens-core';
 import { MappingConflictError, MappingInvalidError, MappingNotFoundError } from './errors.ts';
 import {
   builtinMappings,

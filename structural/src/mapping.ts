@@ -255,7 +255,7 @@ export interface RegisterOptions {
 }
 
 /**
- * The mappings one engine knows, keyed by language key (the keys `@sutras/code-lens-syntax` uses). One
+ * The mappings one engine knows, keyed by language key (the keys `@cntxt-labs/code-lens-syntax` uses). One
  * mapping may serve several languages: JavaScript, TSX and Vue all use the TypeScript mapping.
  */
 export class MappingRegistry {

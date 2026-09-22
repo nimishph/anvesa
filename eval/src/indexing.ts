@@ -1,4 +1,4 @@
-import { toCodeLensError } from '@sutras/code-lens-core';
+import { toCodeLensError } from '@cntxt-labs/code-lens-core';
 import {
   DiskEnvironment,
   defaultConfig,
@@ -12,9 +12,9 @@ import {
   Workspace,
   type WorkspaceConfig,
   walkSources,
-} from '@sutras/code-lens-indexer';
-import { StructuralEngine } from '@sutras/code-lens-structural';
-import { npmPackageSource, SyntaxRuntime } from '@sutras/code-lens-syntax';
+} from '@cntxt-labs/code-lens-indexer';
+import { StructuralEngine } from '@cntxt-labs/code-lens-structural';
+import { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/code-lens-syntax';
 import type { ObservedCall } from './compare.ts';
 
 export interface IndexOptions {

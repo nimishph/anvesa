@@ -1,4 +1,4 @@
-import type { Deadline, Page } from '@sutras/code-lens-core';
+import type { Deadline, Page } from '@cntxt-labs/code-lens-core';
 import type {
   CallFact,
   ExportFact,

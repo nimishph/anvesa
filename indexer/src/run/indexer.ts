@@ -4,10 +4,10 @@ import {
   DeadlineExceededError,
   OperationAbortedError,
   toCodeLensError,
-} from '@sutras/code-lens-core';
-import { type Ingester, inputFile } from '@sutras/code-lens-dense';
-import { WEXPR_FORMAT_VERSION } from '@sutras/code-lens-structural';
-import type { LanguageRegistry } from '@sutras/code-lens-syntax';
+} from '@cntxt-labs/code-lens-core';
+import { type Ingester, inputFile } from '@cntxt-labs/code-lens-dense';
+import { WEXPR_FORMAT_VERSION } from '@cntxt-labs/code-lens-structural';
+import type { LanguageRegistry } from '@cntxt-labs/code-lens-syntax';
 import { SourceReadError } from '../errors.ts';
 import type { FactExtractor, FileFacts } from '../extract/index.ts';
 import {

@@ -1,4 +1,4 @@
-import { npmPackageSource, SyntaxRuntime } from '@sutras/code-lens-syntax';
+import { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/code-lens-syntax';
 import { type EncodedFile, StructuralEngine } from './engine.ts';
 import type { WNode } from './node.ts';
 

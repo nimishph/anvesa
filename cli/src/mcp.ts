@@ -1,8 +1,8 @@
+import { toCodeLensError } from '@cntxt-labs/code-lens-core';
+import { fenceUntrusted, type Retriever } from '@cntxt-labs/code-lens-retriever';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
-import { toCodeLensError } from '@sutras/code-lens-core';
-import { fenceUntrusted, type Retriever } from '@sutras/code-lens-retriever';
 import { z } from 'zod';
 import { type Context, openSession } from './commands.ts';
 import { toJson } from './render.ts';

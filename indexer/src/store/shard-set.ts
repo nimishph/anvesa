@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readdirSync } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { VectorStore } from '@sutras/code-lens-dense';
+import type { VectorStore } from '@cntxt-labs/code-lens-dense';
 import { ShardError } from '../errors.ts';
 import { FragmentAssigner, type FragmentManifest, manifestText } from '../fragments/manifest.ts';
 import { ShardedIndexStore, ShardedVectorStore, type ShardProvider } from './sharded.ts';

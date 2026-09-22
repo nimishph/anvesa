@@ -1,4 +1,4 @@
-import { Deadline } from '@sutras/code-lens-core';
+import { Deadline } from '@cntxt-labs/code-lens-core';
 import type { TokenBudget } from './budget.ts';
 import {
   type Card,

@@ -1,6 +1,6 @@
-import type { InputFile, InputSource } from '@sutras/code-lens-dense';
-import { inputFile } from '@sutras/code-lens-dense';
-import { readSource, type Workspace, walkSources } from '@sutras/code-lens-indexer';
+import type { InputFile, InputSource } from '@cntxt-labs/code-lens-dense';
+import { inputFile } from '@cntxt-labs/code-lens-dense';
+import { readSource, type Workspace, walkSources } from '@cntxt-labs/code-lens-indexer';
 
 /**
  * The source files of a workspace as an `InputSource`, so a channel that reads project files can
