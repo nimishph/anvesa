@@ -76,7 +76,10 @@ export interface Resolution {
 /**
  * Which installed model to use. A named model is used if it is installed. Otherwise the most
  * capable built-in the machine is expected to hold, or, if that one is not installed, the most
- * capable installed one below it: a smaller model that is here beats a larger one that is not.
+ * capable installed one below it: a smaller model that is here beats a larger one that is not
+ * fetched to run it. Failing that, the smallest installed tier above it: something already
+ * installed, even if more than this machine is expected to comfortably hold, beats falling back
+ * to structural search alone (a memory estimate is a guess, not a hard ceiling).
  */
 export async function resolveModel(
   cache: ModelCache,
@@ -104,8 +107,8 @@ export async function resolveModel(
     ...(options.memoryFraction === undefined ? {} : { memoryFraction: options.memoryFraction }),
   });
   const wantedIndex = TIERS.indexOf(choice.tier);
-  const order = TIERS.slice(0, wantedIndex + 1).reverse();
-  for (const tier of order) {
+  const atOrBelow = TIERS.slice(0, wantedIndex + 1).reverse();
+  for (const tier of atOrBelow) {
     const spec = BUILTIN_MODELS[tier];
     if (await cache.find(spec)) {
       return {
@@ -117,11 +120,25 @@ export async function resolveModel(
       };
     }
   }
+  const above = TIERS.slice(wantedIndex + 1);
+  for (const tier of above) {
+    const spec = BUILTIN_MODELS[tier];
+    if (await cache.find(spec)) {
+      return {
+        spec,
+        reason: `${choice.spec.id} suits this machine but is not installed, and neither is anything smaller; using the installed ${spec.id}, which is larger than expected to fit comfortably`,
+      };
+    }
+  }
   throw new ModelUnavailableError(
     choice.spec.id,
     `no built-in model is installed in ${cache.root}`,
     {
-      context: { searched: order.map((tier) => cache.directoryOf(BUILTIN_MODELS[tier].id)) },
+      context: {
+        searched: [...atOrBelow, ...above].map((tier) =>
+          cache.directoryOf(BUILTIN_MODELS[tier].id),
+        ),
+      },
     },
   );
 }
