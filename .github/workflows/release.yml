@@ -80,12 +80,15 @@ jobs:
       - name: Platform packages, then the command that depends on them
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # The token is stage-only, so every publish uses the `stage` dist-tag instead of the
+        # default `latest`; installs must opt in with `@stage` until a `latest`-capable token
+        # promotes a release.
         run: |
           for folder in staged/*/; do
-            npm publish "$folder" --access public --provenance
+            npm publish "$folder" --access public --provenance --tag stage
           done
           cp README.md LICENSE cli/
-          npm publish ./cli --access public --provenance
+          npm publish ./cli --access public --provenance --tag stage
       - uses: softprops/action-gh-release@v2
         with:
           files: archives/*
