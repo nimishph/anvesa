@@ -1,6 +1,12 @@
 export type { Embedder, InputFile, InputSource } from '@cntxt-labs/code-lens-dense';
 export { inputFile } from '@cntxt-labs/code-lens-dense';
-export type { DriftReport, FragmentManifest, IndexReport } from '@cntxt-labs/code-lens-indexer';
+export type {
+  DriftReport,
+  FragmentManifest,
+  IndexEvent,
+  IndexReport,
+  RunOptions,
+} from '@cntxt-labs/code-lens-indexer';
 export type {
   Golden,
   GoldenDifference,

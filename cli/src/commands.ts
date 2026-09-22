@@ -6,6 +6,7 @@ import {
   checkMapping,
   doctorModels,
   type Embedder,
+  type IndexEvent,
   inputFile,
   installGrammarFor,
   installModel,
@@ -181,6 +182,53 @@ function scaffoldFiles(): readonly ScaffoldFile[] {
   ];
 }
 
+/**
+ * Live progress for `index`, on stderr so it never mixes with --json (or the text summary, both
+ * on stdout). On a terminal, one line is rewritten in place; otherwise (piped, logged, tests) a
+ * plain line is appended periodically, since overwriting one line only makes sense on a screen.
+ */
+function indexProgress(ctx: Context): (event: IndexEvent) => void {
+  const interactive = ctx.environment.isTTY === true;
+  const counts = { seen: 0, added: 0, modified: 0, quarantined: 0 };
+  let lastWrite = 0;
+  let lineLength = 0;
+  const summary = () =>
+    `indexing: ${counts.seen} seen (${counts.added} added, ${counts.modified} modified, ${counts.quarantined} quarantined)`;
+  return (event) => {
+    if (event.kind === 'started') {
+      if (event.interrupted) {
+        ctx.environment.stderr(
+          'note: the previous run did not finish; rebuilding edges and cards\n',
+        );
+      }
+      return;
+    }
+    if (event.kind === 'file') {
+      counts.seen += 1;
+      if (event.outcome === 'added') counts.added += 1;
+      else if (event.outcome === 'modified') counts.modified += 1;
+      else if (event.outcome === 'quarantined') counts.quarantined += 1;
+      if (interactive) {
+        const now = Date.now();
+        if (now - lastWrite < 80) return;
+        lastWrite = now;
+        const line = summary();
+        ctx.environment.stderr(`\r${line}${' '.repeat(Math.max(0, lineLength - line.length))}`);
+        lineLength = line.length;
+      } else if (counts.seen % 500 === 0) {
+        ctx.environment.stderr(`${summary()}\n`);
+      }
+      return;
+    }
+    if (event.kind === 'linking') {
+      ctx.environment.stderr(interactive ? `\r${summary()} — linking\n` : 'linking\n');
+      lineLength = 0;
+      return;
+    }
+    if (interactive && lineLength > 0) ctx.environment.stderr(`\r${' '.repeat(lineLength)}\r`);
+  };
+}
+
 export type Handler = (ctx: Context) => Promise<void>;
 
 export const COMMANDS: Readonly<Record<string, Handler>> = {
@@ -214,6 +262,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         );
       const scope = ctx.parsed.values.scope;
       const result = await retriever.index({
+        onEvent: indexProgress(ctx),
         ...(ctx.parsed.values.force ? { force: true } : {}),
         ...(ctx.parsed.values['retry-quarantined'] ? { retryQuarantined: true } : {}),
         ...(scope === undefined

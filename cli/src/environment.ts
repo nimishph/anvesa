@@ -10,6 +10,8 @@ export interface Environment {
   readonly runtime?: SyntaxRuntime | undefined;
   /** Grammars the host ships, and where to find the parser runtime. A compiled binary sets this. */
   readonly grammars?: GrammarHost | undefined;
+  /** Whether stderr is an interactive terminal, so progress can overwrite its own line. */
+  readonly isTTY?: boolean | undefined;
   stdout(text: string): void;
   stderr(text: string): void;
 }
@@ -18,6 +20,7 @@ export function processEnvironment(): Environment {
   return {
     cwd: process.cwd(),
     env: process.env,
+    isTTY: process.stderr.isTTY === true,
     stdout: (text) => {
       process.stdout.write(text);
     },
