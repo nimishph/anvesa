@@ -3,7 +3,7 @@ import {
   InvalidArgumentError,
   type Page,
   resolveLimit,
-} from '@sutras/code-lens-core';
+} from '@cntxt-labs/code-lens-core';
 import { toHit, type WqlHit } from './hits.ts';
 import { ATTR, type WNode, walk } from './node.ts';
 import {

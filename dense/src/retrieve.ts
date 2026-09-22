@@ -4,7 +4,7 @@ import {
   encodeCursor,
   type Page,
   resolveLimit,
-} from '@sutras/code-lens-core';
+} from '@cntxt-labs/code-lens-core';
 import type { Card } from './card.ts';
 import { type Embedder, embedAll } from './embedder.ts';
 import { EmbedFailedError } from './errors.ts';

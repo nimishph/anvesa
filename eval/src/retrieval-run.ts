@@ -2,14 +2,14 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { InvalidArgumentError } from '@sutras/code-lens-core';
-import type { SymbolFact } from '@sutras/code-lens-indexer';
+import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
+import type { SymbolFact } from '@cntxt-labs/code-lens-indexer';
 import {
   ModelCache,
   modelsDirectory,
   openProjectEmbedder,
   Retriever,
-} from '@sutras/code-lens-retriever';
+} from '@cntxt-labs/code-lens-retriever';
 import {
   type EvalQuery,
   generateQueries,

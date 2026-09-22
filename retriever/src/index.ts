@@ -1,6 +1,6 @@
-export type { Embedder, InputFile, InputSource } from '@sutras/code-lens-dense';
-export { inputFile } from '@sutras/code-lens-dense';
-export type { DriftReport, FragmentManifest, IndexReport } from '@sutras/code-lens-indexer';
+export type { Embedder, InputFile, InputSource } from '@cntxt-labs/code-lens-dense';
+export { inputFile } from '@cntxt-labs/code-lens-dense';
+export type { DriftReport, FragmentManifest, IndexReport } from '@cntxt-labs/code-lens-indexer';
 export type {
   Golden,
   GoldenDifference,
@@ -8,8 +8,8 @@ export type {
   StoredMapping,
   TrainingIssue,
   TrainingReport,
-} from '@sutras/code-lens-structural';
-export { npmPackageSource, SyntaxRuntime } from '@sutras/code-lens-syntax';
+} from '@cntxt-labs/code-lens-structural';
+export { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/code-lens-syntax';
 export { type LoadedChannel, loadChannelModule } from './channel-module.ts';
 export * from './config.ts';
 export * from './errors.ts';

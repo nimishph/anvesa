@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { npmPackageSource, SyntaxRuntime } from '@sutras/code-lens-syntax';
+import { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/code-lens-syntax';
 import { MappingTrainingError } from './errors.ts';
 import { builtinMappings, MappingRegistry } from './mapping.ts';
 import {

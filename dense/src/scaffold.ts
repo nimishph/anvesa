@@ -54,7 +54,7 @@ export function scaffoldChannel(channel: string, template: ScaffoldTemplate = 'f
 const HEADER = (
   channel: string,
   summary: string,
-) => `import { defineTransformer, packCards, type CardDraft } from '@sutras/code-lens-dense';
+) => `import { defineTransformer, packCards, type CardDraft } from '@cntxt-labs/code-lens-dense';
 
 /**
  * Channel "${channel}": ${summary}
@@ -105,7 +105,7 @@ export default defineTransformer({
 const AST_TEMPLATE = (
   channel: string,
 ) => `${HEADER(channel, 'one card per function or class in each source file.')}
-import { ATTR, walk } from '@sutras/code-lens-structural';
+import { ATTR, walk } from '@cntxt-labs/code-lens-structural';
 
 export default defineTransformer({
   name: '${channel}',
@@ -195,7 +195,7 @@ const BODIES: Readonly<Record<ScaffoldTemplate, (channel: string) => string>> = 
 };
 
 const testFile = (channel: string) => `import { expect, test } from 'bun:test';
-import { inputFile } from '@sutras/code-lens-dense';
+import { inputFile } from '@cntxt-labs/code-lens-dense';
 import transformer from './transformer.ts';
 
 test('${channel} claims what it should and not what it should not', () => {

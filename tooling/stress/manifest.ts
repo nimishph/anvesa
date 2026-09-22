@@ -7,7 +7,7 @@
  * the per-language (or per-anything) view. The file lives in the person's own stress home, outside
  * every repository, and is never committed: it is a list of what one machine likes to test against.
  */
-import { CodeLensError } from '@sutras/code-lens-core';
+import { CodeLensError } from '@cntxt-labs/code-lens-core';
 
 export class StressError extends CodeLensError {
   readonly code = 'CLI_STRESS_FAILED';

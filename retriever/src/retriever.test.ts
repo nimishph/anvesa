@@ -10,9 +10,9 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { InvalidArgumentError } from '@sutras/code-lens-core';
-import { type Embedder, inputFile } from '@sutras/code-lens-dense';
-import { npmPackageSource, SyntaxRuntime } from '@sutras/code-lens-syntax';
+import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
+import { type Embedder, inputFile } from '@cntxt-labs/code-lens-dense';
+import { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/code-lens-syntax';
 import { loadChannelModule } from './channel-module.ts';
 import { loadProjectConfig, validateProjectConfig } from './config.ts';
 import {

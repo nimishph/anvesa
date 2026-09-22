@@ -13,7 +13,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { InvalidArgumentError } from '@sutras/code-lens-core';
+import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
 import { PLATFORMS, platformPackage } from './platforms.ts';
 
 const root = resolve(import.meta.dir, '..');
@@ -103,7 +103,7 @@ for (const file of ['README.md', 'LICENSE']) {
 }
 writeFileSync(join(folder, 'VERSION'), `${version}\n`);
 
-// The same program as an npm package for this platform, which `@sutras/code-lens` depends on
+// The same program as an npm package for this platform, which `@cntxt-labs/code-lens` depends on
 // optionally. The launcher in that package finds `bin/code-lens` and the runtime beside it.
 const here = PLATFORMS.find(
   (platform) => platform.os === process.platform && platform.cpu === process.arch,
@@ -133,7 +133,7 @@ writeFileSync(
     {
       name: npmName,
       version,
-      description: `The code-lens program for ${process.platform} on ${process.arch}. Install @sutras/code-lens instead.`,
+      description: `The code-lens program for ${process.platform} on ${process.arch}. Install @cntxt-labs/code-lens instead.`,
       license: cliManifest.license,
       author: cliManifest.author,
       homepage: cliManifest.homepage,

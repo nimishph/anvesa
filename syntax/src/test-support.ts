@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
-import { InvariantViolationError } from '@sutras/code-lens-core';
+import { InvariantViolationError } from '@cntxt-labs/code-lens-core';
 import { builtinLanguages } from './languages.ts';
 import { locateGrammar, npmPackageSource } from './sources.ts';
 

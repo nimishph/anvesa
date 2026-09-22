@@ -1,7 +1,7 @@
 name: Release
 
 # Push a tag `vX.Y.Z` that matches the version in cli/package.json. Each platform builds and tests
-# its program; then the platform packages are published, then @sutras/code-lens, which depends on
+# its program; then the platform packages are published, then @cntxt-labs/code-lens, which depends on
 # them, and the archives are attached to a GitHub release.
 
 on:

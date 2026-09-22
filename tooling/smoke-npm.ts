@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Install the packages as a user's package manager would lay them out, and run the command that
- * `npm install -g @sutras/code-lens` would link: the launcher, which finds the program in the
+ * `npm install -g @cntxt-labs/code-lens` would link: the launcher, which finds the program in the
  * platform package.
  *
  *   bun run tooling/smoke-npm.ts [--dist dist]
@@ -13,7 +13,7 @@ import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } fr
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { InvalidArgumentError } from '@sutras/code-lens-core';
+import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
 import { MAIN_PACKAGE, PLATFORMS, platformPackage } from './platforms.ts';
 
 const root = resolve(import.meta.dir, '..');

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { type Deadline, InvariantViolationError } from '@sutras/code-lens-core';
+import { type Deadline, InvariantViolationError } from '@cntxt-labs/code-lens-core';
 import {
   ATTR,
   type OutlineSymbol,
@@ -7,8 +7,8 @@ import {
   type StructuralEngine,
   serializeWExpr,
   WEXPR_FORMAT_VERSION,
-} from '@sutras/code-lens-structural';
-import type { SyntaxNode } from '@sutras/code-lens-syntax';
+} from '@cntxt-labs/code-lens-structural';
+import type { SyntaxNode } from '@cntxt-labs/code-lens-syntax';
 import { CallCollector } from './calls.ts';
 import type { FileFacts, SymbolFact } from './facts.ts';
 import { importCollectorFor } from './imports.ts';

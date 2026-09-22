@@ -1,5 +1,5 @@
 import { stat } from 'node:fs/promises';
-import { InvalidArgumentError } from '@sutras/code-lens-core';
+import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
 import {
   GrammarLock,
   type InstallResult,
@@ -9,7 +9,7 @@ import {
   type LanguageStatus,
   SyntaxRuntime,
   standardLayout,
-} from '@sutras/code-lens-syntax';
+} from '@cntxt-labs/code-lens-syntax';
 
 /**
  * Where a host finds grammars beyond the directories every install has. A compiled binary embeds

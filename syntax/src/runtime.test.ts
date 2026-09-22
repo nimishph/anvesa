@@ -6,7 +6,7 @@ import {
   Deadline,
   DeadlineExceededError,
   OperationAbortedError,
-} from '@sutras/code-lens-core';
+} from '@cntxt-labs/code-lens-core';
 import {
   GrammarIncompatibleError,
   GrammarIntegrityError,

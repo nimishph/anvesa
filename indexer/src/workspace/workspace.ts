@@ -1,7 +1,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
-import type { Deadline } from '@sutras/code-lens-core';
-import { toCodeLensError } from '@sutras/code-lens-core';
+import type { Deadline } from '@cntxt-labs/code-lens-core';
+import { toCodeLensError } from '@cntxt-labs/code-lens-core';
 import {
   IndexerSubsystemError,
   UnknownPackageError,

@@ -19,12 +19,12 @@ There is no lexical search and no grep. An exact name is a WQL query.
 ## Install
 
 ```sh
-npm install -g @sutras/code-lens      # or: bun add -g, pnpm add -g, npx @sutras/code-lens
+npm install -g @cntxt-labs/code-lens      # or: bun add -g, pnpm add -g, npx @cntxt-labs/code-lens
 code-lens --version
 ```
 
 The package is a small launcher. The program itself is a compiled binary in a per-platform package
-that the install picks for your machine (`@sutras/code-lens-linux-x64`, `-linux-arm64`,
+that the install picks for your machine (`@cntxt-labs/code-lens-linux-x64`, `-linux-arm64`,
 `-darwin-arm64`, `-win32-x64`); it needs no Node, Bun or Python at run time. There is no macOS
 Intel build, because the ONNX runtime it embeds no longer ships one.
 
@@ -277,7 +277,7 @@ a count that moved is reported, a failure is called out.
 Enforced by Biome and the Grit plugins in `tooling/plugins/`. Each rule has failing and passing
 fixtures in `tooling/fixtures/`.
 
-1. **Typed errors only.** Throw a `CodeLensError` subclass (`@sutras/code-lens-core`) with a stable `code`
+1. **Typed errors only.** Throw a `CodeLensError` subclass (`@cntxt-labs/code-lens-core`) with a stable `code`
    (`<SUBSYSTEM>_<REASON>`), its subsystem, structured `context` and a `cause`. Never a built-in
    `Error`. Use `toCodeLensError` in `catch` blocks that receive unknown failures.
 2. **No swallowed failures.** No empty `catch` (comment-only counts as empty) and no

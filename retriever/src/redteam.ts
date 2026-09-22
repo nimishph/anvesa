@@ -8,7 +8,7 @@ import {
   parsePolicy,
   type RedTeamGate,
   type RedTeamPolicy,
-} from '@sutras/code-lens-dense';
+} from '@cntxt-labs/code-lens-dense';
 import { provideDependencies } from './channel-module.ts';
 import { ChannelModuleError, ProjectConfigError } from './errors.ts';
 

@@ -4,7 +4,7 @@ import type {
   ImportFact,
   Resolution,
   SymbolFact,
-} from '@sutras/code-lens-indexer';
+} from '@cntxt-labs/code-lens-indexer';
 import type {
   CallTarget,
   ImportTarget,

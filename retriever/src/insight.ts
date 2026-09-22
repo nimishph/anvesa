@@ -4,16 +4,16 @@ import {
   type LimitReport,
   type Page,
   toCodeLensError,
-} from '@sutras/code-lens-core';
+} from '@cntxt-labs/code-lens-core';
 import {
   type ChannelRegistry,
   type Embedder,
   retrieve as retrieveDense,
   type VectorStore,
-} from '@sutras/code-lens-dense';
-import type { EdgeRecord, IndexStats, IndexStore, Workspace } from '@sutras/code-lens-indexer';
-import { EDGE, IMPORT_EDGE_KINDS } from '@sutras/code-lens-indexer';
-import { looksLikeWql, type WqlHit } from '@sutras/code-lens-structural';
+} from '@cntxt-labs/code-lens-dense';
+import type { EdgeRecord, IndexStats, IndexStore, Workspace } from '@cntxt-labs/code-lens-indexer';
+import { EDGE, IMPORT_EDGE_KINDS } from '@cntxt-labs/code-lens-indexer';
+import { looksLikeWql, type WqlHit } from '@cntxt-labs/code-lens-structural';
 import type { StructuralCoverage, StructuralLane } from './structural-lane.ts';
 
 export interface ChannelInfo {

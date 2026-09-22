@@ -1,4 +1,4 @@
-import type { SymbolFact } from '@sutras/code-lens-indexer';
+import type { SymbolFact } from '@cntxt-labs/code-lens-indexer';
 
 /**
  * How a query is phrased, which decides which lane can be expected to find it:

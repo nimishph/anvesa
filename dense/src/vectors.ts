@@ -1,4 +1,4 @@
-import { InvalidArgumentError } from '@sutras/code-lens-core';
+import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
 
 /** A copy of `vector` scaled to unit length. A zero vector cannot be normalised and is refused. */
 export function normalize(vector: Float32Array): Float32Array {

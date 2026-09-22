@@ -1,7 +1,7 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
-import { InvalidArgumentError, type PageRequest } from '@sutras/code-lens-core';
+import { InvalidArgumentError, type PageRequest } from '@cntxt-labs/code-lens-core';
 import {
   checkMapping,
   doctorModels,
@@ -21,7 +21,7 @@ import {
   trainLanguage,
   verifyMappings,
   verifyModel,
-} from '@sutras/code-lens-retriever';
+} from '@cntxt-labs/code-lens-retriever';
 import type { Environment } from './environment.ts';
 import { CommandFailedError } from './errors.ts';
 import { integerOption, type Parsed } from './options.ts';

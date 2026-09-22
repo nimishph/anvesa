@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 // The command a package manager links onto the PATH. The program itself is a compiled binary in
-// a per-platform package (`@sutras/code-lens-<os>-<cpu>`), installed alongside this one because
+// a per-platform package (`@cntxt-labs/code-lens-<os>-<cpu>`), installed alongside this one because
 // this package lists them all as optional dependencies and a package manager keeps only the one
 // that matches the machine. This file finds it and runs it.
 
@@ -13,7 +13,7 @@ const SUPPORTED = ['linux-x64', 'linux-arm64', 'darwin-arm64', 'win32-x64'];
 /** The package that holds the program for a platform, or `undefined` when there is none. */
 function platformPackage(platform, cpu) {
   const key = `${platform}-${cpu}`;
-  return SUPPORTED.includes(key) ? `@sutras/code-lens-${key}` : undefined;
+  return SUPPORTED.includes(key) ? `@cntxt-labs/code-lens-${key}` : undefined;
 }
 
 /** Where the installed program is, or why it cannot be found. */
@@ -31,7 +31,7 @@ function locate(platform, cpu, resolve) {
     return {
       problem:
         `The ${name} package is not installed (${failure.code ?? failure.message}). ` +
-        'It is an optional dependency of @sutras/code-lens: reinstall without --no-optional, or ' +
+        'It is an optional dependency of @cntxt-labs/code-lens: reinstall without --no-optional, or ' +
         `install ${name} directly.`,
     };
   }

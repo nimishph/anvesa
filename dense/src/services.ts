@@ -1,5 +1,5 @@
-import type { StructuralEngine } from '@sutras/code-lens-structural';
-import type { ParseTarget, SyntaxRuntime } from '@sutras/code-lens-syntax';
+import type { StructuralEngine } from '@cntxt-labs/code-lens-structural';
+import type { ParseTarget, SyntaxRuntime } from '@cntxt-labs/code-lens-syntax';
 import type { InputFile, TransformServices } from './card.ts';
 
 function targetOf(file: InputFile): ParseTarget {

@@ -1,4 +1,4 @@
-import { type Deadline, toCodeLensError } from '@sutras/code-lens-core';
+import { type Deadline, toCodeLensError } from '@cntxt-labs/code-lens-core';
 import type { BudgetSource } from './budget.ts';
 import { EmbedFailedError } from './errors.ts';
 import { isUsableVector } from './vectors.ts';

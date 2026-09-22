@@ -11,7 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { InvalidArgumentError } from '@sutras/code-lens-core';
+import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
 import { ModelCache } from './cache.ts';
 import { installCustomModel, planCustomModel } from './custom.ts';
 import { InferenceError, ModelInstallError, ModelIntegrityError } from './errors.ts';

@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { embedAll } from '@sutras/code-lens-dense';
+import { embedAll } from '@cntxt-labs/code-lens-dense';
 import { ModelCache } from './cache.ts';
 import type { LocalEmbedder } from './encoder.ts';
 import { chooseTier, probeHardware } from './hardware.ts';

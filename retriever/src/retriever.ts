@@ -11,7 +11,7 @@ import {
   type PageRequest,
   resolveLimit,
   toCodeLensError,
-} from '@sutras/code-lens-core';
+} from '@cntxt-labs/code-lens-core';
 import {
   budgetFor,
   budgetSourceOf,
@@ -34,7 +34,7 @@ import {
   scaffoldChannel,
   symbolsTransformer,
   type VectorStore,
-} from '@sutras/code-lens-dense';
+} from '@cntxt-labs/code-lens-dense';
 import {
   type DriftReport,
   FactExtractor,
@@ -56,14 +56,14 @@ import {
   type SymbolFact,
   saveManifest,
   Workspace,
-} from '@sutras/code-lens-indexer';
+} from '@cntxt-labs/code-lens-indexer';
 import {
   looksLikeWql,
   type MappingRegistry,
   StructuralEngine,
   type WqlHit,
-} from '@sutras/code-lens-structural';
-import type { SyntaxRuntime } from '@sutras/code-lens-syntax';
+} from '@cntxt-labs/code-lens-structural';
+import type { SyntaxRuntime } from '@cntxt-labs/code-lens-syntax';
 import { loadChannelModule } from './channel-module.ts';
 import {
   type ChannelConfig,

@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { Deadline, OperationAbortedError } from '@sutras/code-lens-core';
+import { Deadline, OperationAbortedError } from '@cntxt-labs/code-lens-core';
 import { disposeExtractors, makeExtractor } from '../test-support.ts';
 import type { CallFact, FileFacts, ImportFact } from './facts.ts';
 import { importCollectorFor } from './imports.ts';

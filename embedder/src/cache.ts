@@ -5,7 +5,7 @@ import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { type Deadline, toCodeLensError } from '@sutras/code-lens-core';
+import { type Deadline, toCodeLensError } from '@cntxt-labs/code-lens-core';
 import {
   ModelInstallError,
   ModelIntegrityError,

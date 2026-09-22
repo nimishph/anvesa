@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { Deadline, InvalidArgumentError, OperationAbortedError } from '@sutras/code-lens-core';
+import { Deadline, InvalidArgumentError, OperationAbortedError } from '@cntxt-labs/code-lens-core';
 import { budgetFor, packCards, splitToFit, type TokenBudget } from './budget.ts';
 import {
   type Card,

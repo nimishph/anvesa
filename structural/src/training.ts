@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import type { Deadline } from '@sutras/code-lens-core';
-import type { SyntaxNode, SyntaxRuntime } from '@sutras/code-lens-syntax';
+import type { Deadline } from '@cntxt-labs/code-lens-core';
+import type { SyntaxNode, SyntaxRuntime } from '@cntxt-labs/code-lens-syntax';
 import { StructuralEngine } from './engine.ts';
 import { MappingTrainingError } from './errors.ts';
 import { type LanguageMapping, MappingRegistry, validateMapping } from './mapping.ts';

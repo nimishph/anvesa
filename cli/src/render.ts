@@ -1,4 +1,4 @@
-import { CodeLensError, type Page } from '@sutras/code-lens-core';
+import { CodeLensError, type Page } from '@cntxt-labs/code-lens-core';
 import {
   type ChannelInfo,
   type Diagnosis,
@@ -20,7 +20,7 @@ import {
   type Status,
   type StoredMapping,
   type TrainedResult,
-} from '@sutras/code-lens-retriever';
+} from '@cntxt-labs/code-lens-retriever';
 
 /** JSON for machines: maps become objects, errors keep their code and context, trees are left out. */
 export function toJson(value: unknown): string {
