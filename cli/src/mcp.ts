@@ -41,7 +41,7 @@ export function createMcpServer(retriever: Retriever): McpServer {
     'search',
     {
       description:
-        'Search the project by meaning (every dense channel) and, when the query is WQL, by structure, fused by rank. Results say which lane found each.',
+        'Search the project by meaning (every dense channel) and, when the query is WQL, by structure, fused by rank. Results say which lane found each. Every result always has a score (rank position across lanes; not comparable across different searches, and never a sign of relevance — a bad query can score its best guess the same as a great match). Judge relevance from bestScore instead, when it is present (the strongest real similarity a lane reported); it is absent only when nothing but the structural lane, which has no similarity score, found the result.',
       inputSchema: {
         query: z.string(),
         channels: z.array(z.string()).optional(),

@@ -161,7 +161,19 @@ export interface SearchResult {
   readonly kind: string | undefined;
   /** The card that matched, when a dense lane did. Its text is untrusted. */
   readonly card: Card | undefined;
+  /**
+   * Rank-fusion position across lanes, not similarity. Only meaningful to compare items within
+   * this same result page — a great match and a query with no good matches at all can come out
+   * with the same top `score`, since it reflects "beat the others here," not "is relevant." Use
+   * `bestScore` to judge relevance.
+   */
   readonly score: number;
+  /**
+   * The strongest real similarity any lane reported (e.g. a dense channel's cosine score), or
+   * `undefined` when only lanes with no such score (structural) found it. This is what answers
+   * "is this actually a good match" — `score` cannot.
+   */
+  readonly bestScore: number | undefined;
   readonly foundBy: readonly Contribution[];
 }
 
@@ -565,6 +577,7 @@ export class Retriever {
       (entry): SearchResult => ({
         ...entry.item.result,
         score: entry.score,
+        bestScore: entry.bestScore,
         foundBy: entry.foundBy,
       }),
     );
@@ -979,7 +992,7 @@ export class Retriever {
 interface LaneHit {
   readonly key: string;
   readonly score: number | undefined;
-  readonly result: Omit<SearchResult, 'score' | 'foundBy'>;
+  readonly result: Omit<SearchResult, 'score' | 'bestScore' | 'foundBy'>;
 }
 
 function cardHit(hit: SearchHit): LaneHit {

@@ -152,6 +152,28 @@ describe('fusion', () => {
     const two = { name: 'c', weight: 1, hits: [{ key: 'a', item: 2 }] };
     expect(fuse([one, two]).map((r) => r.key)).toEqual(['a', 'b']);
   });
+
+  test('bestScore is the strongest real score across lanes, not the rank-based score', () => {
+    const dense = { name: 'a', weight: 1, hits: [{ key: 'x', item: 'x', score: 0.4 }] };
+    const structural = { name: 'b', weight: 1, hits: [{ key: 'x', item: 'x' }] };
+    const [found] = fuse([dense, structural]);
+    expect(found?.bestScore).toBe(0.4);
+    expect(found?.score).not.toBe(0.4);
+  });
+
+  test('bestScore is undefined when no lane that found it reports a real score', () => {
+    const structural = { name: 'a', weight: 1, hits: [{ key: 'x', item: 'x' }] };
+    expect(fuse([structural])[0]?.bestScore).toBeUndefined();
+  });
+
+  test('two unrelated queries whose best guess each rank first look identical by score alone', () => {
+    // The fused score is position, not confidence: a lucky nonsense match and a genuine one can
+    // both come out on top of a one-lane search with the same score.
+    const strong = fuse([{ name: 'a', weight: 1, hits: [{ key: 'x', item: 'x', score: 0.9 }] }]);
+    const weak = fuse([{ name: 'a', weight: 1, hits: [{ key: 'y', item: 'y', score: 0.1 }] }]);
+    expect(strong[0]?.score).toBe(weak[0]?.score);
+    expect(strong[0]?.bestScore).not.toBe(weak[0]?.bestScore);
+  });
 });
 
 describe('project config', () => {
@@ -244,6 +266,10 @@ describe('searching', () => {
     expect(page.lanes.map((l) => l.name)).toEqual(['docs', 'symbols']);
     expect(page.items[0]?.foundBy.length).toBeGreaterThan(0);
     expect(page.limit).toMatchObject({ source: 'default' });
+    // A real similarity, distinct from the rank-based fused `score`, since that alone cannot say
+    // whether a result is actually relevant.
+    expect(page.items[0]?.bestScore).toBeGreaterThan(0);
+    expect(page.items[0]?.bestScore).not.toBe(page.items[0]?.score);
   });
 
   test('a WQL query is answered structurally and fused with the dense channels', async () => {
@@ -262,6 +288,8 @@ describe('searching', () => {
     expect(page.degraded.map((d) => d.lane).sort()).toEqual(['docs', 'symbols']);
     expect(page.degraded[0]?.error.cause).toBeDefined();
     expect(page.items.length).toBeGreaterThan(0);
+    // Structural has no similarity score, so a purely structural result cannot claim one either.
+    expect(page.items[0]?.bestScore).toBeUndefined();
   });
 
   test('with every lane down the search fails, with all the failures', async () => {

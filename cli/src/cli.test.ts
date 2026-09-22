@@ -200,10 +200,13 @@ describe('command line', () => {
     const search = json(await cli(root, 'search', 'parse the configuration file', '--json'));
     expect(search.items[0].path).toBe('src/config.ts');
     expect(search.items[0].foundBy.length).toBeGreaterThan(0);
+    // The rank-based fused score is not a confidence signal; bestScore is.
+    expect(search.items[0].bestScore).toBeGreaterThan(0);
 
     const text = await cli(root, 'search', 'parse the configuration file');
     expect(text.out).toContain('src/config.ts');
     expect(text.out).toContain('untrusted');
+    expect(text.out).toMatch(/best \d\.\d{3}/);
 
     const structural = json(await cli(root, 'query', '//function[@name="validate"]', '--json'));
     // biome-ignore lint/suspicious/noExplicitAny: asserting a JSON shape
