@@ -177,6 +177,22 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE symbols ADD COLUMN alias_of TEXT;
     `,
   },
+  {
+    version: 5,
+    description: 'corpus records from adapters',
+    sql: `
+      CREATE TABLE corpus_records (
+        corpus TEXT NOT NULL,
+        id TEXT NOT NULL,
+        path TEXT NOT NULL REFERENCES files(path) ON DELETE CASCADE,
+        attrs TEXT NOT NULL,
+        text TEXT,
+        PRIMARY KEY (corpus, id)
+      ) WITHOUT ROWID;
+      CREATE INDEX corpus_records_path ON corpus_records(path);
+      CREATE INDEX corpus_records_corpus ON corpus_records(corpus);
+    `,
+  },
 ];
 
 /** The schema version a database has once fully migrated. */
