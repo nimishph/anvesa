@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import { rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { Deadline, OperationAbortedError } from '@cntxt-labs/code-lens-core';
+import { Deadline, OperationAbortedError } from '@cntxt-labs/anvesa-core';
 import { SourceReadError } from '../errors.ts';
 import { cleanupTrees, makeTree } from '../test-support.ts';
 import { defaultConfig, validateWorkspaceConfig } from './config.ts';

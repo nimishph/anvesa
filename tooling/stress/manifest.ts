@@ -1,5 +1,5 @@
 /**
- * The stress-test manifest: which open-source repositories to run code-lens on, and what each one
+ * The stress-test manifest: which open-source repositories to run anvesa on, and what each one
  * is (its language and stack, how big, how it is laid out, how much of it is old human-written code
  * and how much is recent and AI-assisted).
  *
@@ -7,7 +7,7 @@
  * the per-language (or per-anything) view. The file lives in the person's own stress home, outside
  * every repository, and is never committed: it is a list of what one machine likes to test against.
  */
-import { CodeLensError } from '@cntxt-labs/code-lens-core';
+import { CodeLensError } from '@cntxt-labs/anvesa-core';
 
 export class StressError extends CodeLensError {
   readonly code = 'CLI_STRESS_FAILED';

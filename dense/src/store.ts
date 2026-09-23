@@ -1,4 +1,4 @@
-import type { Deadline } from '@cntxt-labs/code-lens-core';
+import type { Deadline } from '@cntxt-labs/anvesa-core';
 import type { Card } from './card.ts';
 import { DimensionMismatchError } from './errors.ts';
 import type { QuarantinedCard } from './redteam/index.ts';

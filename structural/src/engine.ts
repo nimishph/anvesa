@@ -1,10 +1,10 @@
-import { type Deadline, type Page, paginate } from '@cntxt-labs/code-lens-core';
+import { type Deadline, type Page, paginate } from '@cntxt-labs/anvesa-core';
 import type {
   ParseOptions,
   ParseTarget,
   SyntaxRuntime,
   SyntaxTree,
-} from '@cntxt-labs/code-lens-syntax';
+} from '@cntxt-labs/anvesa-syntax';
 import { type EncodeStats, encodeTree } from './encode.ts';
 import { toHit, type WqlHit } from './hits.ts';
 import { MappingRegistry } from './mapping.ts';

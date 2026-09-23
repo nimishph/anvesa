@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
+import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import { MappingIntegrityError, MappingInvalidError, MappingLockError } from './errors.ts';
 import { type LanguageMapping, MappingRegistry, validateMapping } from './mapping.ts';
 
@@ -22,9 +22,9 @@ export interface StoredMapping {
 }
 
 export interface MappingStoreOptions {
-  /** The project root. Its mappings live in `.code-lens/mappings`. */
+  /** The project root. Its mappings live in `.anvesa/mappings`. */
   readonly projectDir?: string;
-  /** `CODE_LENS_HOME` or `~/.code-lens`. */
+  /** `ANVESA_HOME` or `~/.anvesa`. */
   readonly homeDir?: string;
 }
 
@@ -67,10 +67,10 @@ export class MappingStore {
   }[];
 
   constructor(options: MappingStoreOptions = {}) {
-    const home = options.homeDir ?? process.env.CODE_LENS_HOME ?? join(homedir(), '.code-lens');
+    const home = options.homeDir ?? process.env.ANVESA_HOME ?? join(homedir(), '.anvesa');
     const tiers: { tier: 'project' | 'user'; dir: string; lock: string }[] = [];
     if (options.projectDir) {
-      const base = join(options.projectDir, '.code-lens');
+      const base = join(options.projectDir, '.anvesa');
       tiers.push({
         tier: 'project',
         dir: join(base, 'mappings'),

@@ -1,7 +1,7 @@
 import { isAbsolute, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import * as dense from '@cntxt-labs/code-lens-dense';
-import { defineTransformer, type InputSource, type Transformer } from '@cntxt-labs/code-lens-dense';
+import * as dense from '@cntxt-labs/anvesa-dense';
+import { defineTransformer, type InputSource, type Transformer } from '@cntxt-labs/anvesa-dense';
 import { ChannelModuleError } from './errors.ts';
 
 /** What a channel module gives: its transformer, and where non-file records come from, if any. */
@@ -18,16 +18,16 @@ interface ModuleShape {
 let dependenciesProvided = false;
 
 /**
- * A channel module in a user's project imports `@cntxt-labs/code-lens-dense`, and that package is not in the
+ * A channel module in a user's project imports `@cntxt-labs/anvesa-dense`, and that package is not in the
  * project's `node_modules` (in a compiled binary it is not on disk at all). Serve the copy this
  * process already has, so a module and the retriever share one set of classes and one set of types.
  */
 export function provideDependencies(): void {
   if (dependenciesProvided) return;
   Bun.plugin({
-    name: 'code-lens-channel-dependencies',
+    name: 'anvesa-channel-dependencies',
     setup(build) {
-      build.module('@cntxt-labs/code-lens-dense', () => ({
+      build.module('@cntxt-labs/anvesa-dense', () => ({
         exports: { ...dense },
         loader: 'object',
       }));

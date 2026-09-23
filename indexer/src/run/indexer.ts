@@ -4,14 +4,14 @@ import {
   DeadlineExceededError,
   OperationAbortedError,
   toCodeLensError,
-} from '@cntxt-labs/code-lens-core';
-import { type Ingester, inputFile } from '@cntxt-labs/code-lens-dense';
+} from '@cntxt-labs/anvesa-core';
+import { type Ingester, inputFile } from '@cntxt-labs/anvesa-dense';
 import {
   type CorpusAdapter,
   docblockAnnotationAdapter,
   WEXPR_FORMAT_VERSION,
-} from '@cntxt-labs/code-lens-structural';
-import type { LanguageRegistry } from '@cntxt-labs/code-lens-syntax';
+} from '@cntxt-labs/anvesa-structural';
+import type { LanguageRegistry } from '@cntxt-labs/anvesa-syntax';
 import { SourceReadError } from '../errors.ts';
 import type { FactExtractor, FileFacts } from '../extract/index.ts';
 import {

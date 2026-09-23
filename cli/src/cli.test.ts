@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { type Embedder, npmPackageSource, SyntaxRuntime } from '@cntxt-labs/code-lens-retriever';
+import { type Embedder, npmPackageSource, SyntaxRuntime } from '@cntxt-labs/anvesa-retriever';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { runCli } from './cli.ts';
@@ -54,7 +54,7 @@ export function startServer() { return parseConfig('x'); }
 };
 
 function makeProject(): string {
-  const root = mkdtempSync(join(tmpdir(), 'code-lens-cli-'));
+  const root = mkdtempSync(join(tmpdir(), 'anvesa-cli-'));
   roots.push(root);
   for (const [path, text] of Object.entries(project)) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
@@ -117,13 +117,13 @@ describe('command line', () => {
     expect(help.code).toBe(0);
     expect(help.out).toContain('channel add|list|show|test|index|remove');
     expect(help.out).not.toContain('grammar list');
-    expect(existsSync(join(root, '.code-lens'))).toBe(false);
+    expect(existsSync(join(root, '.anvesa'))).toBe(false);
   });
 
   test('prints its version', async () => {
     const ran = await cli(makeProject(), '--version');
     expect(ran.code).toBe(0);
-    expect(ran.out).toMatch(/^code-lens \d+\.\d+\.\d+/);
+    expect(ran.out).toMatch(/^anvesa \d+\.\d+\.\d+/);
   });
 
   test('init scaffolds the ignore file and both configs, keeps them on a second run, and --force overwrites', async () => {
@@ -131,11 +131,11 @@ describe('command line', () => {
     const first = await cli(root, 'init', '--json');
     expect(first.code).toBe(0);
     expect(json(first)).toEqual({
-      created: ['.code-lensignore', '.code-lens/workspace.json', '.code-lens/config.json'],
+      created: ['.anvesaignore', '.anvesa/workspace.json', '.anvesa/config.json'],
       kept: [],
     });
-    expect(readFileSync(join(root, '.code-lensignore'), 'utf8')).toContain('node_modules');
-    expect(JSON.parse(readFileSync(join(root, '.code-lens/workspace.json'), 'utf8'))).toEqual({
+    expect(readFileSync(join(root, '.anvesaignore'), 'utf8')).toContain('node_modules');
+    expect(JSON.parse(readFileSync(join(root, '.anvesa/workspace.json'), 'utf8'))).toEqual({
       version: 1,
       packages: [],
       discover: true,
@@ -143,26 +143,26 @@ describe('command line', () => {
       nestedRepos: 'include',
       followSymlinks: false,
     });
-    expect(JSON.parse(readFileSync(join(root, '.code-lens/config.json'), 'utf8'))).toEqual({
+    expect(JSON.parse(readFileSync(join(root, '.anvesa/config.json'), 'utf8'))).toEqual({
       channels: {},
     });
     // A scaffolded workspace.json is what index actually reads without erroring.
     expect((await cli(root, 'index')).code).toBe(0);
 
-    writeFileSync(join(root, '.code-lensignore'), '# edited by hand\n');
+    writeFileSync(join(root, '.anvesaignore'), '# edited by hand\n');
     const second = await cli(root, 'init', '--json');
     expect(json(second)).toEqual({
       created: [],
-      kept: ['.code-lensignore', '.code-lens/workspace.json', '.code-lens/config.json'],
+      kept: ['.anvesaignore', '.anvesa/workspace.json', '.anvesa/config.json'],
     });
-    expect(readFileSync(join(root, '.code-lensignore'), 'utf8')).toBe('# edited by hand\n');
+    expect(readFileSync(join(root, '.anvesaignore'), 'utf8')).toBe('# edited by hand\n');
 
     const forced = await cli(root, 'init', '--force', '--json');
     expect(json(forced)).toEqual({
-      created: ['.code-lensignore', '.code-lens/workspace.json', '.code-lens/config.json'],
+      created: ['.anvesaignore', '.anvesa/workspace.json', '.anvesa/config.json'],
       kept: [],
     });
-    expect(readFileSync(join(root, '.code-lensignore'), 'utf8')).toContain('node_modules');
+    expect(readFileSync(join(root, '.anvesaignore'), 'utf8')).toContain('node_modules');
   });
 
   test('index reports live progress on stderr, never on stdout', async () => {
@@ -301,8 +301,8 @@ describe('command line', () => {
     expect(added.out).toContain('registered notes');
 
     const scaffolded = await cli(root, 'channel', 'add', 'runbooks', '--template', 'file');
-    expect(scaffolded.out).toContain('created .code-lens/channels/runbooks/transformer.ts');
-    expect(existsSync(join(root, '.code-lens/channels/runbooks/transformer.ts'))).toBe(true);
+    expect(scaffolded.out).toContain('created .anvesa/channels/runbooks/transformer.ts');
+    expect(existsSync(join(root, '.anvesa/channels/runbooks/transformer.ts'))).toBe(true);
     expect((await cli(root, 'channel', 'create', 'runbooks')).code).toBe(0);
 
     await cli(root, 'channel', 'remove', 'runbooks');
@@ -352,7 +352,7 @@ describe('command line', () => {
 
   test('without a model the structural side still answers and dense says why it cannot', async () => {
     const root = makeProject();
-    const own = { embedder: undefined, env: { CODE_LENS_MODELS: join(root, 'no-models') } };
+    const own = { embedder: undefined, env: { ANVESA_MODELS: join(root, 'no-models') } };
     await cliWith(own, root, 'index', '--no-embed');
     const structural = await cliWith(own, root, 'query', '//function[@name="validate"]');
     expect(structural.code).toBe(0);
@@ -380,8 +380,8 @@ describe('grammars', () => {
     const installed = await cliWith(own, root, 'grammar', 'install', 'typescript', '--from', wasm);
     expect(installed.code).toBe(0);
     expect(installed.out).toContain('recorded in the lockfile');
-    expect(existsSync(join(root, '.code-lens/grammars/tree-sitter-typescript.wasm'))).toBe(true);
-    expect(existsSync(join(root, '.code-lens/grammars.lock.json'))).toBe(true);
+    expect(existsSync(join(root, '.anvesa/grammars/tree-sitter-typescript.wasm'))).toBe(true);
+    expect(existsSync(join(root, '.anvesa/grammars.lock.json'))).toBe(true);
 
     const after = await cliWith(own, root, 'grammar', 'list', '--json');
     expect(row(after)).toMatchObject({ state: 'ready' });
@@ -441,8 +441,8 @@ describe('bringing your own model', () => {
     expect(json(listed).map((m: { id: string }) => m.id)).not.toContain('mine');
   });
 
-  // The real thing, where a MiniLM is at hand (CODE_LENS_TEST_MODELS, as the embedder tests).
-  const library = process.env.CODE_LENS_TEST_MODELS;
+  // The real thing, where a MiniLM is at hand (ANVESA_TEST_MODELS, as the embedder tests).
+  const library = process.env.ANVESA_TEST_MODELS;
   (library ? test : test.skip)(
     'installs from a folder, lists it, verifies it, pins it, and indexes with it',
     async () => {
@@ -546,7 +546,7 @@ public interface IThing { void Run(); }
   };
 
   function csharpProject(): string {
-    const root = mkdtempSync(join(tmpdir(), 'code-lens-cs-'));
+    const root = mkdtempSync(join(tmpdir(), 'anvesa-cs-'));
     roots.push(root);
     for (const [path, text] of Object.entries(CSHARP)) {
       mkdirSync(dirname(join(root, path)), { recursive: true });
@@ -578,7 +578,7 @@ public interface IThing { void Run(); }
     );
     expect(dry.code).toBe(0);
     expect(json(dry).stored).toBeUndefined();
-    expect(existsSync(join(root, '.code-lens', 'mappings', 'csharp.json'))).toBe(false);
+    expect(existsSync(join(root, '.anvesa', 'mappings', 'csharp.json'))).toBe(false);
 
     const trained = await cliWith(
       options,
@@ -593,9 +593,9 @@ public interface IThing { void Run(); }
     expect(trained.out).toContain('method_declaration');
     expect(trained.out).toContain('class_declaration');
     expect(trained.out).toContain('kept in project');
-    expect(existsSync(join(root, '.code-lens', 'mappings', 'csharp.json'))).toBe(true);
-    expect(existsSync(join(root, '.code-lens', 'mappings', 'csharp.golden.json'))).toBe(true);
-    expect(existsSync(join(root, '.code-lens', 'mappings.lock.json'))).toBe(true);
+    expect(existsSync(join(root, '.anvesa', 'mappings', 'csharp.json'))).toBe(true);
+    expect(existsSync(join(root, '.anvesa', 'mappings', 'csharp.golden.json'))).toBe(true);
+    expect(existsSync(join(root, '.anvesa', 'mappings.lock.json'))).toBe(true);
 
     const listed = json(await cliWith(options, root, 'mapping', 'list', '--json'));
     // biome-ignore lint/suspicious/noExplicitAny: asserting a JSON shape
@@ -623,7 +623,7 @@ public interface IThing { void Run(); }
     const root = csharpProject();
     const options = own(root);
     await cliWith(options, root, 'mapping', 'train', 'csharp', '--samples', 'server');
-    const path = join(root, '.code-lens', 'mappings', 'csharp.json');
+    const path = join(root, '.anvesa', 'mappings', 'csharp.json');
     writeFileSync(path, readFileSync(path, 'utf8').replaceAll('"method"', '"func"'));
 
     const index = await cliWith(options, root, 'index', '--no-embed');
@@ -648,7 +648,7 @@ public interface IThing { void Run(); }
     const options = own(root);
     const forked = await cliWith(options, root, 'mapping', 'fork', 'python', '--json');
     expect(forked.code).toBe(0);
-    expect(existsSync(join(root, '.code-lens', 'mappings', 'python.json'))).toBe(true);
+    expect(existsSync(join(root, '.anvesa', 'mappings', 'python.json'))).toBe(true);
     type Listed = { mapping: { name: string }; tier: string };
     const inEffect = (ran: Ran) =>
       (json(ran) as Listed[]).filter((m) => m.mapping.name === 'python').map((m) => m.tier);
@@ -677,7 +677,7 @@ describe('sharded indexing', () => {
     const proposed = await cli(root, 'fragments', 'propose', '--json');
     expect(proposed.code).toBe(0);
     expect(Object.keys(json(proposed).manifest.fragments).sort()).toEqual(['docs', 'root', 'src']);
-    expect(existsSync(join(root, '.code-lens', 'fragments.json'))).toBe(false);
+    expect(existsSync(join(root, '.anvesa', 'fragments.json'))).toBe(false);
     const text = await cli(root, 'fragments', 'propose');
     expect(text.out).toContain('not written');
     expect((await cli(root, 'fragments', 'propose', '--tier', 'nope')).code).toBe(2);
@@ -689,12 +689,12 @@ describe('sharded indexing', () => {
 
     const enabled = await cli(root, 'fragments', 'enable');
     expect(enabled.code).toBe(0);
-    expect(existsSync(join(root, '.code-lens', 'fragments.json'))).toBe(true);
-    expect(
-      JSON.parse(readFileSync(join(root, '.code-lens', 'config.json'), 'utf8')).indexing,
-    ).toEqual({
-      fragments: 'on',
-    });
+    expect(existsSync(join(root, '.anvesa', 'fragments.json'))).toBe(true);
+    expect(JSON.parse(readFileSync(join(root, '.anvesa', 'config.json'), 'utf8')).indexing).toEqual(
+      {
+        fragments: 'on',
+      },
+    );
     // Proposing again would replace what every machine follows.
     const again = await cli(root, 'fragments', 'propose', '--write');
     expect(again.code).toBe(1);
@@ -703,7 +703,7 @@ describe('sharded indexing', () => {
 
     const built = await cli(root, 'index');
     expect(built.code).toBe(0);
-    expect(existsSync(join(root, '.code-lens', 'shards', 'src.db'))).toBe(true);
+    expect(existsSync(join(root, '.anvesa', 'shards', 'src.db'))).toBe(true);
     const after = json(await cli(root, 'search', 'parse the configuration file', '--json'));
     expect(after.items.map((r: { path: string }) => r.path)).toEqual(
       before.items.map((r: { path: string }) => r.path),
@@ -716,7 +716,7 @@ describe('sharded indexing', () => {
     expect(statusJson.drift.shards.map((s: { id: string }) => s.id)).toEqual(['docs', 'src']);
 
     // A committed change to the manifest is noticed, and acted on by the next index.
-    const path = join(root, '.code-lens', 'fragments.json');
+    const path = join(root, '.anvesa', 'fragments.json');
     const manifest = JSON.parse(readFileSync(path, 'utf8'));
     manifest.overrides = { 'src/server.ts': 'docs' };
     writeFileSync(path, JSON.stringify(manifest));
@@ -739,8 +739,8 @@ describe('sharded indexing', () => {
 
   test('turning it on with no manifest at hand is refused by the commands that need one; enable proposes from an index', async () => {
     const root = makeProject();
-    mkdirSync(join(root, '.code-lens'), { recursive: true });
-    writeFileSync(join(root, '.code-lens', 'config.json'), '{"indexing":{"fragments":"on"}}');
+    mkdirSync(join(root, '.anvesa'), { recursive: true });
+    writeFileSync(join(root, '.anvesa', 'config.json'), '{"indexing":{"fragments":"on"}}');
     const status = await cli(root, 'status');
     expect(status.code).toBe(1);
     expect(status.err).toContain('fragments enable');
@@ -763,9 +763,9 @@ describe('red-team rules a project brings', () => {
     message: 'Mentions configuration.',
     fixtures: { attack: ['load the Configuration file'], benign: ['load the settings file'] },
   };
-  const policyPath = (root: string) => join(root, '.code-lens', 'redteam.json');
+  const policyPath = (root: string) => join(root, '.anvesa', 'redteam.json');
   const writePolicy = (root: string, policy: unknown) => {
-    mkdirSync(join(root, '.code-lens'), { recursive: true });
+    mkdirSync(join(root, '.anvesa'), { recursive: true });
     writeFileSync(policyPath(root), JSON.stringify(policy));
   };
 
@@ -989,7 +989,7 @@ describe('mcp server', () => {
     } finally {
       await session.close();
     }
-    expect(session.stderr()).toContain('code-lens mcp: serving');
+    expect(session.stderr()).toContain('anvesa mcp: serving');
   });
 });
 
@@ -1003,8 +1003,8 @@ describe('declarative patterns', () => {
     expect(emptyList.code).toBe(0);
     expect(emptyList.out).toContain('no patterns found');
 
-    // Add a pattern to .code-lens/patterns/
-    const patternsDir = join(root, '.code-lens', 'patterns');
+    // Add a pattern to .anvesa/patterns/
+    const patternsDir = join(root, '.anvesa', 'patterns');
     mkdirSync(patternsDir, { recursive: true });
     writeFileSync(
       join(patternsDir, 'functions-by-name.json'),

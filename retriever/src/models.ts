@@ -1,6 +1,6 @@
-import type { Deadline } from '@cntxt-labs/code-lens-core';
-import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
-import type { Embedder } from '@cntxt-labs/code-lens-dense';
+import type { Deadline } from '@cntxt-labs/anvesa-core';
+import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
+import type { Embedder } from '@cntxt-labs/anvesa-dense';
 import {
   BUILTIN_MODELS,
   builtinModel,
@@ -19,7 +19,7 @@ import {
   TIERS,
   type Tier,
   type TierChoice,
-} from '@cntxt-labs/code-lens-embedder';
+} from '@cntxt-labs/anvesa-embedder';
 import type { ProjectConfig } from './config.ts';
 
 export interface ModelRow {
@@ -184,4 +184,4 @@ export async function openProjectEmbedder(
   }
 }
 
-export { ModelCache, modelsDirectory } from '@cntxt-labs/code-lens-embedder';
+export { ModelCache, modelsDirectory } from '@cntxt-labs/anvesa-embedder';

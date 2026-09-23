@@ -1,14 +1,14 @@
 import { afterAll, describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { InvalidArgumentError, type Page } from '@cntxt-labs/code-lens-core';
-import type { VectorStore } from '@cntxt-labs/code-lens-dense';
+import { InvalidArgumentError, type Page } from '@cntxt-labs/anvesa-core';
+import type { VectorStore } from '@cntxt-labs/anvesa-dense';
 import {
   inputFile,
   MemoryVectorStore,
   makeCard,
   vectorStoreContract,
-} from '@cntxt-labs/code-lens-dense';
+} from '@cntxt-labs/anvesa-dense';
 import { FragmentAssigner, validateManifest } from '../fragments/manifest.ts';
 import { cleanupTrees, makeTree } from '../test-support.ts';
 import { indexStoreContract } from './index-store-contract.ts';

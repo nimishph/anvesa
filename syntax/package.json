@@ -1,5 +1,5 @@
 {
-  "name": "@cntxt-labs/code-lens-syntax",
+  "name": "@cntxt-labs/anvesa-syntax",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,7 +8,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@cntxt-labs/code-lens-core": "workspace:*",
+    "@cntxt-labs/anvesa-core": "workspace:*",
     "web-tree-sitter": "^0.26.12"
   },
   "devDependencies": {

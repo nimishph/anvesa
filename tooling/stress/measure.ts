@@ -1,6 +1,6 @@
 /**
  * One stress run: for each chosen repository, get it at its pinned commit, measure what it is, run
- * code-lens on it the way a person would (index, index again, ask questions) and record numbers.
+ * anvesa on it the way a person would (index, index again, ask questions) and record numbers.
  *
  * A step that fails is a result, not a reason to stop: the run records what failed and where, and
  * goes on to the next repository. The record is what `compare` reads later.
@@ -258,7 +258,7 @@ async function measureRepo(entry: Entry, options: RunOptions): Promise<RepoResul
   try {
     if (options.fresh) {
       try {
-        rmSync(join(directory, '.code-lens'), {
+        rmSync(join(directory, '.anvesa'), {
           recursive: true,
           force: true,
           maxRetries: 5,
@@ -267,7 +267,7 @@ async function measureRepo(entry: Entry, options: RunOptions): Promise<RepoResul
       } catch (cause) {
         throw new StepFailed({
           step: 'reset',
-          message: `could not remove the previous index (is a code-lens still running there?): ${(cause as Error).message}`,
+          message: `could not remove the previous index (is an anvesa still running there?): ${(cause as Error).message}`,
           exitCode: null,
           timedOut: false,
         });
@@ -326,7 +326,7 @@ async function measureRepo(entry: Entry, options: RunOptions): Promise<RepoResul
       const doctor = await run('model', ['model', 'doctor'], false);
       embedder = /would use: (\S+)/.exec(doctor.stdout)?.[1];
     }
-    metrics['db.bytes'] = sizeOfTree(join(directory, '.code-lens'));
+    metrics['db.bytes'] = sizeOfTree(join(directory, '.anvesa'));
 
     await asking(options, metrics, run, json, options.dense && (metrics['dense.cards'] ?? 0) > 0);
   } catch (caught) {

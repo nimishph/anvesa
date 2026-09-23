@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
-import { InvariantViolationError } from '@cntxt-labs/code-lens-core';
+import { InvariantViolationError } from '@cntxt-labs/anvesa-core';
 import { builtinLanguages } from './languages.ts';
 import { locateGrammar, npmPackageSource } from './sources.ts';
 
@@ -14,7 +14,7 @@ export interface TempDir {
 }
 
 export async function makeTempDir(): Promise<TempDir> {
-  const path = await mkdtemp(join(tmpdir(), 'code-lens-syntax-'));
+  const path = await mkdtemp(join(tmpdir(), 'anvesa-syntax-'));
   return { path, cleanup: () => rm(path, { recursive: true, force: true }) };
 }
 

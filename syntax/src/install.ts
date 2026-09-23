@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
-import type { Deadline } from '@cntxt-labs/code-lens-core';
+import type { Deadline } from '@cntxt-labs/anvesa-core';
 import { GrammarInstallError, GrammarIntegrityError, NetworkForbiddenError } from './errors.ts';
 import { isNotFound, looksLikeWasm, sha256Hex, writeFileAtomic } from './files.ts';
 import type { GrammarRef, LanguageRegistry } from './languages.ts';

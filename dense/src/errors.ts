@@ -1,4 +1,4 @@
-import { CodeLensError, type ErrorInit } from '@cntxt-labs/code-lens-core';
+import { CodeLensError, type ErrorInit } from '@cntxt-labs/anvesa-core';
 
 /** Every failure in this package. Codes are `DENSE_<REASON>`. */
 export abstract class DenseSubsystemError extends CodeLensError {

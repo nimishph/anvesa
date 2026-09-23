@@ -17,8 +17,8 @@ export interface Program {
   readonly sha256: string;
 }
 
-const EXECUTABLE = process.platform === 'win32' ? 'code-lens.exe' : 'code-lens';
-const BUILD = new RegExp(`^code-lens-(\\d+(?:\\.\\d+)*)-${process.platform}-${process.arch}$`);
+const EXECUTABLE = process.platform === 'win32' ? 'anvesa.exe' : 'anvesa';
+const BUILD = new RegExp(`^anvesa-(\\d+(?:\\.\\d+)*)-${process.platform}-${process.arch}$`);
 
 const parts = (version: string): number[] => version.split('.').map(Number);
 function newerFirst(a: string, b: string): number {
@@ -43,19 +43,19 @@ function newestBuild(): string | undefined {
   return builds.map((build) => join(dist, build.name, EXECUTABLE)).find((path) => existsSync(path));
 }
 
-/** `--program`, else `CODE_LENS_BIN`, else the newest build here. */
+/** `--program`, else `ANVESA_BIN`, else the newest build here. */
 export async function resolveProgram(
   explicit: string | undefined,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<Program> {
-  const path = explicit ?? (env.CODE_LENS_BIN || undefined) ?? newestBuild();
+  const path = explicit ?? (env.ANVESA_BIN || undefined) ?? newestBuild();
   if (path === undefined) {
-    throw new StressError('There is no local code-lens build to test.', {
-      hint: 'Build one with `bun run package` in the code-lens checkout, or pass --program <path>.',
+    throw new StressError('There is no local anvesa build to test.', {
+      hint: 'Build one with `bun run package` in the anvesa checkout, or pass --program <path>.',
     });
   }
   if (!existsSync(path)) {
-    throw new StressError(`The code-lens program ${path} does not exist.`, { context: { path } });
+    throw new StressError(`The anvesa program ${path} does not exist.`, { context: { path } });
   }
   const ran = await spawnText([path, '--version']);
   if (ran.code !== 0) {
@@ -64,7 +64,7 @@ export async function resolveProgram(
   const stat = statSync(path);
   return {
     path: resolve(path),
-    version: ran.stdout.trim().replace(/^code-lens\s+/, ''),
+    version: ran.stdout.trim().replace(/^anvesa\s+/, ''),
     sizeBytes: stat.size,
     modifiedAt: stat.mtime.toISOString(),
     sha256: createHash('sha256').update(readFileSync(path)).digest('hex'),

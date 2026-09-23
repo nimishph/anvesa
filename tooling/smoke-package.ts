@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 /**
  * Run the packaged program the way a user would, on a small project: version, grammars, index,
- * a structural query and an MCP handshake. With `CODE_LENS_SMOKE_MODELS` (a models directory) and
- * `CODE_LENS_SMOKE_MODEL` (a model id) it also indexes densely and searches, which proves the ONNX
+ * a structural query and an MCP handshake. With `ANVESA_SMOKE_MODELS` (a models directory) and
+ * `ANVESA_SMOKE_MODEL` (a model id) it also indexes densely and searches, which proves the ONNX
  * runtime loads from the `runtime/` folder.
  *
  *   bun run tooling/smoke-package.ts [--dist dist]
@@ -11,23 +11,19 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
+import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 
 const root = resolve(import.meta.dir, '..');
 const { values } = parseArgs({ options: { dist: { type: 'string' } } });
 const dist = resolve(root, values.dist ?? 'dist');
 const unpacked = readdirSync(dist, { withFileTypes: true }).find(
-  (entry) => entry.isDirectory() && entry.name.startsWith('code-lens-'),
+  (entry) => entry.isDirectory() && entry.name.startsWith('anvesa-'),
 );
 if (!unpacked)
   throw new InvalidArgumentError('--dist', 'a folder holding a packaged program', dist);
-const program = join(
-  dist,
-  unpacked.name,
-  process.platform === 'win32' ? 'code-lens.exe' : 'code-lens',
-);
+const program = join(dist, unpacked.name, process.platform === 'win32' ? 'anvesa.exe' : 'anvesa');
 
-const project = mkdtempSync(join(tmpdir(), 'code-lens-smoke-'));
+const project = mkdtempSync(join(tmpdir(), 'anvesa-smoke-'));
 mkdirSync(join(project, 'src'));
 writeFileSync(join(project, 'package.json'), '{"name":"smoke"}');
 writeFileSync(
@@ -66,7 +62,7 @@ try {
   const version = await run(['--version']);
   expect(
     'prints a version',
-    version.code === 0 && /^code-lens \d+\.\d+\.\d+/.test(version.out),
+    version.code === 0 && /^anvesa \d+\.\d+\.\d+/.test(version.out),
     version,
   );
 
@@ -91,8 +87,8 @@ try {
     queried,
   );
 
-  const models = process.env.CODE_LENS_SMOKE_MODELS;
-  const model = process.env.CODE_LENS_SMOKE_MODEL;
+  const models = process.env.ANVESA_SMOKE_MODELS;
+  const model = process.env.ANVESA_SMOKE_MODEL;
   if (models && model) {
     const dense = await run(['index', '--force', '--models', models, '--model', model]);
     expect('embeds with the packaged ONNX runtime', dense.code === 0, dense);

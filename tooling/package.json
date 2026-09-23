@@ -1,11 +1,11 @@
 {
-  "name": "@cntxt-labs/code-lens-tooling",
+  "name": "@cntxt-labs/anvesa-tooling",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "description": "Enforcement for the engineering standards: Biome plugins and the tests that prove they fire.",
   "dependencies": {
-    "@cntxt-labs/code-lens-core": "workspace:*"
+    "@cntxt-labs/anvesa-core": "workspace:*"
   },
   "license": "MIT"
 }

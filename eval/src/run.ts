@@ -2,8 +2,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
-import type { SymbolFact } from '@cntxt-labs/code-lens-indexer';
+import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
+import type { SymbolFact } from '@cntxt-labs/anvesa-indexer';
 import { type OursImport, scoreCalls, scoreImports, scoreSymbols } from './compare.ts';
 import { indexRepository } from './indexing.ts';
 import { renderReport, reportJson } from './report.ts';
@@ -38,8 +38,7 @@ async function main(): Promise<void> {
   const languages = values.languages?.split(',') ?? DEFAULT_LANGUAGES;
   const samples =
     values.samples === undefined ? DEFAULT_SAMPLES : Number.parseInt(values.samples, 10);
-  const databasePath =
-    values.db ?? join(mkdtempSync(join(tmpdir(), 'code-lens-eval-')), 'index.db');
+  const databasePath = values.db ?? join(mkdtempSync(join(tmpdir(), 'anvesa-eval-')), 'index.db');
 
   const run = await indexRepository({
     root,

@@ -113,7 +113,7 @@ describe('the manifest file', () => {
   });
 
   test('is written in a fixed order, so an unchanged manifest is an unchanged file', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'code-lens-frag-'));
+    const dir = mkdtempSync(join(tmpdir(), 'anvesa-frag-'));
     dirs.push(dir);
     expect(await loadManifest(dir)).toBeUndefined();
     const path = await saveManifest(dir, manifest());
@@ -132,7 +132,7 @@ describe('the manifest file', () => {
   });
 
   test('a file that is not JSON, or does not fit, is an error that names it', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'code-lens-frag-'));
+    const dir = mkdtempSync(join(tmpdir(), 'anvesa-frag-'));
     dirs.push(dir);
     await saveManifest(dir, manifest());
     const { writeFileSync } = await import('node:fs');

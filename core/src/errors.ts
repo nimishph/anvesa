@@ -1,7 +1,7 @@
 /**
  * Typed errors for every code-lens subsystem.
  *
- * Nothing in the packages throws a bare `Error`. A failure is a `CodeLensError` subclass that says
+ * Nothing in the packages throws a bare `Error`. A failure is a `AnvesaError` subclass that says
  * what went wrong (`code`), where (`subsystem`), with what inputs (`context`) and because of what
  * (`cause`). Callers branch on `code`, never on message text, and the whole chain serialises to
  * JSON so CLI and MCP layers can report it without losing the reason.
@@ -53,7 +53,7 @@ export type JsonValue =
 /** Format every error code must follow. Enforced by tests over each package's error classes. */
 export const ERROR_CODE_FORMAT = /^[A-Z][A-Z0-9]*(?:_[A-Z][A-Z0-9]*)+$/;
 
-export abstract class CodeLensError extends Error {
+export abstract class AnvesaError extends Error {
   abstract readonly code: string;
   abstract readonly subsystem: Subsystem;
   readonly context: ErrorContext;
@@ -66,8 +66,8 @@ export abstract class CodeLensError extends Error {
     this.hint = init.hint;
   }
 
-  static is(value: unknown): value is CodeLensError {
-    return value instanceof CodeLensError;
+  static is(value: unknown): value is AnvesaError {
+    return value instanceof AnvesaError;
   }
 
   /** This error followed by each nested cause, outermost first. */
@@ -91,7 +91,7 @@ export abstract class CodeLensError extends Error {
 function serializeError(error: Error, seen: WeakSet<object>): SerializedCause {
   seen.add(error);
   const cause = serializeCause(error.cause, seen);
-  if (!(error instanceof CodeLensError)) {
+  if (!(error instanceof AnvesaError)) {
     return { name: error.name, message: error.message, ...(cause ? { cause } : {}) };
   }
   return {
@@ -167,7 +167,7 @@ export function describeThrowable(thrown: unknown): string {
 // ---------------------------------------------------------------------------------------------
 
 /** A caller passed a value that violates a function's documented contract. */
-export class InvalidArgumentError extends CodeLensError {
+export class InvalidArgumentError extends AnvesaError {
   readonly code = 'CORE_INVALID_ARGUMENT';
   readonly subsystem = 'core';
 
@@ -185,7 +185,7 @@ export class InvalidArgumentError extends CodeLensError {
 }
 
 /** A deadline passed before the operation finished. */
-export class DeadlineExceededError extends CodeLensError {
+export class DeadlineExceededError extends AnvesaError {
   readonly code = 'CORE_DEADLINE_EXCEEDED';
   readonly subsystem = 'core';
 
@@ -198,7 +198,7 @@ export class DeadlineExceededError extends CodeLensError {
 }
 
 /** The caller cancelled the operation through its AbortSignal. */
-export class OperationAbortedError extends CodeLensError {
+export class OperationAbortedError extends AnvesaError {
   readonly code = 'CORE_OPERATION_ABORTED';
   readonly subsystem = 'core';
 
@@ -211,7 +211,7 @@ export class OperationAbortedError extends CodeLensError {
 }
 
 /** Code reached a state its author proved impossible. Always a bug in code-lens, not the input. */
-export class InvariantViolationError extends CodeLensError {
+export class InvariantViolationError extends AnvesaError {
   readonly code = 'CORE_INVARIANT_VIOLATED';
   readonly subsystem = 'core';
 
@@ -224,12 +224,12 @@ export class InvariantViolationError extends CodeLensError {
 }
 
 /** A fan-out finished with one or more failures. Every failure is kept, none is dropped. */
-export class AggregateFailureError extends CodeLensError {
+export class AggregateFailureError extends AnvesaError {
   readonly code = 'CORE_AGGREGATE_FAILURE';
   readonly subsystem = 'core';
-  readonly failures: readonly CodeLensError[];
+  readonly failures: readonly AnvesaError[];
 
-  constructor(operation: string, failures: readonly CodeLensError[], init: ErrorInit = {}) {
+  constructor(operation: string, failures: readonly AnvesaError[], init: ErrorInit = {}) {
     super(`${failures.length} failure(s) during ${operation}`, {
       ...init,
       cause: failures[0],
@@ -243,8 +243,8 @@ export class AggregateFailureError extends CodeLensError {
   }
 }
 
-/** Something that is not a `CodeLensError` reached a boundary that requires one. */
-export class UnexpectedFailureError extends CodeLensError {
+/** Something that is not a `AnvesaError` reached a boundary that requires one. */
+export class UnexpectedFailureError extends AnvesaError {
   readonly code = 'CORE_UNEXPECTED_FAILURE';
   readonly subsystem = 'core';
 
@@ -258,16 +258,16 @@ export class UnexpectedFailureError extends CodeLensError {
 }
 
 /**
- * Turn whatever a `catch` received into a `CodeLensError` without losing it. Typed errors pass
+ * Turn whatever a `catch` received into a `AnvesaError` without losing it. Typed errors pass
  * through untouched; everything else is wrapped with the operation that was running, keeping the
  * original on the cause chain.
  */
-export function toCodeLensError(
+export function toAnvesaError(
   thrown: unknown,
   operation: string,
   context?: ErrorContext,
-): CodeLensError {
-  if (thrown instanceof CodeLensError) return thrown;
+): AnvesaError {
+  if (thrown instanceof AnvesaError) return thrown;
   return new UnexpectedFailureError(operation, thrown, context ? { context } : {});
 }
 
@@ -275,3 +275,6 @@ export function toCodeLensError(
 export function assertNever(value: never, where: string): never {
   throw new InvariantViolationError(`Unhandled variant in ${where}`, { context: { value } });
 }
+
+// Backward-compatibility aliases during migration
+export { AnvesaError as CodeLensError, toAnvesaError as toCodeLensError };

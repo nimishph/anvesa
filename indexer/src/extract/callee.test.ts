@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { InvariantViolationError } from '@cntxt-labs/code-lens-core';
+import { InvariantViolationError } from '@cntxt-labs/anvesa-core';
 import { parseCallee } from './callee.ts';
 import type { Receiver } from './facts.ts';
 import { bySpan, NestingCursor } from './scope.ts';

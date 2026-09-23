@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { FragmentManifestError } from '../errors.ts';
 
 /** Where a project keeps the manifest that says which fragment each file belongs to. */
-export const FRAGMENTS_PATH = join('.code-lens', 'fragments.json');
+export const FRAGMENTS_PATH = join('.anvesa', 'fragments.json');
 
 const MANIFEST_VERSION = 1;
 const FRAGMENT_ID = /^[a-z0-9][a-z0-9._-]*$/;

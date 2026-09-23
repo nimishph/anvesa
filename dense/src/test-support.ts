@@ -1,5 +1,5 @@
-import { StructuralEngine } from '@cntxt-labs/code-lens-structural';
-import { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/code-lens-syntax';
+import { StructuralEngine } from '@cntxt-labs/anvesa-structural';
+import { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/anvesa-syntax';
 import type { Embedder } from './embedder.ts';
 
 /** Test-only helpers. Not exported from the package. */

@@ -1,4 +1,4 @@
-import type { Embedder, GrammarHost, SyntaxRuntime } from '@cntxt-labs/code-lens-retriever';
+import type { Embedder, GrammarHost, SyntaxRuntime } from '@cntxt-labs/anvesa-retriever';
 
 /** What the CLI reads from and writes to, so it can be driven by tests as well as by a terminal. */
 export interface Environment {

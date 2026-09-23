@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { CallFact, ImportFact, Resolution, SymbolFact } from '@cntxt-labs/code-lens-indexer';
+import type { CallFact, ImportFact, Resolution, SymbolFact } from '@cntxt-labs/anvesa-indexer';
 import { type ObservedCall, ratio, scoreCalls, scoreImports, scoreSymbols } from './compare.ts';
 import type { TruthCall, TruthImport, TruthSymbol } from './truth.ts';
 

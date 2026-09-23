@@ -1,8 +1,8 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { StructuralEngine } from '@cntxt-labs/code-lens-structural';
-import { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/code-lens-syntax';
+import { StructuralEngine } from '@cntxt-labs/anvesa-structural';
+import { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/anvesa-syntax';
 import { FactExtractor } from './extract/extract.ts';
 import { DiskEnvironment, GraphLinker, GraphQueries, ImportResolver } from './graph/index.ts';
 import { MemoryIndexStore } from './store/memory-index-store.ts';
@@ -168,7 +168,7 @@ export function cleanupRepos(): void {
 }
 
 export function materialise(scenario: Scenario): string {
-  const root = mkdtempSync(join(tmpdir(), 'code-lens-ignore-'));
+  const root = mkdtempSync(join(tmpdir(), 'anvesa-ignore-'));
   roots.push(root);
   Bun.spawnSync({ cmd: ['git', 'init', '-q'], cwd: root });
   Bun.spawnSync({ cmd: ['git', 'config', 'core.ignorecase', 'false'], cwd: root });
@@ -203,7 +203,7 @@ const trees: string[] = [];
 
 /** A temporary directory holding the given files. Remove them all with `cleanupTrees`. */
 export function makeTree(files: Readonly<Record<string, string>>): string {
-  const root = mkdtempSync(join(tmpdir(), 'code-lens-tree-'));
+  const root = mkdtempSync(join(tmpdir(), 'anvesa-tree-'));
   trees.push(root);
   for (const [path, text] of Object.entries(files)) {
     mkdirSync(dirname(join(root, path)), { recursive: true });

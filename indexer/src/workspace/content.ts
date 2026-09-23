@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Deadline } from '@cntxt-labs/code-lens-core';
+import type { Deadline } from '@cntxt-labs/anvesa-core';
 import { SourceReadError } from '../errors.ts';
 
 /**

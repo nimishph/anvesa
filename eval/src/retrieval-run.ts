@@ -2,14 +2,14 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
-import type { SymbolFact } from '@cntxt-labs/code-lens-indexer';
+import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
+import type { SymbolFact } from '@cntxt-labs/anvesa-indexer';
 import {
   ModelCache,
   modelsDirectory,
   openProjectEmbedder,
   Retriever,
-} from '@cntxt-labs/code-lens-retriever';
+} from '@cntxt-labs/anvesa-retriever';
 import {
   type EvalQuery,
   generateQueries,
@@ -104,7 +104,7 @@ async function main(): Promise<void> {
 
   const databasePath = values.db
     ? resolve(values.db)
-    : join(mkdtempSync(join(tmpdir(), 'code-lens-retrieval-eval-')), 'index.db');
+    : join(mkdtempSync(join(tmpdir(), 'anvesa-retrieval-eval-')), 'index.db');
   const retriever = await Retriever.open({ root, embedder, databasePath });
   try {
     const started = performance.now();
@@ -238,7 +238,7 @@ async function main(): Promise<void> {
     process.stdout.write(
       render(
         [
-          `code-lens retrieval evaluation: ${values.repo}${scope ? ` (${scope}/)` : ''}`,
+          `anvesa retrieval evaluation: ${values.repo}${scope ? ` (${scope}/)` : ''}`,
           `model ${embedder.info.id} (${opened.reason})`,
           `indexed ${indexed.report.files.added} files, ${indexed.report.dense?.cards ?? 0} cards in ${(indexMs / 1000).toFixed(1)} s`,
           `queries: ${counts.join(', ')}`,

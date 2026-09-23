@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { DocblockAnnotationCorpusAdapter } from '@cntxt-labs/code-lens-structural';
+import { DocblockAnnotationCorpusAdapter } from '@cntxt-labs/anvesa-structural';
 import { MemoryIndexStore } from './store/memory-index-store.ts';
 
 describe('CorpusAdapter & Store', () => {

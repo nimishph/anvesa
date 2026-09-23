@@ -183,7 +183,7 @@ export function renderComparison(
   const newest = runs.at(-1);
   if (newest) {
     lines.push(
-      `latest program: code-lens ${newest.program.version}, sha ${short(newest.program.sha256)}`,
+      `latest program: anvesa ${newest.program.version}, sha ${short(newest.program.sha256)}`,
     );
   }
   let regressions = 0;

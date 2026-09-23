@@ -1,7 +1,7 @@
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { type Deadline, toCodeLensError } from '@cntxt-labs/code-lens-core';
-import { LanguageRegistry } from '@cntxt-labs/code-lens-syntax';
+import { type Deadline, toCodeLensError } from '@cntxt-labs/anvesa-core';
+import { LanguageRegistry } from '@cntxt-labs/anvesa-syntax';
 import { SourceReadError } from '../errors.ts';
 import type { WorkspacePackage } from './discover.ts';
 import { Traversal, type TraversalReport } from './traverse.ts';
@@ -14,7 +14,7 @@ export const DOCUMENT_LANGUAGE = 'text';
 export interface SourceEntry {
   /** Relative to the workspace root, `/`-separated. */
   readonly path: string;
-  /** The language key from `@cntxt-labs/code-lens-syntax`. */
+  /** The language key from `@cntxt-labs/anvesa-syntax`. */
   readonly language: string;
   readonly package: WorkspacePackage | undefined;
   /** The repository it belongs to: `''` for the workspace's own, else a nested repo's directory. */

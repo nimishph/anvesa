@@ -1,5 +1,5 @@
-import { toCodeLensError } from '@cntxt-labs/code-lens-core';
-import { fenceUntrusted, type Retriever } from '@cntxt-labs/code-lens-retriever';
+import { toCodeLensError } from '@cntxt-labs/anvesa-core';
+import { fenceUntrusted, type Retriever } from '@cntxt-labs/anvesa-retriever';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
@@ -19,7 +19,7 @@ import { VERSION } from './version.ts';
  * from instructions.
  */
 export function createMcpServer(retriever: Retriever): McpServer {
-  const server = new McpServer({ name: 'code-lens', version: VERSION });
+  const server = new McpServer({ name: 'anvesa', version: VERSION });
 
   /** A tool result: the payload as JSON, or the error a model can act on. */
   const respond = async (run: () => Promise<unknown>) => {
@@ -194,7 +194,7 @@ export function createMcpServer(retriever: Retriever): McpServer {
     'pattern_list',
     {
       description:
-        'List all available declarative structural patterns configured in .code-lens/patterns/.',
+        'List all available declarative structural patterns configured in .anvesa/patterns/.',
       inputSchema: {},
     },
     () => respond(() => retriever.patterns.list()),
@@ -274,7 +274,7 @@ export async function serveMcp(
   }
   await server.connect(transport);
   ctx.environment.stderr(
-    `code-lens mcp: serving ${session.retriever.root} (${session.embedderReason})\n`,
+    `anvesa mcp: serving ${session.retriever.root} (${session.embedderReason})\n`,
   );
   await closed;
   await session.close();

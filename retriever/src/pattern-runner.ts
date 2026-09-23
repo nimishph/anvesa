@@ -1,15 +1,15 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
+import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import {
   compilePattern,
   type Diagnostic,
   type PatternSpec,
   type WqlHit,
-} from '@cntxt-labs/code-lens-structural';
+} from '@cntxt-labs/anvesa-structural';
 
-export type { Diagnostic, PatternSpec } from '@cntxt-labs/code-lens-structural';
+export type { Diagnostic, PatternSpec } from '@cntxt-labs/anvesa-structural';
 
 export interface PatternRunResult {
   readonly pattern: string;
@@ -44,7 +44,7 @@ export class PatternRunner {
   constructor(private readonly retriever: PatternRetrieverHost) {}
 
   patternsDirectory(): string {
-    return join(this.retriever.workspace.root, '.code-lens', 'patterns');
+    return join(this.retriever.workspace.root, '.anvesa', 'patterns');
   }
 
   async list(): Promise<readonly PatternSpec[]> {

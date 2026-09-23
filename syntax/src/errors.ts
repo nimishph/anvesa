@@ -1,4 +1,4 @@
-import { CodeLensError, type ErrorInit } from '@cntxt-labs/code-lens-core';
+import { CodeLensError, type ErrorInit } from '@cntxt-labs/anvesa-core';
 
 /** Every failure in this package. Codes are `SYNTAX_<REASON>`. */
 export abstract class SyntaxSubsystemError extends CodeLensError {
@@ -60,7 +60,7 @@ export class GrammarMissingError extends SyntaxSubsystemError {
     init: ErrorInit = {},
   ) {
     super(`No grammar available for "${language}" (grammar "${grammarId}")`, {
-      hint: `Install it: code-lens grammar install ${language} --from <dir|tarball> (or allow the network).`,
+      hint: `Install it: anvesa grammar install ${language} --from <dir|tarball> (or allow the network).`,
       ...init,
       context: { language, grammarId, searched, ...init.context },
     });
@@ -141,7 +141,7 @@ export class NetworkForbiddenError extends SyntaxSubsystemError {
 
   constructor(grammarId: string, url: string, init: ErrorInit = {}) {
     super(`Installing "${grammarId}" needs the network, but offline mode is on`, {
-      hint: 'Install from a local copy instead: code-lens grammar install <lang> --from <dir|tarball>.',
+      hint: 'Install from a local copy instead: anvesa grammar install <lang> --from <dir|tarball>.',
       ...init,
       context: { grammarId, url, ...init.context },
     });

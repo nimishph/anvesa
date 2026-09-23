@@ -1,4 +1,4 @@
-import { InvariantViolationError } from '@cntxt-labs/code-lens-core';
+import { InvariantViolationError } from '@cntxt-labs/anvesa-core';
 
 /** Something that occupies a span of the source, in the same units as a syntax node's indices. */
 export interface Span {

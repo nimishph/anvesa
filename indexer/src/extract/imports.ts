@@ -1,4 +1,4 @@
-import type { SyntaxNode } from '@cntxt-labs/code-lens-syntax';
+import type { SyntaxNode } from '@cntxt-labs/anvesa-syntax';
 import type { ExportFact, ExtractionGaps, ImportBinding, ImportFact, ImportKind } from './facts.ts';
 
 /** Reads the imports of one file as its syntax tree is walked. One collector per language family. */

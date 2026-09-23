@@ -6,7 +6,7 @@ import {
   Deadline,
   DeadlineExceededError,
   OperationAbortedError,
-} from '@cntxt-labs/code-lens-core';
+} from '@cntxt-labs/anvesa-core';
 import {
   GrammarIncompatibleError,
   GrammarIntegrityError,

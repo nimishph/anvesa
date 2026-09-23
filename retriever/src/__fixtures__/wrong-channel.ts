@@ -1,4 +1,4 @@
-import { defineTransformer } from '@cntxt-labs/code-lens-dense';
+import { defineTransformer } from '@cntxt-labs/anvesa-dense';
 
 export default defineTransformer({
   name: 'other',

@@ -337,10 +337,10 @@ describe('configuration', () => {
     expect(ws.packageByName('web')).toEqual([]);
   });
 
-  test('.code-lens/workspace.json is read from the workspace', async () => {
+  test('.anvesa/workspace.json is read from the workspace', async () => {
     const root = makeTree({
       ...pnpm,
-      '.code-lens/workspace.json': JSON.stringify({
+      '.anvesa/workspace.json': JSON.stringify({
         version: 1,
         packages: [{ name: 'special', root: 'apps/web' }],
       }),
@@ -382,7 +382,7 @@ describe('configuration', () => {
   });
 
   test('a workspace.json that is not JSON is a typed error with the cause kept', async () => {
-    const root = makeTree({ '.code-lens/workspace.json': '{nope' });
+    const root = makeTree({ '.anvesa/workspace.json': '{nope' });
     const failure = await Workspace.open({ root }).catch((e) => e);
     expect(failure).toBeInstanceOf(WorkspaceConfigError);
     expect(failure.cause).toBeDefined();

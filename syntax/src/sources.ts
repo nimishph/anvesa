@@ -91,13 +91,13 @@ export function npmPackageSource(resolveFrom: string, name = 'npm'): GrammarSour
   };
 }
 
-/** Where code-lens keeps per-user state. `CODE_LENS_HOME` overrides `~/.code-lens`. */
+/** Where code-lens keeps per-user state. `ANVESA_HOME` overrides `~/.anvesa`. */
 export function codeLensHome(environment: NodeJS.ProcessEnv = process.env): string {
-  return environment.CODE_LENS_HOME ?? join(homedir(), '.code-lens');
+  return environment.ANVESA_HOME ?? join(homedir(), '.anvesa');
 }
 
 export interface StandardLayoutOptions {
-  /** A project root. Its `.code-lens/grammars` directory is searched before the user's. */
+  /** A project root. Its `.anvesa/grammars` directory is searched before the user's. */
   readonly projectDir?: string;
   readonly homeDir?: string;
   /** Grammars the host embeds, keyed by grammar id. */
@@ -118,14 +118,14 @@ export interface StandardLayout {
 export function standardLayout(options: StandardLayoutOptions = {}): StandardLayout {
   const home = options.homeDir ?? codeLensHome();
   const userDir = join(home, 'grammars');
-  const projectDir = options.projectDir ? join(options.projectDir, '.code-lens', 'grammars') : null;
+  const projectDir = options.projectDir ? join(options.projectDir, '.anvesa', 'grammars') : null;
   const sources: GrammarSource[] = [];
   if (options.embedded) sources.push(embeddedSource(options.embedded));
   if (projectDir) sources.push(directorySource('project', projectDir));
   sources.push(directorySource('user', userDir));
   if (options.npmFrom) sources.push(npmPackageSource(options.npmFrom));
   const lockPaths = [
-    ...(options.projectDir ? [join(options.projectDir, '.code-lens', 'grammars.lock.json')] : []),
+    ...(options.projectDir ? [join(options.projectDir, '.anvesa', 'grammars.lock.json')] : []),
     join(home, 'grammars.lock.json'),
   ];
   return { sources, installDir: projectDir ?? userDir, lockPaths };

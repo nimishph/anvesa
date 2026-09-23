@@ -1,4 +1,4 @@
-# code-lens
+# anvesa
 
 Find code by meaning and by structure, from the command line or from an AI agent over MCP. It
 works offline once its parts are installed, and it runs as one program with no server.
@@ -19,12 +19,12 @@ There is no lexical search and no grep. An exact name is a WQL query.
 ## Install
 
 ```sh
-npm install -g @cntxt-labs/code-lens      # or: bun add -g, pnpm add -g, npx @cntxt-labs/code-lens
-code-lens --version
+npm install -g @cntxt-labs/anvesa      # or: bun add -g, pnpm add -g, npx @cntxt-labs/anvesa
+anvesa --version
 ```
 
 The package is a small launcher. The program itself is a compiled binary in a per-platform package
-that the install picks for your machine (`@cntxt-labs/code-lens-linux-x64`, `-linux-arm64`,
+that the install picks for your machine (`@cntxt-labs/anvesa-linux-x64`, `-linux-arm64`,
 `-darwin-arm64`, `-win32-x64`); it needs no Node, Bun or Python at run time. There is no macOS
 Intel build, because the ONNX runtime it embeds no longer ships one.
 
@@ -33,8 +33,8 @@ your `PATH`. Keep the `runtime/` folder next to the program: it holds the ONNX r
 model needs.
 
 ```
-code-lens-<version>-<platform>/
-  code-lens(.exe)
+anvesa-<version>-<platform>/
+  anvesa(.exe)
   runtime/          ONNX runtime and its native library
 ```
 
@@ -42,19 +42,19 @@ The program carries the JavaScript, TypeScript and TSX grammars. Everything else
 demand and works offline:
 
 ```sh
-code-lens model list                         # the built-in models and which are installed
-code-lens model install bge-base-en-v1.5 --from ./models/bge-base   # offline; or --download
-code-lens grammar list
-code-lens grammar install python --from ./tree-sitter-python.wasm   # file, folder or npm tarball
+anvesa model list                         # the built-in models and which are installed
+anvesa model install bge-base-en-v1.5 --from ./models/bge-base   # offline; or --download
+anvesa grammar list
+anvesa grammar install python --from ./tree-sitter-python.wasm   # file, folder or npm tarball
 ```
 
 Bring your own model: an ONNX file with its Hugging Face `tokenizer.json` (WordPiece, byte-level
 BPE or SentencePiece unigram, each verified against the reference tokenizers):
 
 ```sh
-code-lens model install my-code-model --from ./my-model-folder   # or the .onnx file itself
-code-lens model verify my-code-model
-code-lens index --model my-code-model                            # or set "model" in .code-lens/config.json
+anvesa model install my-code-model --from ./my-model-folder   # or the .onnx file itself
+anvesa model verify my-code-model
+anvesa index --model my-code-model                            # or set "model" in .anvesa/config.json
 ```
 
 Pooling and the input window are read from the model's own configuration (`1_Pooling/config.json`,
@@ -69,13 +69,13 @@ pass `--download`.
 
 ```sh
 cd my-project
-code-lens index                       # only changed files are read
-code-lens search "parse the configuration file"
-code-lens query '//function[@name="parseConfig"]'
-code-lens callers parseConfig         # a name, a symbol id, or src/config.ts:42
-code-lens dependents src/config.ts
-code-lens explain                     # what the project is made of
-code-lens diagnose "parse the config" --expect src/config.ts   # why it did not come up
+anvesa index                       # only changed files are read
+anvesa search "parse the configuration file"
+anvesa query '//function[@name="parseConfig"]'
+anvesa callers parseConfig         # a name, a symbol id, or src/config.ts:42
+anvesa dependents src/config.ts
+anvesa explain                     # what the project is made of
+anvesa diagnose "parse the config" --expect src/config.ts   # why it did not come up
 ```
 
 `[@declaration]` matches the node that *declares* a name, not the places that mention it, so
@@ -89,7 +89,7 @@ it out. Measured on trpc, docs at weight 1 cost about 3.7 points of Recall@5 on 
 a code file, and docs at 0.3 lost every doc answer (100% to 0%). If a query is only about code, use
 `--exclude docs`; do not use a low weight.
 
-When code-lens itself changes how it reads a file (a new fact it extracts, a mapping you trained or
+When anvesa itself changes how it reads a file (a new fact it extracts, a mapping you trained or
 edited), the next `index` notices and reads every file again, once, and says so. `--force` is for
 when you want that without a change.
 
@@ -109,9 +109,9 @@ mapping cannot describe, so a mapping for them would look right and be wrong. Fo
 whose grammar is installed, learn one from code:
 
 ```sh
-code-lens grammar install go --from ./tree-sitter-go.wasm
-code-lens mapping train go --samples ./some/go/code        # learns, checks, and keeps it in .code-lens/
-code-lens index --force                                     # Go files now have outlines and symbols
+anvesa grammar install go --from ./tree-sitter-go.wasm
+anvesa mapping train go --samples ./some/go/code        # learns, checks, and keeps it in .anvesa/
+anvesa index --force                                     # Go files now have outlines and symbols
 ```
 
 Training reads how the grammar builds real code (a node with a `name` field and a body declares
@@ -120,7 +120,7 @@ its evidence. It then checks the result against the samples (every mapped syntax
 its tag) and records what the mapping does to them, so a later edit can be compared with `mapping check`.
 What it cannot decide is reported, for example an `impl` block that has no name.
 
-Mappings are kept in the project (`.code-lens/mappings`, committed, so a team shares them) or per user
+Mappings are kept in the project (`.anvesa/mappings`, committed, so a team shares them) or per user
 (`--user`), and win over the bundled ones in that order. Every file is pinned by a checksum in
 `mappings.lock.json`: a mapping that was edited or dropped in without being recorded stops indexing
 with `STRUCTURAL_MAPPING_INTEGRITY` until you decide, with `mapping lock <name>`. `mapping fork <language>`
@@ -132,15 +132,15 @@ By default the index is one SQLite file. For a repository where that is a burden
 one database per *fragment* (a package, a top folder, or a cluster of files that import each other):
 
 ```sh
-code-lens index                      # index as usual once, so there is something to propose from
-code-lens fragments propose          # path tier: one fragment per package / top folder (free, reviewable)
-code-lens fragments propose --tier clusters   # or: communities of the import graph
-code-lens fragments enable           # writes .code-lens/fragments.json and turns sharding on
-code-lens index                      # builds .code-lens/shards/<fragment>.db
-code-lens fragments status           # files per shard, and anything out of place
+anvesa index                      # index as usual once, so there is something to propose from
+anvesa fragments propose          # path tier: one fragment per package / top folder (free, reviewable)
+anvesa fragments propose --tier clusters   # or: communities of the import graph
+anvesa fragments enable           # writes .anvesa/fragments.json and turns sharding on
+anvesa index                      # builds .anvesa/shards/<fragment>.db
+anvesa fragments status           # files per shard, and anything out of place
 ```
 
-`.code-lens/fragments.json` is the whole truth about which fragment a file is in. Commit it: it is
+`.anvesa/fragments.json` is the whole truth about which fragment a file is in. Commit it: it is
 data, not a computation, so every machine gets the same shards from the same file, and a change to
 it is a change a reviewer can read. Nothing about a machine (its clock, its file order) decides where
 a file goes. Roots (folders), named files and per-file overrides are all there; the deepest match wins.
@@ -154,26 +154,26 @@ Small repositories should stay with one database.
 ### Channels
 
 ```sh
-code-lens channel add runbooks                 # scaffolds a module and registers it
-code-lens channel add digests ./digest-channel.ts   # or registers one you have
-code-lens channel test runbooks docs/oncall.md # what would be embedded, and what the screen thinks
-code-lens index                                # builds cards from the files a channel claims
-code-lens channel index runbooks               # only for a channel with a `source` (records that are not files)
-code-lens retrieve runbooks "who restarts the queue worker"
+anvesa channel add runbooks                 # scaffolds a module and registers it
+anvesa channel add digests ./digest-channel.ts   # or registers one you have
+anvesa channel test runbooks docs/oncall.md # what would be embedded, and what the screen thinks
+anvesa index                                # builds cards from the files a channel claims
+anvesa channel index runbooks               # only for a channel with a `source` (records that are not files)
+anvesa retrieve runbooks "who restarts the queue worker"
 ```
 
 A channel module default-exports a transformer (which files it claims and what one card holds) and
 may export a `source` for records that are not files. See the scaffold for the shape. Channels are
-listed in `.code-lens/config.json`, where each can be given a fusion weight.
+listed in `.anvesa/config.json`, where each can be given a fusion weight.
 
 ### The red-team screen
 
 Every card is screened before it is embedded; what a card says can come from a comment, a doc or a
-digest someone else wrote. `code-lens redteam list` shows the rules and what each trust level does
+digest someone else wrote. `anvesa redteam list` shows the rules and what each trust level does
 (`flag`, `sanitize` or `quarantine`), `redteam scan` shows what the screen would do to this project's
 own text, and `redteam verify` runs every rule against its own fixtures.
 
-A project changes the screen in `.code-lens/redteam.json` (committed):
+A project changes the screen in `.anvesa/redteam.json` (committed):
 
 ```json
 {
@@ -197,7 +197,7 @@ system has learned); they are held to the same fixtures.
 ### MCP
 
 ```json
-{ "mcpServers": { "code-lens": { "command": "code-lens", "args": ["mcp", "serve", "--root", "/path/to/project"] } } }
+{ "mcpServers": { "anvesa": { "command": "anvesa", "args": ["mcp", "serve", "--root", "/path/to/project"] } } }
 ```
 
 Tools: `search`, one `retrieve_<channel>` per channel, `query`, `callers`, `callees`, `neighbors`,
@@ -205,8 +205,8 @@ Tools: `search`, one `retrieve_<channel>` per channel, `query`, `callers`, `call
 
 ### Agent skill
 
-Every install (the npm package and each platform archive) ships `skills/code-lens/SKILL.md`: a
-skill file that teaches an agent when to reach for code-lens over grep and how to use its commands
+Every install (the npm package and each platform archive) ships `skills/anvesa/SKILL.md`: a
+skill file that teaches an agent when to reach for anvesa over grep and how to use its commands
 (or MCP tools). Point an agent's skill loader at that path, or copy it into wherever your agent
 harness reads skills from.
 
@@ -251,7 +251,7 @@ Each package may import only the ones to its right, and only through their `src/
 
 `bun run stress` runs the *built* program on open-source repositories and keeps the numbers, so a
 change that makes indexing slower, hungrier or less accurate shows up. What repositories, what was
-measured and every run live in `CODE_LENS_STRESS_HOME` (default `~/.code-lens/stress`), outside any
+measured and every run live in `ANVESA_STRESS_HOME` (default `~/.anvesa/stress`), outside any
 repository and never committed.
 
 ```sh
@@ -285,7 +285,7 @@ a count that moved is reported, a failure is called out.
 Enforced by Biome and the Grit plugins in `tooling/plugins/`. Each rule has failing and passing
 fixtures in `tooling/fixtures/`.
 
-1. **Typed errors only.** Throw a `CodeLensError` subclass (`@cntxt-labs/code-lens-core`) with a stable `code`
+1. **Typed errors only.** Throw a `CodeLensError` subclass (`@cntxt-labs/anvesa-core`) with a stable `code`
    (`<SUBSYSTEM>_<REASON>`), its subsystem, structured `context` and a `cause`. Never a built-in
    `Error`. Use `toCodeLensError` in `catch` blocks that receive unknown failures.
 2. **No swallowed failures.** No empty `catch` (comment-only counts as empty) and no

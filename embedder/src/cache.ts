@@ -5,7 +5,7 @@ import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { type Deadline, toCodeLensError } from '@cntxt-labs/code-lens-core';
+import { type Deadline, toCodeLensError } from '@cntxt-labs/anvesa-core';
 import {
   ModelInstallError,
   ModelIntegrityError,
@@ -71,15 +71,15 @@ export interface CustomInstall {
 }
 
 /**
- * Where models live: `CODE_LENS_MODELS`, else `$CODE_LENS_HOME/models`, else `~/.code-lens/models`.
+ * Where models live: `ANVESA_MODELS`, else `$ANVESA_HOME/models`, else `~/.anvesa/models`.
  * The directory is looked up here, once, so tests and installs can point it anywhere.
  */
 export function modelsDirectory(
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): string {
-  if (env.CODE_LENS_MODELS) return env.CODE_LENS_MODELS;
-  if (env.CODE_LENS_HOME) return join(env.CODE_LENS_HOME, 'models');
-  return join(homedir(), '.code-lens', 'models');
+  if (env.ANVESA_MODELS) return env.ANVESA_MODELS;
+  if (env.ANVESA_HOME) return join(env.ANVESA_HOME, 'models');
+  return join(homedir(), '.anvesa', 'models');
 }
 
 export type FetchLike = (

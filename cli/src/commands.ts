@@ -1,7 +1,7 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
-import { InvalidArgumentError, type PageRequest } from '@cntxt-labs/code-lens-core';
+import { InvalidArgumentError, type PageRequest } from '@cntxt-labs/anvesa-core';
 import {
   checkMapping,
   doctorModels,
@@ -23,7 +23,7 @@ import {
   trainLanguage,
   verifyMappings,
   verifyModel,
-} from '@cntxt-labs/code-lens-retriever';
+} from '@cntxt-labs/anvesa-retriever';
 import type { Environment } from './environment.ts';
 import { CommandFailedError } from './errors.ts';
 import { integerOption, type Parsed } from './options.ts';
@@ -99,7 +99,7 @@ function emit(ctx: Context, value: unknown, text: () => string): void {
 function need(ctx: Context, index: number, what: string): string {
   const value = ctx.parsed.positionals[index];
   if (value === undefined || value === '') {
-    throw new InvalidArgumentError(what, 'a value (see: code-lens --help)', undefined);
+    throw new InvalidArgumentError(what, 'a value (see: anvesa --help)', undefined);
   }
   return value;
 }
@@ -148,20 +148,20 @@ interface ScaffoldFile {
   readonly content: string;
 }
 
-/** `init`'s starter files: valid, minimal, and safe to run `code-lens index` against as-is. */
+/** `init`'s starter files: valid, minimal, and safe to run `anvesa index` against as-is. */
 function scaffoldFiles(): readonly ScaffoldFile[] {
   return [
     {
-      path: '.code-lensignore',
+      path: '.anvesaignore',
       content:
-        '# code-lens reads this like .gitignore, at every directory level, alongside .gitignore\n' +
-        '# itself. node_modules, .code-lens, .sutra and __pycache__ are already skipped by\n' +
+        '# anvesa reads this like .gitignore, at every directory level, alongside .gitignore\n' +
+        '# itself. node_modules, .anvesa, .sutra and __pycache__ are already skipped by\n' +
         "# default; add patterns below for anything else this project doesn't want indexed.\n",
     },
     {
       // Hardcoded rather than imported: cli may depend on retriever but not indexer directly
       // (see .dependency-cruiser.cjs), and this is the one file whose schema lives there.
-      path: '.code-lens/workspace.json',
+      path: '.anvesa/workspace.json',
       content: `${JSON.stringify(
         {
           version: 1,
@@ -458,7 +458,7 @@ export async function channelCommand(ctx: Context): Promise<void> {
           () =>
             `${report.channel}: ${report.reports.length} records (${report.reports.filter((r) => r.outcome === 'indexed').length} indexed), ${report.removed.length} removed\n${
               report.reports.length === 0
-                ? "note: this indexes records from the channel's source. Cards from files the channel claims are built by: code-lens index\n"
+                ? "note: this indexes records from the channel's source. Cards from files the channel claims are built by: anvesa index\n"
                 : ''
             }`,
         );
@@ -548,7 +548,7 @@ export async function redteamCommand(ctx: Context): Promise<void> {
             'redteam scan',
             `${scan.quarantined.length} cards of this project would be quarantined`,
             {
-              hint: 'If they are not attacks, loosen the rule that fired in .code-lens/redteam.json.',
+              hint: 'If they are not attacks, loosen the rule that fired in .anvesa/redteam.json.',
             },
           );
         }
@@ -562,7 +562,7 @@ export async function redteamCommand(ctx: Context): Promise<void> {
 
 export async function fragmentsCommand(ctx: Context): Promise<void> {
   const [sub] = ctx.parsed.positionals;
-  const manifestPath = join(root(ctx), '.code-lens', 'fragments.json');
+  const manifestPath = join(root(ctx), '.anvesa', 'fragments.json');
   const tier = ctx.parsed.values.tier ?? 'path';
   if (tier !== 'path' && tier !== 'clusters') {
     throw new InvalidArgumentError('--tier', 'path or clusters', tier);
@@ -579,7 +579,7 @@ export async function fragmentsCommand(ctx: Context): Promise<void> {
     : undefined;
   // Without a manifest a project that asks for shards cannot be opened as shards, but it can be
   // opened as one index to have one proposed.
-  const shardsDirectory = join(root(ctx), '.code-lens', 'shards');
+  const shardsDirectory = join(root(ctx), '.anvesa', 'shards');
   const shardsBuilt =
     existsSync(shardsDirectory) &&
     readdirSync(shardsDirectory).some((name) => name.endsWith('.db') && name !== '_meta.db');
@@ -629,17 +629,13 @@ export async function fragmentsCommand(ctx: Context): Promise<void> {
           ctx,
           { enabled: true, written },
           () =>
-            `${written ? `wrote ${written}\n` : 'kept the existing manifest\n'}sharded indexing is on. Run: code-lens index (this builds the shards; the old index.db is no longer read)\n`,
+            `${written ? `wrote ${written}\n` : 'kept the existing manifest\n'}sharded indexing is on. Run: anvesa index (this builds the shards; the old index.db is no longer read)\n`,
         );
       });
     case 'disable':
       return withProject(ctx, { embed: false, monolith: true }, async ({ retriever }) => {
         await retriever.setFragments(false);
-        emit(
-          ctx,
-          { enabled: false },
-          () => 'sharded indexing is off. Run: code-lens index --force\n',
-        );
+        emit(ctx, { enabled: false }, () => 'sharded indexing is off. Run: anvesa index --force\n');
       });
     case 'settle':
       return withProject(ctx, { embed: false }, async ({ retriever }) => {
@@ -729,7 +725,7 @@ export async function mappingCommand(ctx: Context): Promise<void> {
         ctx,
         forked,
         () =>
-          `forked ${forked.mapping.name} for ${forked.languages.join(', ')} to ${forked.path}\nedit it, then: code-lens mapping lock ${forked.mapping.name}${ctx.parsed.values.user ? ' --user' : ''}\n`,
+          `forked ${forked.mapping.name} for ${forked.languages.join(', ')} to ${forked.path}\nedit it, then: anvesa mapping lock ${forked.mapping.name}${ctx.parsed.values.user ? ' --user' : ''}\n`,
       );
       return;
     }
@@ -751,7 +747,7 @@ export async function mappingCommand(ctx: Context): Promise<void> {
         throw new CommandFailedError(
           'mapping verify',
           bad.map((check) => `${check.name} is ${check.status}`).join(', '),
-          { hint: 'Record a change that was meant with `code-lens mapping lock <name>`.' },
+          { hint: 'Record a change that was meant with `anvesa mapping lock <name>`.' },
         );
       }
       return;
@@ -853,7 +849,7 @@ export async function patternCommand(ctx: Context): Promise<void> {
     if (!name) {
       throw new InvalidArgumentError(
         'name',
-        'a pattern name to run (see: code-lens pattern list)',
+        'a pattern name to run (see: anvesa pattern list)',
         undefined,
       );
     }

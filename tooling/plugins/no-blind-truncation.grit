@@ -1,5 +1,5 @@
 // Cutting a string or list to a literal length silently drops data. Derive the bound from a real
-// constraint and report it (see LimitReport in @sutras/code-lens-core), or split into more pieces.
+// constraint and report it (see LimitReport in @cntxt-labs/anvesa-core), or split into more pieces.
 or {
   `$target.slice($start, $end)` where { $end <: number() },
   `$target.substring($start, $end)` where { $end <: number() },

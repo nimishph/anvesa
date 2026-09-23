@@ -1,4 +1,4 @@
-import type { Page, PageRequest } from '@cntxt-labs/code-lens-core';
+import type { Page, PageRequest } from '@cntxt-labs/anvesa-core';
 import type { CallFact, FileFacts, ImportFact, SymbolFact } from '../extract/index.ts';
 
 /** What a run needs to know about a file to decide whether it must be looked at again. */

@@ -1,4 +1,4 @@
-import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
+import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import { KNOWN_ATTRIBUTES } from '../node.ts';
 import { parseWql, type WqlQuery } from '../wql.ts';
 import type { PatternSpec } from './schema.ts';

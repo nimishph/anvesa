@@ -1,4 +1,4 @@
-import { type Page, type PageRequest, paginate } from '@cntxt-labs/code-lens-core';
+import { type Page, type PageRequest, paginate } from '@cntxt-labs/anvesa-core';
 import { StoreOperationError } from '../errors.ts';
 import type { FileFacts, SymbolFact } from '../extract/index.ts';
 import type {

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Deadline, OperationAbortedError } from '@cntxt-labs/code-lens-core';
+import { Deadline, OperationAbortedError } from '@cntxt-labs/anvesa-core';
 import { type FetchLike, ModelCache, modelsDirectory } from './cache.ts';
 import {
   ModelInstallError,
@@ -63,9 +63,9 @@ const leftovers = (root: string): string[] =>
 
 describe('where models live', () => {
   test('an explicit directory, then the home directory, then the user’s', () => {
-    expect(modelsDirectory({ CODE_LENS_MODELS: '/m', CODE_LENS_HOME: '/h' })).toBe('/m');
-    expect(modelsDirectory({ CODE_LENS_HOME: '/h' })).toBe(join('/h', 'models'));
-    expect(modelsDirectory({})).toMatch(/\.code-lens[\\/]models$/);
+    expect(modelsDirectory({ ANVESA_MODELS: '/m', ANVESA_HOME: '/h' })).toBe('/m');
+    expect(modelsDirectory({ ANVESA_HOME: '/h' })).toBe(join('/h', 'models'));
+    expect(modelsDirectory({})).toMatch(/\.anvesa[\\/]models$/);
   });
 });
 

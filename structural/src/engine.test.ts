@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { Deadline, OperationAbortedError } from '@cntxt-labs/code-lens-core';
-import { LanguageRegistry, npmPackageSource, SyntaxRuntime } from '@cntxt-labs/code-lens-syntax';
+import { Deadline, OperationAbortedError } from '@cntxt-labs/anvesa-core';
+import { LanguageRegistry, npmPackageSource, SyntaxRuntime } from '@cntxt-labs/anvesa-syntax';
 import { StructuralEngine } from './engine.ts';
 import { MappingNotFoundError } from './errors.ts';
 import { validateMapping } from './mapping.ts';

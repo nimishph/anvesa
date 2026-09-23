@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Stress-test code-lens on real open-source repositories.
+ * Stress-test anvesa on real open-source repositories.
  *
  *   bun run stress list [--by language] [filters]      what is in the manifest
  *   bun run stress add owner/name [--stack a,b ...]    put a repository in it (facts from GitHub)
@@ -12,7 +12,7 @@
  *   bun run stress runs                                what has been recorded
  *
  * Filters: --id --language --stack --structure --complexity --era --limit (comma-separated lists).
- * Everything lives in CODE_LENS_STRESS_HOME (default ~/.code-lens/stress): never in a repository.
+ * Everything lives in ANVESA_STRESS_HOME (default ~/.anvesa/stress): never in a repository.
  */
 import { existsSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -402,7 +402,7 @@ async function main(): Promise<void> {
       for (const run of readRuns(home)) {
         const failed = run.results.filter((r) => r.outcome === 'failed').length;
         process.stdout.write(
-          `${run.id}  code-lens ${run.program.version} ${short(run.program.sha256)}  ${run.results.length} repos, ${failed} failed\n`,
+          `${run.id}  anvesa ${run.program.version} ${short(run.program.sha256)}  ${run.results.length} repos, ${failed} failed\n`,
         );
       }
       return;

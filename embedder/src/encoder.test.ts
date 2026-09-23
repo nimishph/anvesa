@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { Deadline, DeadlineExceededError } from '@cntxt-labs/code-lens-core';
-import { embedAll } from '@cntxt-labs/code-lens-dense';
+import { Deadline, DeadlineExceededError } from '@cntxt-labs/anvesa-core';
+import { embedAll } from '@cntxt-labs/anvesa-dense';
 import type { InferenceBackend, ModelOutput, TokenBatch } from './backend.ts';
 import { batchTokensFor, LocalEmbedder, THROUGHPUT_BATCH_TOKENS } from './encoder.ts';
 import { InferenceError, InputTooLongError, ModelShapeError } from './errors.ts';

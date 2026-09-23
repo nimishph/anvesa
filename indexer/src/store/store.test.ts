@@ -2,8 +2,8 @@ import { Database } from 'bun:sqlite';
 import { afterAll, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { Deadline, InvalidArgumentError, OperationAbortedError } from '@cntxt-labs/code-lens-core';
-import { inputFile, makeCard, vectorStoreContract } from '@cntxt-labs/code-lens-dense';
+import { Deadline, InvalidArgumentError, OperationAbortedError } from '@cntxt-labs/anvesa-core';
+import { inputFile, makeCard, vectorStoreContract } from '@cntxt-labs/anvesa-dense';
 import {
   StoreClosedError,
   StoreCorruptError,
@@ -29,7 +29,7 @@ indexStoreContract(kit, 'sqlite in memory', {
   make: () => SqliteIndexStore.open(MEMORY_DATABASE),
 });
 indexStoreContract(kit, 'sqlite on disk', {
-  make: () => SqliteIndexStore.open(join(makeTree({}), '.code-lens', 'index.db')),
+  make: () => SqliteIndexStore.open(join(makeTree({}), '.anvesa', 'index.db')),
 });
 
 vectorStoreContract(kit, 'sqlite in memory', {
@@ -38,11 +38,11 @@ vectorStoreContract(kit, 'sqlite in memory', {
 });
 vectorStoreContract(kit, 'sqlite on disk', {
   make: () =>
-    new SqliteVectorStore(StoreDatabase.open(join(makeTree({}), '.code-lens', 'vectors.db'))),
+    new SqliteVectorStore(StoreDatabase.open(join(makeTree({}), '.anvesa', 'vectors.db'))),
   dispose: (store) => (store as SqliteVectorStore).database.close(),
 });
 
-const dbPath = () => join(makeTree({}), '.code-lens', 'index.db');
+const dbPath = () => join(makeTree({}), '.anvesa', 'index.db');
 
 const sample = (path: string): IndexedFile => ({
   path,

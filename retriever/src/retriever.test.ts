@@ -10,9 +10,9 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
-import { type Embedder, inputFile } from '@cntxt-labs/code-lens-dense';
-import { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/code-lens-syntax';
+import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
+import { type Embedder, inputFile } from '@cntxt-labs/anvesa-dense';
+import { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/anvesa-syntax';
 import { loadChannelModule } from './channel-module.ts';
 import { loadProjectConfig, validateProjectConfig } from './config.ts';
 import {
@@ -83,7 +83,7 @@ export class Server { close() {} }
 };
 
 function makeProject(files: Record<string, string> = project): string {
-  const root = mkdtempSync(join(tmpdir(), 'code-lens-retriever-'));
+  const root = mkdtempSync(join(tmpdir(), 'anvesa-retriever-'));
   roots.push(root);
   for (const [path, text] of Object.entries(files)) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
@@ -221,7 +221,7 @@ describe('project config', () => {
   });
 
   test('a config that is not JSON keeps its cause', async () => {
-    const root = makeProject({ '.code-lens/config.json': '{oops' });
+    const root = makeProject({ '.anvesa/config.json': '{oops' });
     const failure = await loadProjectConfig(root).catch((e) => e);
     expect(failure).toBeInstanceOf(ProjectConfigError);
     expect(failure.cause).toBeDefined();
@@ -527,25 +527,25 @@ describe('channels', () => {
     const r = await retriever(root);
     const added = await r.addChannel('runbooks', { template: 'file' });
     expect(added.scaffolded).toEqual([
-      '.code-lens/channels/runbooks/transformer.ts',
-      '.code-lens/channels/runbooks/transformer.test.ts',
+      '.anvesa/channels/runbooks/transformer.ts',
+      '.anvesa/channels/runbooks/transformer.test.ts',
     ]);
-    expect(added.module).toBe('./.code-lens/channels/runbooks/transformer.ts');
-    expect(existsSync(join(root, '.code-lens/channels/runbooks/transformer.ts'))).toBe(true);
-    expect(JSON.parse(readFileSync(join(root, '.code-lens/config.json'), 'utf8'))).toEqual({
-      channels: { runbooks: { module: './.code-lens/channels/runbooks/transformer.ts' } },
+    expect(added.module).toBe('./.anvesa/channels/runbooks/transformer.ts');
+    expect(existsSync(join(root, '.anvesa/channels/runbooks/transformer.ts'))).toBe(true);
+    expect(JSON.parse(readFileSync(join(root, '.anvesa/config.json'), 'utf8'))).toEqual({
+      channels: { runbooks: { module: './.anvesa/channels/runbooks/transformer.ts' } },
     });
 
     // Adding again keeps what the author has written.
     writeFileSync(
-      join(root, '.code-lens/channels/runbooks/transformer.ts'),
-      readFileSync(join(root, '.code-lens/channels/runbooks/transformer.ts'), 'utf8') +
+      join(root, '.anvesa/channels/runbooks/transformer.ts'),
+      readFileSync(join(root, '.anvesa/channels/runbooks/transformer.ts'), 'utf8') +
         '\n// edited\n',
     );
     await r.addChannel('runbooks');
-    expect(
-      readFileSync(join(root, '.code-lens/channels/runbooks/transformer.ts'), 'utf8'),
-    ).toContain('// edited');
+    expect(readFileSync(join(root, '.anvesa/channels/runbooks/transformer.ts'), 'utf8')).toContain(
+      '// edited',
+    );
   });
 
   test('a channel that reads from its own source is indexed and searched by name', async () => {
@@ -596,7 +596,7 @@ describe('channels', () => {
     const removed = await r.removeChannel('notes');
     expect(removed.removedSources).toBe(2);
     expect(r.registry.has('notes')).toBe(false);
-    expect(JSON.parse(readFileSync(join(root, '.code-lens/config.json'), 'utf8')).channels).toEqual(
+    expect(JSON.parse(readFileSync(join(root, '.anvesa/config.json'), 'utf8')).channels).toEqual(
       {},
     );
   });
@@ -627,9 +627,9 @@ describe('an index kept in shards', () => {
 
   async function shardedProject(over: Record<string, unknown> = {}) {
     const root = makeProject();
-    mkdirSync(join(root, '.code-lens'), { recursive: true });
+    mkdirSync(join(root, '.anvesa'), { recursive: true });
     writeFileSync(
-      join(root, '.code-lens', 'fragments.json'),
+      join(root, '.anvesa', 'fragments.json'),
       JSON.stringify({ ...manifest, ...over }),
     );
     return root;
@@ -641,9 +641,9 @@ describe('an index kept in shards', () => {
     const many = await retriever(root, { config: sharded });
     await many.index();
 
-    expect(existsSync(join(root, '.code-lens', 'shards', 'src.db'))).toBe(true);
-    expect(existsSync(join(root, '.code-lens', 'shards', 'docs.db'))).toBe(true);
-    expect(existsSync(join(root, '.code-lens', 'index.db'))).toBe(false);
+    expect(existsSync(join(root, '.anvesa', 'shards', 'src.db'))).toBe(true);
+    expect(existsSync(join(root, '.anvesa', 'shards', 'docs.db'))).toBe(true);
+    expect(existsSync(join(root, '.anvesa', 'index.db'))).toBe(false);
 
     for (const question of [
       'parse the configuration file',
@@ -692,7 +692,7 @@ describe('an index kept in shards', () => {
     open.pop();
 
     writeFileSync(
-      join(root, '.code-lens', 'fragments.json'),
+      join(root, '.anvesa', 'fragments.json'),
       JSON.stringify({ ...manifest, overrides: { 'src/render.ts': 'docs' } }),
     );
     const second = await retriever(root, { config: sharded });
@@ -735,13 +735,13 @@ describe('an index kept in shards', () => {
     expect((await r.fragmentStatus()).enabled).toBe(false);
     await r.setFragments(true);
     expect(
-      JSON.parse(readFileSync(join(r.root, '.code-lens', 'config.json'), 'utf8')).indexing,
+      JSON.parse(readFileSync(join(r.root, '.anvesa', 'config.json'), 'utf8')).indexing,
     ).toEqual({
       fragments: 'on',
     });
     await r.setFragments(false);
     expect(
-      JSON.parse(readFileSync(join(r.root, '.code-lens', 'config.json'), 'utf8')).indexing,
+      JSON.parse(readFileSync(join(r.root, '.anvesa', 'config.json'), 'utf8')).indexing,
     ).toBeUndefined();
     await expect(
       retriever(makeProject(), { embedder: null }).then((x) =>

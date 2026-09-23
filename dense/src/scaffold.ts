@@ -44,8 +44,8 @@ export function scaffoldChannel(channel: string, template: ScaffoldTemplate = 'f
     ],
     nextSteps: [
       `Edit transformer.ts: decide which files it claims and what one card holds.`,
-      `Try it on a file:  code-lens channel test ${channel} <file>`,
-      `Index it:          code-lens channel index ${channel}`,
+      `Try it on a file:  anvesa channel test ${channel} <file>`,
+      `Index it:          anvesa channel index ${channel}`,
       `Search it:         code-lens retrieve ${channel} "<question>"`,
     ],
   };
@@ -54,7 +54,7 @@ export function scaffoldChannel(channel: string, template: ScaffoldTemplate = 'f
 const HEADER = (
   channel: string,
   summary: string,
-) => `import { defineTransformer, packCards, type CardDraft } from '@cntxt-labs/code-lens-dense';
+) => `import { defineTransformer, packCards, type CardDraft } from '@cntxt-labs/anvesa-dense';
 
 /**
  * Channel "${channel}": ${summary}
@@ -105,7 +105,7 @@ export default defineTransformer({
 const AST_TEMPLATE = (
   channel: string,
 ) => `${HEADER(channel, 'one card per function or class in each source file.')}
-import { ATTR, walk } from '@cntxt-labs/code-lens-structural';
+import { ATTR, walk } from '@cntxt-labs/anvesa-structural';
 
 export default defineTransformer({
   name: '${channel}',
@@ -195,7 +195,7 @@ const BODIES: Readonly<Record<ScaffoldTemplate, (channel: string) => string>> = 
 };
 
 const testFile = (channel: string) => `import { expect, test } from 'bun:test';
-import { inputFile } from '@cntxt-labs/code-lens-dense';
+import { inputFile } from '@cntxt-labs/anvesa-dense';
 import transformer from './transformer.ts';
 
 test('${channel} claims what it should and not what it should not', () => {
