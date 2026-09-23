@@ -1,4 +1,4 @@
-import { CodeLensError, toCodeLensError } from '@cntxt-labs/code-lens-core';
+import { CodeLensError, toCodeLensError } from '@cntxt-labs/anvesa-core';
 import {
   COMMANDS,
   type Context,
@@ -15,11 +15,11 @@ import { parseOptions } from './options.ts';
 import { toJson } from './render.ts';
 import { VERSION } from './version.ts';
 
-export const HELP = `code-lens — dense and structural code retrieval
+export const HELP = `anvesa — dense and structural code retrieval
 
-usage: code-lens <command> [arguments] [options]
+usage: anvesa <command> [arguments] [options]
 
-  init                      scaffold .code-lensignore, .code-lens/workspace.json, .code-lens/config.json
+  init                      scaffold .anvesaignore, .anvesa/workspace.json, .anvesa/config.json
                             (--force to overwrite files that already exist)
   index                     bring the index up to date (--force, --retry-quarantined, --scope <path>)
   status                    what is indexed, and by which channels and model
@@ -33,7 +33,7 @@ usage: code-lens <command> [arguments] [options]
   diagnose <question> --expect <path>   why a file did not come up
   channel add|list|show|test|index|remove   custom dense channels (make/create = add)
   grammar list|install <language>        parsers (--from <file|dir|tarball>, --user, --force, --download)
-  redteam list|verify|scan  the screen every card passes; .code-lens/redteam.json adds rules and
+  redteam list|verify|scan  the screen every card passes; .anvesa/redteam.json adds rules and
                             changes what each trust level does (scan: would this project's own text be quarantined?)
   fragments status|propose|enable|disable|settle   keep the index in one database per fragment
                             propose [--tier path|clusters] [--write]; the manifest is committed
@@ -69,7 +69,7 @@ export function helpFor(command: string): string {
 export async function runCli(argv: readonly string[], environment: Environment): Promise<number> {
   const [command, ...args] = argv;
   if (command === '--version' || command === '-v' || command === 'version') {
-    environment.stdout(`code-lens ${VERSION}
+    environment.stdout(`anvesa ${VERSION}
 `);
     return 0;
   }

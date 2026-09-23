@@ -13,7 +13,7 @@ import {
   type SourceUpdate,
   TopKCollector,
   type VectorStore,
-} from '@cntxt-labs/code-lens-dense';
+} from '@cntxt-labs/anvesa-dense';
 import { StoreCorruptError } from '../errors.ts';
 import { allRows, getRow, type StoreDatabase } from './database.ts';
 

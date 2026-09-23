@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { embedAll } from '@cntxt-labs/code-lens-dense';
+import { embedAll } from '@cntxt-labs/anvesa-dense';
 import { ModelCache } from './cache.ts';
 import type { LocalEmbedder } from './encoder.ts';
 import { chooseTier, probeHardware } from './hardware.ts';
@@ -8,9 +8,9 @@ import { openLocalEmbedder, resolveModel } from './open.ts';
 
 /**
  * Runs the real model. It needs the built-in MiniLM in a model cache, so it only runs where one is
- * named by `CODE_LENS_TEST_MODELS` (install it with `ModelCache.installFromDirectory`).
+ * named by `ANVESA_TEST_MODELS` (install it with `ModelCache.installFromDirectory`).
  */
-const modelsDirectory = process.env.CODE_LENS_TEST_MODELS;
+const modelsDirectory = process.env.ANVESA_TEST_MODELS;
 const enabled = modelsDirectory !== undefined && modelsDirectory !== '';
 const maybe = enabled ? describe : describe.skip;
 

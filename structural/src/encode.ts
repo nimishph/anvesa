@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import type { LimitReport } from '@cntxt-labs/code-lens-core';
-import type { SyntaxNode } from '@cntxt-labs/code-lens-syntax';
+import type { LimitReport } from '@cntxt-labs/anvesa-core';
+import type { SyntaxNode } from '@cntxt-labs/anvesa-syntax';
 import type { CompiledMapping } from './mapping.ts';
 import { ATTR, shortDigest, type WNode } from './node.ts';
 import { declares } from './symbols.ts';

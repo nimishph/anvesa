@@ -1,17 +1,17 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Deadline } from '@cntxt-labs/code-lens-core';
-import { toCodeLensError } from '@cntxt-labs/code-lens-core';
+import type { Deadline } from '@cntxt-labs/anvesa-core';
+import { toCodeLensError } from '@cntxt-labs/anvesa-core';
 import { DirectoryReadError, IgnoreFileError } from '../errors.ts';
 import { decideLayer, type IgnoreLayer, IgnoreStack, parseIgnore } from './ignore.ts';
 
 /** Directories that are never indexed and never negotiable: version-control metadata. */
 const VERSION_CONTROL = '.git';
 
-/** Excluded unless a project says otherwise (`!node_modules` in `.code-lensignore`). */
+/** Excluded unless a project says otherwise (`!node_modules` in `.anvesaignore`). */
 export const DEFAULT_EXCLUDES: readonly string[] = [
   'node_modules',
-  '.code-lens',
+  '.anvesa',
   '.sutra',
   '__pycache__',
 ];
@@ -91,7 +91,7 @@ export class Traversal implements AsyncIterable<DirectoryVisit> {
   constructor(options: TraverseOptions) {
     this.#options = options;
     this.#insensitive = options.caseInsensitive === true;
-    this.#ignoreFiles = options.ignoreFiles ?? ['.gitignore', '.code-lensignore'];
+    this.#ignoreFiles = options.ignoreFiles ?? ['.gitignore', '.anvesaignore'];
     const defaults = options.defaultExcludes ?? DEFAULT_EXCLUDES;
     this.#base = {
       base: '',

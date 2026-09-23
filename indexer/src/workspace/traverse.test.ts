@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { Deadline, OperationAbortedError } from '@cntxt-labs/code-lens-core';
+import { Deadline, OperationAbortedError } from '@cntxt-labs/anvesa-core';
 import { cleanupRepos, gitAvailable, materialise, scenarios } from '../test-support.ts';
 import { DEFAULT_EXCLUDES, Traversal, type TraverseOptions } from './traverse.ts';
 
@@ -13,7 +13,7 @@ afterAll(() => {
 });
 
 function tree(files: Record<string, string>): string {
-  const root = mkdtempSync(join(tmpdir(), 'code-lens-traverse-'));
+  const root = mkdtempSync(join(tmpdir(), 'anvesa-traverse-'));
   temp.push(root);
   for (const [path, text] of Object.entries(files)) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
@@ -114,15 +114,15 @@ describe('what is excluded before any ignore file is read', () => {
     expect(plain.files).toEqual(['src/a.ts']);
     expect(DEFAULT_EXCLUDES).toContain('node_modules');
     const lifted = await collect({
-      root: tree({ ...files, '.code-lensignore': '!node_modules\n' }),
+      root: tree({ ...files, '.anvesaignore': '!node_modules\n' }),
     });
     expect(lifted.files).toContain('node_modules/p/i.js');
   });
 
-  test('.code-lensignore outranks .gitignore in the same directory', async () => {
+  test('.anvesaignore outranks .gitignore in the same directory', async () => {
     const root = tree({
       '.gitignore': '*.gen.ts\n',
-      '.code-lensignore': '!keep.gen.ts\n',
+      '.anvesaignore': '!keep.gen.ts\n',
       'keep.gen.ts': '',
       'drop.gen.ts': '',
     });
@@ -132,9 +132,9 @@ describe('what is excluded before any ignore file is read', () => {
   });
 
   test('configuration excludes outrank every ignore file', async () => {
-    const root = tree({ '.code-lensignore': '!secret.ts\n', 'secret.ts': '', 'ok.ts': '' });
+    const root = tree({ '.anvesaignore': '!secret.ts\n', 'secret.ts': '', 'ok.ts': '' });
     const { files } = await collect({ root, configExclude: ['secret.ts'] });
-    expect(files).toEqual(['.code-lensignore', 'ok.ts']);
+    expect(files).toEqual(['.anvesaignore', 'ok.ts']);
   });
 
   test('.git/info/exclude is honoured like an ignore file at the lowest precedence', async () => {

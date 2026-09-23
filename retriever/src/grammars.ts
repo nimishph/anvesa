@@ -1,5 +1,5 @@
 import { stat } from 'node:fs/promises';
-import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
+import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import {
   GrammarLock,
   type InstallResult,
@@ -9,7 +9,7 @@ import {
   type LanguageStatus,
   SyntaxRuntime,
   standardLayout,
-} from '@cntxt-labs/code-lens-syntax';
+} from '@cntxt-labs/anvesa-syntax';
 
 /**
  * Where a host finds grammars beyond the directories every install has. A compiled binary embeds
@@ -20,7 +20,7 @@ export interface GrammarHost {
   readonly embedded?: Readonly<Record<string, string>>;
   /** Path of `web-tree-sitter.wasm`, when the parser runtime cannot find its own. */
   readonly runtimeWasm?: string;
-  /** Overrides `CODE_LENS_HOME` and `~/.code-lens`. */
+  /** Overrides `ANVESA_HOME` and `~/.anvesa`. */
   readonly home?: string;
   /** Resolve `tree-sitter-*` npm packages from here too. Development trees have them. */
   readonly npmFrom?: string;
@@ -100,7 +100,7 @@ export interface InstallGrammarOptions {
   readonly language: string;
   /** A wasm file, a directory holding it, or an `npm pack` tarball. Absent means download. */
   readonly from?: string;
-  /** Install for the user (`~/.code-lens/grammars`) rather than this project. */
+  /** Install for the user (`~/.anvesa/grammars`) rather than this project. */
   readonly user?: boolean;
   /** Accept bytes that differ from the locked checksum and re-pin. */
   readonly updateLock?: boolean;

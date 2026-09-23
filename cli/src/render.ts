@@ -1,4 +1,4 @@
-import { CodeLensError, type Page } from '@cntxt-labs/code-lens-core';
+import { CodeLensError, type Page } from '@cntxt-labs/anvesa-core';
 import {
   type ChannelInfo,
   type Diagnosis,
@@ -22,7 +22,7 @@ import {
   type Status,
   type StoredMapping,
   type TrainedResult,
-} from '@cntxt-labs/code-lens-retriever';
+} from '@cntxt-labs/anvesa-retriever';
 
 /** JSON for machines: maps become objects, errors keep their code and context, trees are left out. */
 export function toJson(value: unknown): string {
@@ -125,7 +125,7 @@ export function renderStructural(
   });
   const missing =
     page.coverage.missing.length > 0
-      ? `${page.coverage.missing.length} indexed files have no cached outline and were not searched (run: code-lens index --force)`
+      ? `${page.coverage.missing.length} indexed files have no cached outline and were not searched (run: anvesa index --force)`
       : undefined;
   return lines(
     ...rows,
@@ -209,7 +209,7 @@ export function renderStatus(status: Status): string {
     `project ${status.root}`,
     `files ${index.files}, quarantined ${index.quarantinedFiles}, symbols ${index.symbols}, calls ${index.calls}, imports ${index.imports}, edges ${index.edges}`,
     `languages: ${index.byLanguage.map((l) => `${l.language} ${l.files}`).join(', ') || 'none'}`,
-    status.interrupted ? 'the last index run did not finish; run: code-lens index' : undefined,
+    status.interrupted ? 'the last index run did not finish; run: anvesa index' : undefined,
     `embedder: ${status.embedder ? `${status.embedder.id} (${status.embedder.dimensions} dims)` : 'none (structural queries only)'}`,
     `structural: ${status.structural.files} files${status.structural.missing.length ? `, ${status.structural.missing.length} not searchable` : ''}`,
     'channels:',
@@ -388,7 +388,7 @@ export function renderFragmentStatus(status: FragmentStatus): string {
   if (!status.enabled || !status.drift) {
     return lines(
       'sharded indexing is off (one index.db)',
-      'to turn it on: code-lens fragments enable',
+      'to turn it on: anvesa fragments enable',
     );
   }
   const { drift } = status;
@@ -462,7 +462,7 @@ export function renderRedTeamScan(scan: RedTeamScan): string {
 
 export function renderPatterns(specs: readonly PatternSpec[]): string {
   if (specs.length === 0) {
-    return 'no patterns found in .code-lens/patterns/\n';
+    return 'no patterns found in .anvesa/patterns/\n';
   }
   const rows = specs.map((spec) => {
     const params =

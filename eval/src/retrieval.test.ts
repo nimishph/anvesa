@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { SymbolFact } from '@cntxt-labs/code-lens-indexer';
+import type { SymbolFact } from '@cntxt-labs/anvesa-indexer';
 import {
   firstSentence,
   generateQueries,

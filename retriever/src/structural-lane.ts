@@ -1,5 +1,5 @@
-import type { Page } from '@cntxt-labs/code-lens-core';
-import type { FileState, IndexStore } from '@cntxt-labs/code-lens-indexer';
+import type { Page } from '@cntxt-labs/anvesa-core';
+import type { FileState, IndexStore } from '@cntxt-labs/anvesa-indexer';
 import {
   type IndexQueryOptions,
   type IndexQueryResult,
@@ -7,7 +7,7 @@ import {
   StructuralIndex,
   WEXPR_FORMAT_VERSION,
   type WqlQuery,
-} from '@cntxt-labs/code-lens-structural';
+} from '@cntxt-labs/anvesa-structural';
 
 /** What the structural lane knows about its own coverage. */
 export interface StructuralCoverage {

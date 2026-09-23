@@ -1,5 +1,5 @@
 {
-  "name": "@cntxt-labs/code-lens-structural",
+  "name": "@cntxt-labs/anvesa-structural",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,8 +8,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@cntxt-labs/code-lens-core": "workspace:*",
-    "@cntxt-labs/code-lens-syntax": "workspace:*"
+    "@cntxt-labs/anvesa-core": "workspace:*",
+    "@cntxt-labs/anvesa-syntax": "workspace:*"
   },
   "devDependencies": {
     "tree-sitter-c": "^0.24.1",

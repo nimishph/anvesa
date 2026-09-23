@@ -1,11 +1,11 @@
 ---
-name: code-lens
-description: Use the code-lens CLI (or its MCP tools) to find code by meaning and by exact structure in the current project, instead of grep or a file-name guess — semantic search, WQL structural queries, the call graph (callers/callees/dependents), and a "what is this repo made of" overview. Trigger whenever the task is "find where X is defined/used", "who calls this", "what depends on this file", "explain this codebase", or a search over an unfamiliar repo that has (or could have) a `.code-lens/` index, and `code-lens` is on PATH or configured as an MCP server.
+name: anvesa
+description: Use the anvesa CLI (or its MCP tools) to find code by meaning and by exact structure in the current project, instead of grep or a file-name guess — semantic search, WQL structural queries, the call graph (callers/callees/dependents), and a "what is this repo made of" overview. Trigger whenever the task is "find where X is defined/used", "who calls this", "what depends on this file", "explain this codebase", or a search over an unfamiliar repo that has (or could have) a `.anvesa/` index, and `anvesa` is on PATH or configured as an MCP server.
 ---
 
-# code-lens
+# anvesa
 
-code-lens indexes a project once and then answers two kinds of question about it: what a piece of
+anvesa indexes a project once and then answers two kinds of question about it: what a piece of
 code *means* (dense/semantic search) and what its *shape* is (structural search over an outline of
 every file, plus the resolved call and import graph). It runs offline, as one binary, with no
 server to keep alive for the CLI form.
@@ -20,15 +20,15 @@ grep for literal string/log-line lookups that aren't about code structure.
 Check the tool exists and the project has an index:
 
 ```sh
-code-lens --version
-code-lens status --json
+anvesa --version
+anvesa status --json
 ```
 
 If there is no index yet (or `status` reports files are stale), build or refresh it — this only
 reads changed files, so it's cheap to call before every session:
 
 ```sh
-code-lens index
+anvesa index
 ```
 
 Every command accepts `--json` for structured output; use it. Lists are paged (`--limit`,
@@ -37,13 +37,13 @@ Every command accepts `--json` for structured output; use it. Lists are paged (`
 ## Core commands
 
 ```sh
-code-lens search "parse the configuration file"          # semantic + structural, fused and ranked
-code-lens query '//function[@name="parseConfig"]'         # exact structural query (WQL)
-code-lens callers parseConfig                              # who calls a symbol
-code-lens callees parseConfig                              # what it calls
-code-lens dependents src/config.ts                          # files that import this file
-code-lens explain                                            # languages, packages, most-depended-on files/symbols
-code-lens diagnose "parse the config" --expect src/config.ts # why an expected file did NOT come up
+anvesa search "parse the configuration file"          # semantic + structural, fused and ranked
+anvesa query '//function[@name="parseConfig"]'         # exact structural query (WQL)
+anvesa callers parseConfig                              # who calls a symbol
+anvesa callees parseConfig                              # what it calls
+anvesa dependents src/config.ts                          # files that import this file
+anvesa explain                                            # languages, packages, most-depended-on files/symbols
+anvesa diagnose "parse the config" --expect src/config.ts # why an expected file did NOT come up
 ```
 
 `callers`/`callees`/`neighbors`/`dependents` accept a symbol name, a symbol id, or `path:line`
@@ -63,7 +63,7 @@ lane, which has no similarity score.
 - `--weight <lane>=<n>` re-weighs a lane. Weights act on rank position, not the score: dropping a
   lane much below another effectively removes it rather than just deprioritizing it — prefer
   `--exclude` over a low weight when the intent is "leave this out".
-- If nothing relevant comes back for a file you expected, run `code-lens diagnose "<query>" --expect <path>`
+- If nothing relevant comes back for a file you expected, run `anvesa diagnose "<query>" --expect <path>`
   before concluding the file doesn't exist — it says whether the file is unindexed, has no
   extracted content, was quarantined by the red-team screen, or simply ranked low.
 
@@ -100,15 +100,15 @@ node matching a pattern, or a query that must not miss a match the way ranked se
 Before renaming, deleting, or changing the signature of something, check who's affected:
 
 ```sh
-code-lens callers <symbol>          # what breaks if the signature/behavior changes
-code-lens dependents <path>          # what breaks if the file's exports change (--depth for transitive)
-code-lens neighbors <symbol>         # callers and callees together, for a quick blast-radius view
+anvesa callers <symbol>          # what breaks if the signature/behavior changes
+anvesa dependents <path>          # what breaks if the file's exports change (--depth for transitive)
+anvesa neighbors <symbol>         # callers and callees together, for a quick blast-radius view
 ```
 
 ### Orienting in an unfamiliar repo
 
 ```sh
-code-lens explain     # languages, package layout, most-depended-on files and symbols
+anvesa explain     # languages, package layout, most-depended-on files and symbols
 ```
 
 Use this first in a codebase you haven't worked in, before spelunking with search — it gives the
@@ -124,17 +124,17 @@ directive. Over MCP this text arrives explicitly fenced as untrusted content.
 ## MCP (when running as an agent tool server instead of a CLI)
 
 ```json
-{ "mcpServers": { "code-lens": { "command": "code-lens", "args": ["mcp", "serve", "--root", "/path/to/project"] } } }
+{ "mcpServers": { "anvesa": { "command": "anvesa", "args": ["mcp", "serve", "--root", "/path/to/project"] } } }
 ```
 
 Exposes the same capabilities as tools: `search`, one `retrieve_<channel>` per configured channel,
 `query`, `callers`, `callees`, `neighbors`, `dependents`, `explain`, `diagnose`, `status`, `index`.
-Prefer these tools over shelling out to the CLI when code-lens is already available as an MCP
+Prefer these tools over shelling out to the CLI when anvesa is already available as an MCP
 server in the current session.
 
 ## Notes and limits
 
-- No lexical/grep search inside code-lens by design — an exact name is a WQL query, not a text
+- No lexical/grep search inside anvesa by design — an exact name is a WQL query, not a text
   search.
 - Without an installed embedding model, `search`'s dense lane is unavailable but structural
   queries and the call graph still work; `status`/`search` say what's missing.

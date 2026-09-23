@@ -4,16 +4,16 @@ import {
   type LimitReport,
   type Page,
   toCodeLensError,
-} from '@cntxt-labs/code-lens-core';
+} from '@cntxt-labs/anvesa-core';
 import {
   type ChannelRegistry,
   type Embedder,
   retrieve as retrieveDense,
   type VectorStore,
-} from '@cntxt-labs/code-lens-dense';
-import type { EdgeRecord, IndexStats, IndexStore, Workspace } from '@cntxt-labs/code-lens-indexer';
-import { EDGE, IMPORT_EDGE_KINDS } from '@cntxt-labs/code-lens-indexer';
-import { looksLikeWql, type WqlHit } from '@cntxt-labs/code-lens-structural';
+} from '@cntxt-labs/anvesa-dense';
+import type { EdgeRecord, IndexStats, IndexStore, Workspace } from '@cntxt-labs/anvesa-indexer';
+import { EDGE, IMPORT_EDGE_KINDS } from '@cntxt-labs/anvesa-indexer';
+import { looksLikeWql, type WqlHit } from '@cntxt-labs/anvesa-structural';
 import type { StructuralCoverage, StructuralLane } from './structural-lane.ts';
 
 export interface ChannelInfo {
@@ -255,14 +255,14 @@ export async function diagnoseMiss(
     lostAt = 'INDEX';
     verdict =
       indexed.status === 'missing'
-        ? `${input.path} is not in the index: it may be ignored, in a language with no grammar, out of scope, or not indexed since it appeared (run: code-lens index).`
+        ? `${input.path} is not in the index: it may be ignored, in a language with no grammar, out of scope, or not indexed since it appeared (run: anvesa index).`
         : `${input.path} was quarantined: ${indexed.detail}.`;
   } else if (withCards.length === 0 && quarantinedOnly.length > 0) {
     lostAt = 'RED_TEAM';
     verdict = `Every card of ${input.path} was quarantined by the red-team gate: ${quarantinedOnly.flatMap((e) => e.reasons).join('; ')}.`;
   } else if (withCards.length === 0) {
     lostAt = 'CARDS';
-    verdict = `${input.path} is indexed but no channel made cards from it: no transformer claims it, or it yields nothing (see: code-lens channel test).`;
+    verdict = `${input.path} is indexed but no channel made cards from it: no transformer claims it, or it yields nothing (see: anvesa channel test).`;
   } else if (best === undefined) {
     lostAt = 'RANK';
     verdict = `${input.path} is embedded (${withCards.map((e) => `${e.channel}: ${e.cards}`).join(', ')}) but ranks below ${depth} in every lane for this query.`;

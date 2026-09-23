@@ -5,7 +5,7 @@ import {
   type Page,
   type PageRequest,
   resolveLimit,
-} from '@cntxt-labs/code-lens-core';
+} from '@cntxt-labs/anvesa-core';
 import { StoreCorruptError } from '../errors.ts';
 import type {
   CallFact,

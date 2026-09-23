@@ -9,5 +9,5 @@
     `EvalError`,
     `URIError`
   },
-  register_diagnostic(span=$ctor, message="Do not construct built-in errors. Throw a CodeLensError subclass carrying a code, subsystem, context and cause (see @sutras/code-lens-core).", severity="error")
+  register_diagnostic(span=$ctor, message="Do not construct built-in errors. Throw a CodeLensError subclass carrying a code, subsystem, context and cause (see @cntxt-labs/anvesa-core).", severity="error")
 }

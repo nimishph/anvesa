@@ -1,5 +1,5 @@
-import type { Deadline } from '@cntxt-labs/code-lens-core';
-import type { Embedder, EmbedderInfo } from '@cntxt-labs/code-lens-dense';
+import type { Deadline } from '@cntxt-labs/anvesa-core';
+import type { Embedder, EmbedderInfo } from '@cntxt-labs/anvesa-dense';
 import type { InferenceBackend, ModelOutput, TokenBatch } from './backend.ts';
 import { InferenceError, InputTooLongError, ModelShapeError } from './errors.ts';
 import type { Pooling } from './models.ts';

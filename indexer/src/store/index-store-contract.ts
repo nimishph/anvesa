@@ -1,5 +1,5 @@
 import type { describe, expect, test } from 'bun:test';
-import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
+import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import { StoreOperationError } from '../errors.ts';
 import type { CallFact, ExportFact, FileFacts, ImportFact, SymbolFact } from '../extract/index.ts';
 import type { FileQuarantine, IndexedFile, IndexStore } from './types.ts';

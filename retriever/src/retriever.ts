@@ -11,7 +11,7 @@ import {
   type PageRequest,
   resolveLimit,
   toCodeLensError,
-} from '@cntxt-labs/code-lens-core';
+} from '@cntxt-labs/anvesa-core';
 import {
   budgetFor,
   budgetSourceOf,
@@ -34,7 +34,7 @@ import {
   scaffoldChannel,
   symbolsTransformer,
   type VectorStore,
-} from '@cntxt-labs/code-lens-dense';
+} from '@cntxt-labs/anvesa-dense';
 import {
   type DriftReport,
   FactExtractor,
@@ -56,7 +56,7 @@ import {
   type SymbolFact,
   saveManifest,
   Workspace,
-} from '@cntxt-labs/code-lens-indexer';
+} from '@cntxt-labs/anvesa-indexer';
 import {
   isCallableVirtualTag,
   KNOWN_ATTRIBUTES,
@@ -66,8 +66,8 @@ import {
   StructuralEngine,
   type WqlHit,
   WqlUnknownNameError,
-} from '@cntxt-labs/code-lens-structural';
-import type { SyntaxRuntime } from '@cntxt-labs/code-lens-syntax';
+} from '@cntxt-labs/anvesa-structural';
+import type { SyntaxRuntime } from '@cntxt-labs/anvesa-syntax';
 import { loadChannelModule } from './channel-module.ts';
 import {
   type ChannelConfig,
@@ -137,7 +137,7 @@ export interface RetrieverOptions {
   readonly root: string;
   /** Dense retrieval needs one. Without it only structural queries and graph queries work. */
   readonly embedder?: Embedder;
-  /** Reads `.code-lens/config.json` when unset. */
+  /** Reads `.anvesa/config.json` when unset. */
   readonly config?: ProjectConfig;
   /** Where grammars come from. Defaults to the standard layout for this project. */
   readonly runtime?: SyntaxRuntime;
@@ -145,7 +145,7 @@ export interface RetrieverOptions {
   readonly grammars?: GrammarHost;
   /** The mappings that decide what an outline holds. Defaults to the bundled ones with the project's and user's over them. */
   readonly mappings?: MappingRegistry;
-  /** Defaults to `<root>/.code-lens/index.db`. */
+  /** Defaults to `<root>/.anvesa/index.db`. */
   readonly databasePath?: string;
   /** Index only these languages. */
   readonly only?: readonly string[];
@@ -287,7 +287,7 @@ export class Retriever {
     // The red-team policy too: a rule file that does not check out stops the open before anything is held.
     const gate = await gateForProject(options.root);
     const workspace = await Workspace.open({ root: options.root });
-    const databasePath = options.databasePath ?? join(options.root, '.code-lens', 'index.db');
+    const databasePath = options.databasePath ?? join(options.root, '.anvesa', 'index.db');
     // One database, or one per fragment when the project asks for that (and has said what they are).
     let shards: ShardSet | undefined;
     let store: IndexStore;
@@ -298,8 +298,8 @@ export class Retriever {
         throw new ProjectConfigError(
           join(options.root, PROJECT_CONFIG_PATH),
           'indexing.fragments',
-          'is "on" but there is no .code-lens/fragments.json',
-          { hint: 'Run `code-lens fragments enable`, which proposes one and turns this on.' },
+          'is "on" but there is no .anvesa/fragments.json',
+          { hint: 'Run `anvesa fragments enable`, which proposes one and turns this on.' },
         );
       }
       shards = await ShardSet.open({ directory: join(dirname(databasePath), 'shards'), manifest });
@@ -727,7 +727,7 @@ export class Retriever {
   }
 
   /**
-   * Create a channel: scaffold its transformer under `.code-lens/channels/<name>/` if there is none
+   * Create a channel: scaffold its transformer under `.anvesa/channels/<name>/` if there is none
    * yet, and register it in the project config. `module` registers one that already exists.
    */
   async addChannel(
@@ -743,7 +743,7 @@ export class Retriever {
     let nextSteps: readonly string[] = [];
     if (module === undefined) {
       const scaffold = scaffoldChannel(name, options.template ?? 'file');
-      const directory = join('.code-lens', 'channels', name);
+      const directory = join('.anvesa', 'channels', name);
       for (const file of scaffold.files) {
         const target = join(this.root, directory, file.path);
         await mkdir(dirname(target), { recursive: true });
@@ -953,7 +953,7 @@ export class Retriever {
     });
   }
 
-  /** Save a manifest to `.code-lens/fragments.json`. */
+  /** Save a manifest to `.anvesa/fragments.json`. */
   saveFragments(manifest: FragmentManifest): Promise<string> {
     return saveManifest(this.root, manifest);
   }

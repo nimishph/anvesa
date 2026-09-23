@@ -4,7 +4,7 @@ import {
   encodeCursor,
   type Page,
   resolveLimit,
-} from '@cntxt-labs/code-lens-core';
+} from '@cntxt-labs/anvesa-core';
 import type { Card } from './card.ts';
 import { type Embedder, embedAll } from './embedder.ts';
 import { EmbedFailedError } from './errors.ts';

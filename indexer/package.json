@@ -1,5 +1,5 @@
 {
-  "name": "@cntxt-labs/code-lens-indexer",
+  "name": "@cntxt-labs/anvesa-indexer",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,10 +8,10 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@cntxt-labs/code-lens-core": "workspace:*",
-    "@cntxt-labs/code-lens-syntax": "workspace:*",
-    "@cntxt-labs/code-lens-structural": "workspace:*",
-    "@cntxt-labs/code-lens-dense": "workspace:*"
+    "@cntxt-labs/anvesa-core": "workspace:*",
+    "@cntxt-labs/anvesa-syntax": "workspace:*",
+    "@cntxt-labs/anvesa-structural": "workspace:*",
+    "@cntxt-labs/anvesa-dense": "workspace:*"
   },
   "devDependencies": {
     "tree-sitter-javascript": "^0.25.0",

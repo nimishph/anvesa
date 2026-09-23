@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { Deadline, InvalidArgumentError, OperationAbortedError } from '@cntxt-labs/code-lens-core';
+import { Deadline, InvalidArgumentError, OperationAbortedError } from '@cntxt-labs/anvesa-core';
 import { StructuralIndex } from './corpus.ts';
 import type { EncodedFile } from './engine.ts';
 import { makeNode, type WNode } from './node.ts';

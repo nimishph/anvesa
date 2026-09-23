@@ -1,8 +1,8 @@
 {
-  "name": "code-lens-workspace",
+  "name": "anvesa-workspace",
   "private": true,
   "type": "module",
-  "description": "code-lens: dense + structural code retrieval, as a set of subsystems. Self-contained so the whole directory can be extracted to its own repo.",
+  "description": "anvesa: dense + structural code retrieval, as a set of subsystems. Self-contained so the whole directory can be extracted to its own repo.",
   "workspaces": [
     "core",
     "syntax",

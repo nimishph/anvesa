@@ -3,7 +3,7 @@ import {
   type Page,
   type PageRequest,
   resolveLimit,
-} from '@cntxt-labs/code-lens-core';
+} from '@cntxt-labs/anvesa-core';
 import {
   type ChannelStats,
   DimensionMismatchError,
@@ -14,7 +14,7 @@ import {
   type SourceUpdate,
   TopKCollector,
   type VectorStore,
-} from '@cntxt-labs/code-lens-dense';
+} from '@cntxt-labs/anvesa-dense';
 import type { FileFacts, SymbolFact } from '../extract/index.ts';
 import type { FragmentAssigner } from '../fragments/manifest.ts';
 import { comparePaths } from './memory-index-store.ts';

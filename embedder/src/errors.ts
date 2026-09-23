@@ -1,4 +1,4 @@
-import { CodeLensError, type ErrorInit } from '@cntxt-labs/code-lens-core';
+import { CodeLensError, type ErrorInit } from '@cntxt-labs/anvesa-core';
 
 /** Every failure in this package. Codes are `EMBEDDER_<REASON>`. */
 export abstract class EmbedderSubsystemError extends CodeLensError {
@@ -11,7 +11,7 @@ export class ModelUnavailableError extends EmbedderSubsystemError {
 
   constructor(model: string, problem: string, init: ErrorInit = {}) {
     super(`Model "${model}" is not available: ${problem}`, {
-      hint: `Install it: code-lens model install ${model} --from <dir> (or allow the network).`,
+      hint: `Install it: anvesa model install ${model} --from <dir> (or allow the network).`,
       ...init,
       context: { model, problem, ...init.context },
     });

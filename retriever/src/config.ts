@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { ProjectConfigError } from './errors.ts';
 
 /** Where a project's configuration lives, relative to its root. */
-export const PROJECT_CONFIG_PATH = '.code-lens/config.json';
+export const PROJECT_CONFIG_PATH = '.anvesa/config.json';
 
 export interface ChannelConfig {
   /** Off, the channel is neither indexed nor searched. Default on. */
@@ -24,7 +24,7 @@ export interface ProjectConfig {
   /** The rank constant of fusion. Unset uses the standard one. */
   readonly fusionK: number | undefined;
   /**
-   * Keep the index in one database per fragment of `.code-lens/fragments.json`, instead of one
+   * Keep the index in one database per fragment of `.anvesa/fragments.json`, instead of one
    * database. For repositories big enough that one file is a burden; off by default.
    */
   readonly fragments: boolean;
@@ -34,7 +34,7 @@ export function defaultProjectConfig(): ProjectConfig {
   return { model: undefined, channels: {}, fusionK: undefined, fragments: false };
 }
 
-/** Read `.code-lens/config.json`. A project without one uses the defaults. */
+/** Read `.anvesa/config.json`. A project without one uses the defaults. */
 export async function loadProjectConfig(root: string): Promise<ProjectConfig> {
   const path = join(root, PROJECT_CONFIG_PATH);
   let text: string;

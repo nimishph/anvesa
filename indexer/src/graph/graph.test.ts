@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
+import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import { StoreDatabase } from '../store/database.ts';
 import { MemoryIndexStore } from '../store/memory-index-store.ts';
 import { SqliteIndexStore } from '../store/sqlite-index-store.ts';

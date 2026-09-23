@@ -1,4 +1,4 @@
-import { CodeLensError, type ErrorInit } from '@cntxt-labs/code-lens-core';
+import { CodeLensError, type ErrorInit } from '@cntxt-labs/anvesa-core';
 
 /**
  * A command ran and found a problem it was asked to look for: a mapping that does not match its

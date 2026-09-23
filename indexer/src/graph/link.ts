@@ -1,4 +1,4 @@
-import type { Deadline, Page } from '@cntxt-labs/code-lens-core';
+import type { Deadline, Page } from '@cntxt-labs/anvesa-core';
 import type {
   CallFact,
   ExportFact,

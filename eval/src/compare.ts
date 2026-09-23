@@ -4,7 +4,7 @@ import type {
   ImportFact,
   Resolution,
   SymbolFact,
-} from '@cntxt-labs/code-lens-indexer';
+} from '@cntxt-labs/anvesa-indexer';
 import type {
   CallTarget,
   ImportTarget,
@@ -214,7 +214,7 @@ export interface CallScore {
   /** Call sites the compiler sees that code-lens also extracted. */
   readonly extracted: Ratio;
   readonly truthKinds: ReadonlyMap<string, number>;
-  /** Calls the compiler resolved to a symbol code-lens extracted: what resolution is judged on. */
+  /** Calls the compiler resolved to a symbol anvesa extracted: what resolution is judged on. */
   readonly judged: number;
   readonly outcomes: ReadonlyMap<string, number>;
   /** Right symbol found by scope and imports, of the judged calls. */

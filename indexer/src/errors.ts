@@ -1,4 +1,4 @@
-import { CodeLensError, type ErrorInit } from '@cntxt-labs/code-lens-core';
+import { CodeLensError, type ErrorInit } from '@cntxt-labs/anvesa-core';
 
 /** Every failure in this package. Codes are `INDEXER_<REASON>`. */
 export abstract class IndexerSubsystemError extends CodeLensError {
@@ -17,7 +17,7 @@ export class WorkspaceRootError extends IndexerSubsystemError {
   }
 }
 
-/** `.code-lens/workspace.json` is unreadable or does not fit its schema. `location` is the field. */
+/** `.anvesa/workspace.json` is unreadable or does not fit its schema. `location` is the field. */
 export class WorkspaceConfigError extends IndexerSubsystemError {
   readonly code = 'INDEXER_WORKSPACE_CONFIG';
 
@@ -161,7 +161,7 @@ export class StoreClosedError extends IndexerSubsystemError {
   }
 }
 
-/** `.code-lens/fragments.json` is unreadable or does not fit its schema. `location` is the field. */
+/** `.anvesa/fragments.json` is unreadable or does not fit its schema. `location` is the field. */
 export class FragmentManifestError extends IndexerSubsystemError {
   readonly code = 'INDEXER_FRAGMENT_MANIFEST';
 

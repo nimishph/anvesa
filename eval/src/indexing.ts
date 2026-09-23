@@ -1,4 +1,4 @@
-import { toCodeLensError } from '@cntxt-labs/code-lens-core';
+import { toCodeLensError } from '@cntxt-labs/anvesa-core';
 import {
   DiskEnvironment,
   defaultConfig,
@@ -12,9 +12,9 @@ import {
   Workspace,
   type WorkspaceConfig,
   walkSources,
-} from '@cntxt-labs/code-lens-indexer';
-import { StructuralEngine } from '@cntxt-labs/code-lens-structural';
-import { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/code-lens-syntax';
+} from '@cntxt-labs/anvesa-indexer';
+import { StructuralEngine } from '@cntxt-labs/anvesa-structural';
+import { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/anvesa-syntax';
 import type { ObservedCall } from './compare.ts';
 
 export interface IndexOptions {

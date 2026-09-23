@@ -1,4 +1,4 @@
-import { InvalidArgumentError, type Page, type PageRequest } from '@cntxt-labs/code-lens-core';
+import { InvalidArgumentError, type Page, type PageRequest } from '@cntxt-labs/anvesa-core';
 import type { FileFacts, SymbolFact } from '../extract/facts.ts';
 import type { EdgeRecord, IndexStore } from '../store/index.ts';
 import type { WorkspacePackage } from '../workspace/discover.ts';

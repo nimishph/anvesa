@@ -18,8 +18,8 @@ export const PLATFORMS: readonly Platform[] = [
 ];
 
 export const SCOPE = '@cntxt-labs';
-export const MAIN_PACKAGE = `${SCOPE}/code-lens`;
+export const MAIN_PACKAGE = `${SCOPE}/anvesa`;
 
-/** `@cntxt-labs/code-lens-linux-x64`: the package that holds the program for one platform. */
+/** `@cntxt-labs/anvesa-linux-x64`: the package that holds the program for one platform. */
 export const platformPackage = (platform: Pick<Platform, 'os' | 'cpu'>): string =>
   `${MAIN_PACKAGE}-${platform.os}-${platform.cpu}`;

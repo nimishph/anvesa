@@ -1,5 +1,5 @@
 import { parseArgs } from 'node:util';
-import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
+import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 
 /** Every option any command takes. A command that does not use one ignores it. */
 const OPTIONS = {
@@ -87,7 +87,7 @@ export function parseOptions(argv: readonly string[]): Parsed {
   } catch (failure) {
     throw new InvalidArgumentError(
       'arguments',
-      'known options (see: code-lens --help)',
+      'known options (see: anvesa --help)',
       argv.join(' '),
       {
         cause: failure,

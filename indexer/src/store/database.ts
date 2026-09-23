@@ -1,7 +1,7 @@
 import { Database, type SQLQueryBindings } from 'bun:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { CodeLensError, InvalidArgumentError } from '@cntxt-labs/code-lens-core';
+import { CodeLensError, InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import {
   StoreClosedError,
   StoreOpenError,
@@ -183,11 +183,11 @@ function migrate(db: Database, path: string, readonly: boolean): void {
     throw new StoreSchemaError(
       path,
       `it is schema version ${current}, newer than the ${SCHEMA_VERSION} this version understands`,
-      { hint: 'Upgrade code-lens, or delete the index to rebuild it.' },
+      { hint: 'Upgrade anvesa, or delete the index to rebuild it.' },
     );
   }
   if (current === 0 && hasTables(db)) {
-    throw new StoreSchemaError(path, 'it is a database, but not a code-lens index', {
+    throw new StoreSchemaError(path, 'it is a database, but not a anvesa index', {
       hint: 'Point the store at a different file.',
     });
   }

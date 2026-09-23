@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
-import { type Deadline, InvalidArgumentError } from '@cntxt-labs/code-lens-core';
+import { type Deadline, InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import { openOnnx } from './backend.ts';
 import type { ModelCache } from './cache.ts';
 import { ModelInstallError, ModelShapeError } from './errors.ts';

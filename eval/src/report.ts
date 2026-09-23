@@ -45,7 +45,7 @@ export interface ReportInput {
 export function renderReport(input: ReportInput): string {
   const { run, symbols, imports, calls, samples } = input;
   const lines: string[] = [];
-  lines.push(`code-lens evaluation: ${input.repository} @ ${input.revision}`);
+  lines.push(`anvesa evaluation: ${input.repository} @ ${input.revision}`);
 
   lines.push(section('Indexing'));
   const totalMs = run.timings.walkAndExtractMs + run.timings.linkMs;
@@ -99,9 +99,9 @@ export function renderReport(input: ReportInput): string {
         .join(', ')}`,
     );
   }
-  lines.push(...examples('missed by code-lens', symbols.missed, samples));
+  lines.push(...examples('missed by anvesa', symbols.missed, samples));
   lines.push(
-    ...examples('reported by code-lens, not a declaration to the compiler', symbols.extra, samples),
+    ...examples('reported by anvesa, not a declaration to the compiler', symbols.extra, samples),
   );
 
   lines.push(section('Imports (resolved to the same place the compiler resolves them)'));
@@ -111,7 +111,7 @@ export function renderReport(input: ReportInput): string {
       ['of those, resolved to the same file / same class', both(imports.agreement)],
     ]),
   );
-  lines.push('compiler > code-lens');
+  lines.push('compiler > anvesa');
   lines.push(table(sorted(imports.confusion).map(([pair, count]) => [`  ${pair}`, String(count)])));
   lines.push(...examples('disagreements', imports.disagreements, samples));
   lines.push(...examples('not extracted', imports.notExtracted, samples));
@@ -120,7 +120,7 @@ export function renderReport(input: ReportInput): string {
   lines.push(
     table([
       ['call sites the compiler sees, also extracted', both(calls.extracted)],
-      ['judged (compiler names a symbol code-lens extracts)', String(calls.judged)],
+      ['judged (compiler names a symbol anvesa extracts)', String(calls.judged)],
       ['recall, resolved by scope and imports', both(calls.recallResolved)],
       ['recall, also counting name guesses', both(calls.recallWithGuesses)],
       ['precision of resolved links', both(calls.precisionResolved)],
@@ -153,7 +153,7 @@ export function renderReport(input: ReportInput): string {
   );
   lines.push('what the compiler says the calls are');
   lines.push(table(sorted(calls.truthKinds).map(([kind, count]) => [`  ${kind}`, String(count)])));
-  lines.push('what code-lens did');
+  lines.push('what anvesa did');
   lines.push(
     table(sorted(calls.outcomes).map(([outcome, count]) => [`  ${outcome}`, String(count)])),
   );

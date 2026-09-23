@@ -1,4 +1,4 @@
-import type { SyntaxNode } from '@cntxt-labs/code-lens-syntax';
+import type { SyntaxNode } from '@cntxt-labs/anvesa-syntax';
 import type { Callee } from './callee.ts';
 import type { Receiver } from './facts.ts';
 

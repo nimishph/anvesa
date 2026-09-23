@@ -1,7 +1,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
-import type { Deadline } from '@cntxt-labs/code-lens-core';
-import { toCodeLensError } from '@cntxt-labs/code-lens-core';
+import type { Deadline } from '@cntxt-labs/anvesa-core';
+import { toCodeLensError } from '@cntxt-labs/anvesa-core';
 import {
   IndexerSubsystemError,
   UnknownPackageError,
@@ -28,7 +28,7 @@ import { Traversal, type TraversalReport, type TraverseOptions } from './travers
 
 export interface WorkspaceOptions {
   readonly root: string;
-  /** Settings to use instead of reading `.code-lens/workspace.json`. */
+  /** Settings to use instead of reading `.anvesa/workspace.json`. */
   readonly config?: WorkspaceConfig;
   /** Adapters to use instead of the built-in set (still filtered by `config.adapters`). */
   readonly adapters?: readonly PackageDiscoverer[];
@@ -150,7 +150,7 @@ export class Workspace {
           path: pkg.root,
           error: toCodeLensError(
             new WorkspaceConfigError(
-              '.code-lens/workspace.json',
+              '.anvesa/workspace.json',
               `packages[${pkg.name}].root`,
               `"${pkg.root}" is not a directory in the workspace`,
             ),
@@ -314,7 +314,7 @@ function selectAdapters(
     const found = all.find((adapter) => adapter.name === name);
     if (!found) {
       throw new WorkspaceConfigError(
-        '.code-lens/workspace.json',
+        '.anvesa/workspace.json',
         `adapters[${index}]`,
         `unknown adapter "${name}" (available: ${all.map((adapter) => adapter.name).join(', ')})`,
       );

@@ -4,7 +4,7 @@ import { WorkspaceConfigError } from '../errors.ts';
 import type { WorkspacePackage } from './discover.ts';
 
 /** Where a project's workspace settings live, relative to the workspace root. */
-export const CONFIG_PATH = '.code-lens/workspace.json';
+export const CONFIG_PATH = '.anvesa/workspace.json';
 
 export interface ConfiguredPackage {
   readonly name: string;
@@ -50,7 +50,7 @@ export function toWorkspacePackage(configured: ConfiguredPackage): WorkspacePack
   };
 }
 
-/** Load `.code-lens/workspace.json`. Absent is fine; present but wrong is an error naming the field. */
+/** Load `.anvesa/workspace.json`. Absent is fine; present but wrong is an error naming the field. */
 export async function loadWorkspaceConfig(root: string): Promise<WorkspaceConfig | undefined> {
   const path = join(root, CONFIG_PATH);
   let text: string;

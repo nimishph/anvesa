@@ -8,12 +8,12 @@ import {
   parsePolicy,
   type RedTeamGate,
   type RedTeamPolicy,
-} from '@cntxt-labs/code-lens-dense';
+} from '@cntxt-labs/anvesa-dense';
 import { provideDependencies } from './channel-module.ts';
 import { ChannelModuleError, ProjectConfigError } from './errors.ts';
 
 /** A project's red-team policy: extra rules, what each trust level does about any rule, and sources. */
-export const REDTEAM_PATH = '.code-lens/redteam.json';
+export const REDTEAM_PATH = '.anvesa/redteam.json';
 
 /** What a policy source hands back: the policy object, now or later. */
 type SourceExport = unknown | ((context: { readonly root: string }) => unknown | Promise<unknown>);

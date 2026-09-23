@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Install the packages as a user's package manager would lay them out, and run the command that
- * `npm install -g @cntxt-labs/code-lens` would link: the launcher, which finds the program in the
+ * `npm install -g @cntxt-labs/anvesa` would link: the launcher, which finds the program in the
  * platform package.
  *
  *   bun run tooling/smoke-npm.ts [--dist dist]
@@ -13,7 +13,7 @@ import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } fr
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
+import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import { MAIN_PACKAGE, PLATFORMS, platformPackage } from './platforms.ts';
 
 const root = resolve(import.meta.dir, '..');
@@ -33,7 +33,7 @@ if (!readdirSync(dist).includes('npm')) {
   throw new InvalidArgumentError('--dist', 'a folder that `bun run package` has filled', dist);
 }
 
-const sandbox = mkdtempSync(join(tmpdir(), 'code-lens-npm-'));
+const sandbox = mkdtempSync(join(tmpdir(), 'anvesa-npm-'));
 try {
   const modules = join(sandbox, 'node_modules');
   cpSync(join(root, 'cli', 'bin'), join(modules, MAIN_PACKAGE, 'bin'), { recursive: true });
@@ -44,7 +44,7 @@ try {
   writeFileSync(join(project, 'package.json'), '{"name":"smoke"}');
   writeFileSync(join(project, 'src', 'a.ts'), 'export function launched() { return 1; }\n');
 
-  const launcher = join(modules, MAIN_PACKAGE, 'bin', 'code-lens.cjs');
+  const launcher = join(modules, MAIN_PACKAGE, 'bin', 'anvesa.cjs');
   const run = async (args: readonly string[]) => {
     const child = Bun.spawn({
       cmd: ['node', launcher, ...args],
@@ -68,7 +68,7 @@ try {
   const version = await run(['--version']);
   check(
     'the launcher runs the program',
-    version.code === 0 && /^code-lens \d/.test(version.out),
+    version.code === 0 && /^anvesa \d/.test(version.out),
     version.err,
   );
   const indexed = await run(['index', '--no-embed']);

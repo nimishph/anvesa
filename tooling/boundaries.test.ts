@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { InvariantViolationError } from '@cntxt-labs/code-lens-core';
+import { InvariantViolationError } from '@cntxt-labs/anvesa-core';
 
 /**
  * Proves the dependency rules in .dependency-cruiser.cjs reject what they claim to. A synthetic

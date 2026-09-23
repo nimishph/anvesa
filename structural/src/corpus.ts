@@ -3,7 +3,7 @@ import {
   InvalidArgumentError,
   type Page,
   resolveLimit,
-} from '@cntxt-labs/code-lens-core';
+} from '@cntxt-labs/anvesa-core';
 import { toHit, type WqlHit } from './hits.ts';
 import { ATTR, type WNode, walk } from './node.ts';
 import {

@@ -73,9 +73,9 @@ export function prepareNativeRuntime(): readonly string[] {
 /** Folders that may hold a `node_modules/onnxruntime-node` shipped with a compiled binary. */
 export function runtimeFolders(environment: NodeJS.ProcessEnv = process.env): readonly string[] {
   return [
-    ...(environment.CODE_LENS_RUNTIME ? [environment.CODE_LENS_RUNTIME] : []),
+    ...(environment.ANVESA_RUNTIME ? [environment.ANVESA_RUNTIME] : []),
     join(dirname(process.execPath), 'runtime'),
-    join(environment.CODE_LENS_HOME ?? join(homedir(), '.code-lens'), 'runtime'),
+    join(environment.ANVESA_HOME ?? join(homedir(), '.anvesa'), 'runtime'),
   ];
 }
 
@@ -101,7 +101,7 @@ export async function openOnnx(options: OnnxOptions): Promise<InferenceBackend> 
   } catch (failure) {
     throw new InferenceError(options.modelId, 'the ONNX runtime could not be loaded', {
       cause: failure,
-      hint: `Put the "runtime" folder that ships with the program beside it, or in ${join(homedir(), '.code-lens', 'runtime')}.`,
+      hint: `Put the "runtime" folder that ships with the program beside it, or in ${join(homedir(), '.anvesa', 'runtime')}.`,
     });
   }
 

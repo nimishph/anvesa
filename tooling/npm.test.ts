@@ -19,7 +19,7 @@ const manifest = (folder: string) =>
     publishConfig?: { access: string };
   };
 
-const launcher = createRequire(import.meta.url)('../cli/bin/code-lens.cjs') as {
+const launcher = createRequire(import.meta.url)('../cli/bin/anvesa.cjs') as {
   SUPPORTED: string[];
   platformPackage(platform: string, cpu: string): string | undefined;
   locate(
@@ -43,7 +43,7 @@ describe('what is published', () => {
     expect(cli.publishConfig?.access).toBe('public');
     expect(cli.license).toBe('MIT');
     expect(cli.author?.name).toBe('nimishph');
-    expect(cli.bin).toEqual({ 'code-lens': 'bin/code-lens.cjs' });
+    expect(cli.bin).toEqual({ anvesa: 'bin/anvesa.cjs' });
     expect(cli.files).toEqual(['bin', 'skills', 'README.md', 'LICENSE']);
     // Everything else is built into the program, so installing it pulls in nothing.
     expect(cli.dependencies).toBeUndefined();
@@ -79,9 +79,9 @@ describe('the launcher', () => {
 
   test('finds the program in the platform package', () => {
     const found = launcher.locate('linux', 'x64', (specifier) => `/modules/${specifier}`);
-    expect(found.program).toBe('/modules/@cntxt-labs/code-lens-linux-x64/bin/code-lens');
+    expect(found.program).toBe('/modules/@cntxt-labs/anvesa-linux-x64/bin/anvesa');
     const windows = launcher.locate('win32', 'x64', (specifier) => `/modules/${specifier}`);
-    expect(windows.program).toBe('/modules/@cntxt-labs/code-lens-win32-x64/bin/code-lens.exe');
+    expect(windows.program).toBe('/modules/@cntxt-labs/anvesa-win32-x64/bin/anvesa.exe');
   });
 
   test('says what is wrong on an unsupported platform and when the package is missing', () => {
@@ -92,7 +92,7 @@ describe('the launcher', () => {
     const missing = launcher.locate('linux', 'x64', () => {
       throw new ModuleNotFound();
     });
-    expect(missing.problem).toContain('@cntxt-labs/code-lens-linux-x64 package is not installed');
+    expect(missing.problem).toContain('@cntxt-labs/anvesa-linux-x64 package is not installed');
     expect(missing.problem).toContain('--no-optional');
   });
 });

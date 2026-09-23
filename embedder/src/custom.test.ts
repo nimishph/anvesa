@@ -11,7 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
+import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import { ModelCache } from './cache.ts';
 import { installCustomModel, planCustomModel } from './custom.ts';
 import { InferenceError, ModelInstallError, ModelIntegrityError } from './errors.ts';
@@ -238,9 +238,9 @@ describe('keeping a model the user brought', () => {
 
 /**
  * The real thing, when a MiniLM is at hand: it is brought in under another name, its dimensions
- * are read from the model, and it works. Needs `CODE_LENS_TEST_MODELS`, as the other model tests.
+ * are read from the model, and it works. Needs `ANVESA_TEST_MODELS`, as the other model tests.
  */
-const modelsDirectory = process.env.CODE_LENS_TEST_MODELS;
+const modelsDirectory = process.env.ANVESA_TEST_MODELS;
 const maybe = modelsDirectory ? describe : describe.skip;
 
 maybe('a real model brought in by the user', () => {

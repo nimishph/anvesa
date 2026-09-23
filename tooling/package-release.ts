@@ -5,7 +5,7 @@
  *
  *   bun run tooling/package-release.ts [--out dist]
  *
- * The result is `<out>/code-lens-<version>-<platform>-<arch>/` and an archive of it. The runtime
+ * The result is `<out>/anvesa-<version>-<platform>-<arch>/` and an archive of it. The runtime
  * is a folder rather than part of the program because the native addon must sit next to its shared
  * library, and a compiled program cannot carry both in a place the loader will look.
  */
@@ -13,7 +13,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } fr
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
+import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import { PLATFORMS, platformPackage } from './platforms.ts';
 
 const root = resolve(import.meta.dir, '..');
@@ -23,7 +23,7 @@ const version = (
   JSON.parse(readFileSync(join(root, 'cli', 'package.json'), 'utf8')) as { version: string }
 ).version;
 const target = `${process.platform}-${process.arch}`;
-const name = `code-lens-${version}-${target}`;
+const name = `anvesa-${version}-${target}`;
 const folder = join(out, name);
 
 /** The folder of a package, found the way its own dependent would find it. */
@@ -42,7 +42,7 @@ async function run(command: readonly string[], cwd: string): Promise<void> {
 rmSync(folder, { recursive: true, force: true });
 mkdirSync(folder, { recursive: true });
 
-const program = process.platform === 'win32' ? 'code-lens.exe' : 'code-lens';
+const program = process.platform === 'win32' ? 'anvesa.exe' : 'anvesa';
 await run(
   [
     'bun',
@@ -105,8 +105,8 @@ const skills = join(root, 'cli', 'skills');
 if (existsSync(skills)) cpSync(skills, join(folder, 'skills'), { recursive: true });
 writeFileSync(join(folder, 'VERSION'), `${version}\n`);
 
-// The same program as an npm package for this platform, which `@cntxt-labs/code-lens` depends on
-// optionally. The launcher in that package finds `bin/code-lens` and the runtime beside it.
+// The same program as an npm package for this platform, which `@cntxt-labs/anvesa` depends on
+// optionally. The launcher in that package finds `bin/anvesa` and the runtime beside it.
 const here = PLATFORMS.find(
   (platform) => platform.os === process.platform && platform.cpu === process.arch,
 );
@@ -135,7 +135,7 @@ writeFileSync(
     {
       name: npmName,
       version,
-      description: `The code-lens program for ${process.platform} on ${process.arch}. Install @cntxt-labs/code-lens instead.`,
+      description: `The anvesa program for ${process.platform} on ${process.arch}. Install @cntxt-labs/anvesa instead.`,
       license: cliManifest.license,
       author: cliManifest.author,
       homepage: cliManifest.homepage,

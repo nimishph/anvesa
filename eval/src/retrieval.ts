@@ -1,4 +1,4 @@
-import type { SymbolFact } from '@cntxt-labs/code-lens-indexer';
+import type { SymbolFact } from '@cntxt-labs/anvesa-indexer';
 
 /**
  * How a query is phrased, which decides which lane can be expected to find it:

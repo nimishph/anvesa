@@ -1,4 +1,4 @@
-import { CodeLensError, type ErrorInit } from '@cntxt-labs/code-lens-core';
+import { CodeLensError, type ErrorInit } from '@cntxt-labs/anvesa-core';
 
 /** Every failure in this package. Codes are `STRUCTURAL_<REASON>`. */
 export abstract class StructuralSubsystemError extends CodeLensError {
@@ -162,7 +162,7 @@ export class MappingIntegrityError extends StructuralSubsystemError {
           ? `Mapping "${mapping}" is recorded in the lockfile but ${path} is missing`
           : `Mapping "${mapping}" at ${path} differs from the recorded checksum`,
       {
-        hint: 'If the change is meant, record it again with `code-lens mapping lock`. Otherwise restore the file.',
+        hint: 'If the change is meant, record it again with `anvesa mapping lock`. Otherwise restore the file.',
         ...init,
         context: { mapping, path, expectedSha256, actualSha256, ...init.context },
       },

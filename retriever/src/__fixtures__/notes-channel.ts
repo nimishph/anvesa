@@ -1,4 +1,4 @@
-import { defineTransformer, type InputFile, inputFile } from '@cntxt-labs/code-lens-dense';
+import { defineTransformer, type InputFile, inputFile } from '@cntxt-labs/anvesa-dense';
 
 /** A channel over records that are not files: notes held somewhere else. */
 export default defineTransformer({

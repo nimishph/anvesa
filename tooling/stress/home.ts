@@ -1,6 +1,6 @@
 /**
  * Where the stress test keeps things: the manifest, the clones and the record of every run. Outside
- * any repository (`CODE_LENS_STRESS_HOME`, default `~/.code-lens/stress`), so none of it is ever
+ * any repository (`ANVESA_STRESS_HOME`, default `~/.anvesa/stress`), so none of it is ever
  * committed and clones do not sit inside the project being developed.
  */
 import {
@@ -24,7 +24,7 @@ export interface StressHome {
 }
 
 export function stressHome(env: NodeJS.ProcessEnv = process.env): StressHome {
-  const root = env.CODE_LENS_STRESS_HOME ?? join(homedir(), '.code-lens', 'stress');
+  const root = env.ANVESA_STRESS_HOME ?? join(homedir(), '.anvesa', 'stress');
   return {
     root,
     manifest: join(root, 'manifest.json'),

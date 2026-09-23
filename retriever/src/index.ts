@@ -1,12 +1,12 @@
-export type { Embedder, InputFile, InputSource } from '@cntxt-labs/code-lens-dense';
-export { inputFile } from '@cntxt-labs/code-lens-dense';
+export type { Embedder, InputFile, InputSource } from '@cntxt-labs/anvesa-dense';
+export { inputFile } from '@cntxt-labs/anvesa-dense';
 export type {
   DriftReport,
   FragmentManifest,
   IndexEvent,
   IndexReport,
   RunOptions,
-} from '@cntxt-labs/code-lens-indexer';
+} from '@cntxt-labs/anvesa-indexer';
 export type {
   Golden,
   GoldenDifference,
@@ -14,8 +14,8 @@ export type {
   StoredMapping,
   TrainingIssue,
   TrainingReport,
-} from '@cntxt-labs/code-lens-structural';
-export { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/code-lens-syntax';
+} from '@cntxt-labs/anvesa-structural';
+export { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/anvesa-syntax';
 export { type LoadedChannel, loadChannelModule } from './channel-module.ts';
 export * from './config.ts';
 export * from './errors.ts';

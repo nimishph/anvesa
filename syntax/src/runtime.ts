@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { AggregateFailureError, Deadline, toCodeLensError } from '@cntxt-labs/code-lens-core';
+import { AggregateFailureError, Deadline, toCodeLensError } from '@cntxt-labs/anvesa-core';
 import { Language, Parser } from 'web-tree-sitter';
 import {
   GrammarIncompatibleError,

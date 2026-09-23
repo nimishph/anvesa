@@ -2,13 +2,13 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { InvalidArgumentError } from '@cntxt-labs/code-lens-core';
+import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import { MappingIntegrityError, MappingInvalidError, MappingLockError } from './errors.ts';
 import { MappingStore } from './mapping-store.ts';
 
 const dirs: string[] = [];
 const scratch = (): string => {
-  const dir = mkdtempSync(join(tmpdir(), 'code-lens-mappings-'));
+  const dir = mkdtempSync(join(tmpdir(), 'anvesa-mappings-'));
   dirs.push(dir);
   return dir;
 };
@@ -36,10 +36,8 @@ describe('keeping mappings outside the package', () => {
     const { store, project } = stores();
     const stored = await store.install(kotlin(), { tier: 'project', languages: ['kotlin'] });
     expect(stored).toMatchObject({ tier: 'project', languages: ['kotlin'] });
-    expect(existsSync(join(project, '.code-lens', 'mappings', 'kotlin.json'))).toBe(true);
-    const lock = JSON.parse(
-      readFileSync(join(project, '.code-lens', 'mappings.lock.json'), 'utf8'),
-    );
+    expect(existsSync(join(project, '.anvesa', 'mappings', 'kotlin.json'))).toBe(true);
+    const lock = JSON.parse(readFileSync(join(project, '.anvesa', 'mappings.lock.json'), 'utf8'));
     expect(lock.mappings.kotlin.sha256).toBe(stored.sha256);
 
     const registry = await store.registry();
@@ -56,7 +54,7 @@ describe('keeping mappings outside the package', () => {
     await expect(store.install(kotlin({ name: '../evil' }), { tier: 'project' })).rejects.toThrow(
       /letters, digits/,
     );
-    expect(existsSync(join(project, '.code-lens'))).toBe(false);
+    expect(existsSync(join(project, '.anvesa'))).toBe(false);
   });
 
   test('a file that was changed after it was recorded is refused, with what was expected and found', async () => {
@@ -69,7 +67,7 @@ describe('keeping mappings outside the package', () => {
     expect(failure).toBeInstanceOf(MappingIntegrityError);
     expect(failure.context).toMatchObject({ mapping: 'kotlin', expectedSha256: stored.sha256 });
     expect(failure.context.actualSha256).not.toBe(stored.sha256);
-    expect(failure.hint).toContain('code-lens mapping lock');
+    expect(failure.hint).toContain('anvesa mapping lock');
     await expect(store.registry()).rejects.toBeInstanceOf(MappingIntegrityError);
 
     expect((await store.verify()).map((check) => [check.name, check.status])).toEqual([
@@ -81,14 +79,14 @@ describe('keeping mappings outside the package', () => {
     const { store, project } = stores();
     const stored = await store.install(kotlin(), { tier: 'project' });
     writeFileSync(
-      join(project, '.code-lens', 'mappings', 'sneaky.json'),
+      join(project, '.anvesa', 'mappings', 'sneaky.json'),
       JSON.stringify(kotlin({ name: 'sneaky' })),
     );
     const unrecorded = await store.load().catch((thrown) => thrown);
     expect(unrecorded).toBeInstanceOf(MappingIntegrityError);
     expect(unrecorded.context).toMatchObject({ mapping: 'sneaky', expectedSha256: undefined });
 
-    rmSync(join(project, '.code-lens', 'mappings', 'sneaky.json'));
+    rmSync(join(project, '.anvesa', 'mappings', 'sneaky.json'));
     rmSync(stored.path as string);
     const gone = await store.load().catch((thrown) => thrown);
     expect(gone).toBeInstanceOf(MappingIntegrityError);
@@ -183,14 +181,14 @@ describe('keeping mappings outside the package', () => {
     expect(await store.remove('kotlin', 'project')).toBe(true);
     expect(await store.remove('kotlin', 'project')).toBe(false);
     expect(await store.load()).toEqual([]);
-    expect(existsSync(join(project, '.code-lens', 'mappings', 'kotlin.golden.json'))).toBe(false);
+    expect(existsSync(join(project, '.anvesa', 'mappings', 'kotlin.golden.json'))).toBe(false);
     expect(await store.golden('kotlin', 'project')).toBeUndefined();
   });
 
   test('a lockfile that cannot be read is an error, not an empty lock', async () => {
     const { store, project } = stores();
     await store.install(kotlin(), { tier: 'project' });
-    const lock = join(project, '.code-lens', 'mappings.lock.json');
+    const lock = join(project, '.anvesa', 'mappings.lock.json');
     writeFileSync(lock, '{not json');
     await expect(store.load()).rejects.toBeInstanceOf(MappingLockError);
     writeFileSync(
