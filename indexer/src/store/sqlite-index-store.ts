@@ -19,6 +19,7 @@ import { allRows, getRow, StoreDatabase, type StoreOptions } from './database.ts
 import type {
   CallQuery,
   CallRecord,
+  CorpusQuery,
   EdgeQuery,
   EdgeRecord,
   FileListQuery,
@@ -30,6 +31,7 @@ import type {
   IndexStats,
   IndexStore,
   QuarantineReason,
+  StoredCorpusRecord,
   SymbolQuery,
 } from './types.ts';
 
@@ -648,6 +650,64 @@ export class SqliteIndexStore implements IndexStore {
         query,
         (row) => ({ from: row.from_ref, to: row.to_ref, kind: row.kind }),
       );
+    });
+  }
+
+  async putCorpusRecords(records: readonly StoredCorpusRecord[]): Promise<void> {
+    if (records.length === 0) return;
+    return this.#database.guard('write corpus records', (db) => {
+      const stmt = db.prepare(`
+        INSERT INTO corpus_records (corpus, id, path, attrs, text)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(corpus, id) DO UPDATE SET
+          path = excluded.path,
+          attrs = excluded.attrs,
+          text = excluded.text
+      `);
+      for (const r of records) {
+        stmt.run(r.corpus, r.id, r.path, JSON.stringify(r.attrs), r.text ?? null);
+      }
+    });
+  }
+
+  async findCorpusRecords(query: CorpusQuery = {}): Promise<Page<StoredCorpusRecord>> {
+    return this.#database.guard('find corpus records', (db) => {
+      const where = new Where().equals('corpus', query.corpus).equals('path', query.path);
+      interface CorpusRow {
+        readonly corpus: string;
+        readonly id: string;
+        readonly path: string;
+        readonly attrs: string;
+        readonly text: string | null;
+      }
+      return pageOf<CorpusRow, StoredCorpusRecord>(
+        db,
+        {
+          select: 'corpus, id, path, attrs, text',
+          from: `corpus_records ${where}`,
+          params: where.params,
+          order: 'id',
+        },
+        query,
+        (row: CorpusRow) => ({
+          corpus: row.corpus,
+          id: row.id,
+          path: row.path,
+          attrs: JSON.parse(row.attrs),
+          text: row.text ?? undefined,
+        }),
+      );
+    });
+  }
+
+  async corpusPaths(corpus: string): Promise<readonly string[]> {
+    return this.#database.guard('get corpus paths', (db) => {
+      const rows = allRows(
+        db,
+        'SELECT DISTINCT path FROM corpus_records WHERE corpus = ? ORDER BY path',
+        corpus,
+      ) as { path: string }[];
+      return rows.map((r) => r.path);
     });
   }
 

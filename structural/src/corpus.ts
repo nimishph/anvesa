@@ -7,6 +7,7 @@ import {
 import { toHit, type WqlHit } from './hits.ts';
 import { ATTR, type WNode, walk } from './node.ts';
 import {
+  isCallableTag,
   type MatchContext,
   nodeMatchesStep,
   parseWql,
@@ -202,6 +203,13 @@ function buildFileIndex(file: IndexedFile): FileIndex {
     entryOf.set(node, entry);
     entries.push(entry);
     push(byTag, node.tag, entry);
+    if (isCallableTag(node.tag) || node.attrs.get(ATTR.callable) === 'true') {
+      push(byTag, 'callable', entry);
+      push(byTag, 'fn', entry);
+    }
+    if (node.attrs.get(ATTR.isMethod) === 'true' && node.tag !== 'method') {
+      push(byTag, 'method', entry);
+    }
     const name = node.attrs.get(ATTR.name);
     if (name !== undefined) {
       push(byName, name, entry);

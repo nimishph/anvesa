@@ -275,8 +275,9 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       emit(ctx, result, () => show.renderIndex(result));
     }),
 
+  // The embedder is opened so `status` names the model in use; without it every project read as "none".
   status: (ctx) =>
-    withProject(ctx, { embed: false }, async ({ retriever }) => {
+    withProject(ctx, { embed: true }, async ({ retriever }) => {
       const status = await retriever.status();
       emit(ctx, status, () => show.renderStatus(status));
     }),
@@ -455,7 +456,11 @@ export async function channelCommand(ctx: Context): Promise<void> {
           inner,
           report,
           () =>
-            `${report.channel}: ${report.reports.length} records (${report.reports.filter((r) => r.outcome === 'indexed').length} indexed), ${report.removed.length} removed\n`,
+            `${report.channel}: ${report.reports.length} records (${report.reports.filter((r) => r.outcome === 'indexed').length} indexed), ${report.removed.length} removed\n${
+              report.reports.length === 0
+                ? "note: this indexes records from the channel's source. Cards from files the channel claims are built by: code-lens index\n"
+                : ''
+            }`,
         );
       });
     case 'remove':
@@ -830,4 +835,40 @@ export async function modelCommand(ctx: Context): Promise<void> {
     default:
       throw new InvalidArgumentError('model', 'list, install, verify or doctor', sub);
   }
+}
+
+// --- pattern ---------------------------------------------------------------------------------
+
+export async function patternCommand(ctx: Context): Promise<void> {
+  const [sub, name, ...rawArgs] = ctx.parsed.positionals;
+  if (!sub || (sub !== 'list' && sub !== 'run')) {
+    throw new InvalidArgumentError('pattern', 'list or run', sub);
+  }
+  return withProject(ctx, { embed: false }, async ({ retriever }) => {
+    if (sub === 'list') {
+      const patterns = await retriever.patterns.list();
+      emit(ctx, patterns, () => show.renderPatterns(patterns));
+      return;
+    }
+    if (!name) {
+      throw new InvalidArgumentError(
+        'name',
+        'a pattern name to run (see: code-lens pattern list)',
+        undefined,
+      );
+    }
+    const args: Record<string, string> = {};
+    for (const arg of rawArgs) {
+      const eq = arg.indexOf('=');
+      if (eq > 0) {
+        args[arg.slice(0, eq)] = arg.slice(eq + 1);
+      }
+    }
+    const limit = integerOption('limit', ctx.parsed.values.limit);
+    const result = await retriever.patterns.run(name, args, {
+      ...(limit === undefined ? {} : { limit }),
+      ...(ctx.parsed.values.cursor === undefined ? {} : { cursor: ctx.parsed.values.cursor }),
+    });
+    emit(ctx, result, () => show.renderPatternResult(result));
+  });
 }

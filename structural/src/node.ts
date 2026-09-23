@@ -44,6 +44,10 @@ export const ATTR = {
   /** Offsets of the node in the source text. Written only when `EncodeOptions.positions` is on. */
   startIndex: 'startIndex',
   endIndex: 'endIndex',
+  /** Present on any callable node (function, method, arrow, lambda, closure, constructor). */
+  callable: 'callable',
+  /** Present on callables that are methods of a class, struct, interface, trait or impl block. */
+  isMethod: 'isMethod',
 } as const;
 
 /**

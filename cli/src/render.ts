@@ -13,6 +13,8 @@ import {
   type MappingCheck,
   type ModelDoctor,
   type ModelRow,
+  type PatternRunResult,
+  type PatternSpec,
   type RedTeamRuleInfo,
   type RedTeamScan,
   type SearchPage,
@@ -455,5 +457,40 @@ export function renderRedTeamScan(scan: RedTeamScan): string {
       (q) => `  would quarantine ${q.path} (${q.channel}): ${q.rules.join(', ')}`,
     ),
     scan.quarantined.length === 0 ? 'nothing would be quarantined' : undefined,
+  );
+}
+
+export function renderPatterns(specs: readonly PatternSpec[]): string {
+  if (specs.length === 0) {
+    return 'no patterns found in .code-lens/patterns/\n';
+  }
+  const rows = specs.map((spec) => {
+    const params =
+      spec.params?.map((p) => `$${p.name}${p.required ? ' (required)' : ''}`).join(', ') ?? '';
+    const desc = spec.description ? `  ${spec.description}` : '';
+    const corpus = spec.corpus ? ` [corpus: ${spec.corpus}]` : '';
+    return `  ${spec.name.padEnd(20)} ${corpus}${params ? `  params: ${params}` : ''}${desc}`;
+  });
+  return lines(`${specs.length} pattern${specs.length === 1 ? '' : 's'}:`, ...rows);
+}
+
+export function renderPatternResult(result: PatternRunResult): string {
+  const rows = result.items.map((hit) => {
+    const at = place({ path: hit.path ?? '', line: hit.startLine, endLine: hit.endLine });
+    return `${hit.tag} ${hit.name ?? ''}  ${at}${hit.signature ? `  ${hit.signature}` : ''}`;
+  });
+  const diagRows: string[] = [];
+  if (result.diagnostic) {
+    diagRows.push(`\n[diagnostic] ${result.diagnostic.message}`);
+    if (result.diagnostic.hint) {
+      diagRows.push(`hint: ${result.diagnostic.hint}`);
+    }
+  }
+  const total = result.total === null ? result.items.length : result.total;
+  return lines(
+    `pattern: ${result.pattern} -> wql: ${result.wql}`,
+    ...rows,
+    `${result.items.length} of ${total} matches${result.nextCursor ? ` (next cursor: ${result.nextCursor})` : ''}`,
+    ...diagRows,
   );
 }

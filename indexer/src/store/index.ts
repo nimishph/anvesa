@@ -10,6 +10,7 @@ export { SqliteVectorStore } from './sqlite-vector-store.ts';
 export type {
   CallQuery,
   CallRecord,
+  CorpusQuery,
   EdgeQuery,
   EdgeRecord,
   FileFingerprint,
@@ -23,5 +24,6 @@ export type {
   IndexStats,
   IndexStore,
   QuarantineReason,
+  StoredCorpusRecord,
   SymbolQuery,
 } from './types.ts';

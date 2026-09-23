@@ -4,6 +4,7 @@ import type { FileFacts, SymbolFact } from '../extract/index.ts';
 import type {
   CallQuery,
   CallRecord,
+  CorpusQuery,
   EdgeQuery,
   EdgeRecord,
   FileListQuery,
@@ -14,6 +15,7 @@ import type {
   IndexedFile,
   IndexStats,
   IndexStore,
+  StoredCorpusRecord,
   SymbolQuery,
 } from './types.ts';
 
@@ -43,6 +45,7 @@ export class MemoryIndexStore implements IndexStore {
   readonly #quarantine = new Map<string, FileQuarantine>();
   readonly #edges = new Map<string, readonly EdgeRecord[]>();
   readonly #meta = new Map<string, string>();
+  readonly #corpusRecords = new Map<string, StoredCorpusRecord>();
 
   #sortedPaths(): string[] {
     return [...this.#files.keys()].sort(comparePaths);
@@ -88,6 +91,31 @@ export class MemoryIndexStore implements IndexStore {
     if (!file) return false;
     this.#files.set(path, { ...file, size, mtimeMs });
     return true;
+  }
+
+  async putCorpusRecords(records: readonly StoredCorpusRecord[]): Promise<void> {
+    for (const record of records) {
+      this.#corpusRecords.set(`${record.corpus}:${record.id}`, record);
+    }
+  }
+
+  async findCorpusRecords(query: CorpusQuery = {}): Promise<Page<StoredCorpusRecord>> {
+    const all = [...this.#corpusRecords.values()]
+      .filter(
+        (r) =>
+          (query.corpus === undefined || r.corpus === query.corpus) &&
+          (query.path === undefined || r.path === query.path),
+      )
+      .sort((a, b) => a.id.localeCompare(b.id));
+    return paginate(all, query);
+  }
+
+  async corpusPaths(corpus: string): Promise<readonly string[]> {
+    const paths = new Set<string>();
+    for (const r of this.#corpusRecords.values()) {
+      if (r.corpus === corpus) paths.add(r.path);
+    }
+    return [...paths].sort(comparePaths);
   }
 
   async removeFile(path: string): Promise<boolean> {

@@ -21,6 +21,7 @@ import { comparePaths } from './memory-index-store.ts';
 import type {
   CallQuery,
   CallRecord,
+  CorpusQuery,
   EdgeQuery,
   EdgeRecord,
   FileListQuery,
@@ -31,6 +32,7 @@ import type {
   IndexedFile,
   IndexStats,
   IndexStore,
+  StoredCorpusRecord,
   SymbolQuery,
 } from './types.ts';
 
@@ -358,6 +360,38 @@ export class ShardedIndexStore implements IndexStore {
       (a, b) => comparePaths(sourcePathOf(a.from), sourcePathOf(b.from)),
       query,
     );
+  }
+
+  async putCorpusRecords(records: readonly StoredCorpusRecord[]): Promise<void> {
+    const byShard = new Map<IndexStore, StoredCorpusRecord[]>();
+    for (const record of records) {
+      const target = this.#of(record.path);
+      const list = byShard.get(target);
+      if (list) list.push(record);
+      else byShard.set(target, [record]);
+    }
+    await Promise.all([...byShard.entries()].map(([store, list]) => store.putCorpusRecords(list)));
+  }
+
+  findCorpusRecords(query: CorpusQuery = {}): Promise<Page<StoredCorpusRecord>> {
+    if (query.path) return this.#of(query.path).findCorpusRecords(query);
+    return mergedPage(
+      this.#each().map(({ id, store }) => ({
+        id,
+        store: (page) => store.findCorpusRecords({ ...unpaged(query), ...page }),
+      })),
+      (a: StoredCorpusRecord, b: StoredCorpusRecord) => a.id.localeCompare(b.id),
+      query,
+    );
+  }
+
+  async corpusPaths(corpus: string): Promise<readonly string[]> {
+    const lists = await Promise.all(this.#each().map(({ store }) => store.corpusPaths(corpus)));
+    const merged = new Set<string>();
+    for (const list of lists) {
+      for (const p of list) merged.add(p);
+    }
+    return [...merged].sort((a, b) => a.localeCompare(b));
   }
 
   getMeta(key: string): Promise<string | undefined> {

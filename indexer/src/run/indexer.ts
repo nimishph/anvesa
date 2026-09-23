@@ -6,7 +6,11 @@ import {
   toCodeLensError,
 } from '@cntxt-labs/code-lens-core';
 import { type Ingester, inputFile } from '@cntxt-labs/code-lens-dense';
-import { WEXPR_FORMAT_VERSION } from '@cntxt-labs/code-lens-structural';
+import {
+  type CorpusAdapter,
+  docblockAnnotationAdapter,
+  WEXPR_FORMAT_VERSION,
+} from '@cntxt-labs/code-lens-structural';
 import type { LanguageRegistry } from '@cntxt-labs/code-lens-syntax';
 import { SourceReadError } from '../errors.ts';
 import type { FactExtractor, FileFacts } from '../extract/index.ts';
@@ -53,6 +57,7 @@ export interface IndexerOptions {
   readonly ingester?: Ingester;
   /** Which languages to index. Defaults to every language the syntax registry knows. */
   readonly languages?: LanguageRegistry;
+  readonly corpora?: readonly CorpusAdapter[];
   /** Index only these language keys, and leave the rest of the files alone. */
   readonly only?: readonly string[];
 }
@@ -87,6 +92,7 @@ export class Indexer {
   readonly #extractor: FactExtractor;
   readonly #ingester: Ingester | undefined;
   readonly #languages: LanguageRegistry | undefined;
+  readonly #corpora: readonly CorpusAdapter[];
   readonly #only: ReadonlySet<string> | undefined;
 
   constructor(options: IndexerOptions) {
@@ -95,6 +101,7 @@ export class Indexer {
     this.#extractor = options.extractor;
     this.#ingester = options.ingester;
     this.#languages = options.languages;
+    this.#corpora = options.corpora ?? [docblockAnnotationAdapter];
     this.#only = options.only === undefined ? undefined : new Set(options.only);
   }
 
@@ -232,6 +239,27 @@ export class Indexer {
             facts,
             wexpr: { formatVersion: WEXPR_FORMAT_VERSION, text: wexpr },
           });
+          if (this.#corpora.length > 0) {
+            const claimCtx = { path: entry.path, content: content.content, lang: entry.language };
+            const records: import('../store/index.ts').StoredCorpusRecord[] = [];
+            for (const corpus of this.#corpora) {
+              if (corpus.claim(claimCtx)) {
+                const extracted = corpus.extract({ ...claimCtx, wexpr });
+                for (const rec of extracted) {
+                  records.push({
+                    corpus: corpus.name,
+                    id: rec.id,
+                    path: rec.path,
+                    attrs: rec.attrs,
+                    text: rec.text,
+                  });
+                }
+              }
+            }
+            if (records.length > 0) {
+              await this.#store.putCorpusRecords(records);
+            }
+          }
         } catch (failure) {
           rethrowIfStopped(failure);
           const error = toCodeLensError(failure, `index ${entry.path}`);

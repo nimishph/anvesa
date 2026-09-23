@@ -117,6 +117,18 @@ describe('the gate a policy describes', () => {
     expect(gate.screen(cardOf('see https://example.com/docs')).verdict).toBe('pass');
   });
 
+  test('the gate fingerprint moves with the policy, so a changed screen can re-screen stored cards', () => {
+    const base = gateFrom([]).fingerprint;
+    expect(gateFrom([]).fingerprint).toBe(base);
+    const quarantining = gateFrom([
+      policy({ rules: [internal], actions: { untrusted: { 'internal-host': 'quarantine' } } }),
+    ]).fingerprint;
+    const flagging = gateFrom([
+      policy({ rules: [internal], actions: { untrusted: { 'internal-host': 'flag' } } }),
+    ]).fingerprint;
+    expect(new Set([base, quarantining, flagging]).size).toBe(3);
+  });
+
   test('an unlisted action falls back by severity, and a rule with a replacement can sanitize', () => {
     const rule = { ...internal, replacement: '[internal link]' };
     const sanitizing = gateFrom([

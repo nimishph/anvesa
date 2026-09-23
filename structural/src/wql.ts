@@ -329,9 +329,36 @@ function pushChildren(pending: Located[], parent: WNode): void {
   }
 }
 
+export const CALLABLE_TAGS: readonly string[] = [
+  'function',
+  'method',
+  'arrow',
+  'lambda',
+  'closure',
+  'constructor',
+];
+
+const CALLABLE_TAG_SET: ReadonlySet<string> = new Set(CALLABLE_TAGS);
+
+export function isCallableTag(tag: string): boolean {
+  return CALLABLE_TAG_SET.has(tag);
+}
+
+export function isCallableVirtualTag(tag: string): boolean {
+  return tag === 'callable' || tag === 'fn';
+}
+
 /** Does one node satisfy one step's tag and predicates? (Not its relation to other steps.) */
 export function nodeMatchesStep(step: WqlStep, node: WNode, context: MatchContext): boolean {
-  if (step.tag !== '*' && step.tag !== node.tag) return false;
+  if (step.tag !== '*' && step.tag !== node.tag) {
+    if (isCallableVirtualTag(step.tag)) {
+      if (!isCallableTag(node.tag) && node.attrs.get(ATTR.callable) !== 'true') return false;
+    } else if (step.tag === 'method' && node.attrs.get(ATTR.isMethod) === 'true') {
+      // Matches python/etc method definition inside class
+    } else {
+      return false;
+    }
+  }
   return step.predicates.every((predicate) => predicateMatches(predicate, node, context));
 }
 

@@ -322,6 +322,14 @@ function isAssignedValue(syntax: SyntaxNode): boolean {
   return parent !== null && VALUE_HOSTS.has(parent.type);
 }
 
+const CLASS_LIKE_PARENT_TAGS: ReadonlySet<string> = new Set([
+  'class',
+  'struct',
+  'interface',
+  'trait',
+  'impl',
+]);
+
 function describeCallable(
   syntax: SyntaxNode,
   attrs: Map<string, string>,
@@ -330,6 +338,14 @@ function describeCallable(
   parentTag: string,
   shape: CallableShape | undefined,
 ): void {
+  attrs.set(ATTR.callable, 'true');
+  if (
+    CLASS_LIKE_PARENT_TAGS.has(parentTag) ||
+    syntax.type === 'method_declaration' ||
+    syntax.type === 'method_definition'
+  ) {
+    attrs.set(ATTR.isMethod, 'true');
+  }
   const params = parametersOf(syntax);
   const returns = returnTypeOf(syntax);
   if (params) attrs.set(ATTR.params, params);

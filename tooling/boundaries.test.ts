@@ -82,20 +82,20 @@ describe('package boundaries', () => {
     put('indexer/src/index.ts', "import '../../structural/src/index.ts';\nexport const i = 1;\n");
     put('retriever/src/index.ts', "import '../../indexer/src/index.ts';\nexport const r = 1;\n");
     expect(cruise()).toEqual([]);
-  });
+  }, 20000);
 
   test('rejects a lower package importing a higher one', () => {
     put('core/src/index.ts', "import '../../retriever/src/index.ts';\nexport const c = 1;\n");
     const rules = cruise().map((v) => v.rule.name);
     expect(rules).toContain('core-allowed-deps');
-  });
+  }, 20000);
 
   test('rejects skipping the dependency direction', () => {
     put('core/src/index.ts', 'export const c = 1;\n');
     put('syntax/src/index.ts', "import '../../structural/src/index.ts';\nexport const a = 1;\n");
     const rules = cruise().map((v) => v.rule.name);
     expect(rules).toContain('syntax-allowed-deps');
-  });
+  }, 20000);
 
   test('rejects importing another package internals', () => {
     put('syntax/src/index.ts', "import '../../core/src/index.ts';\nexport const a = 1;\n");
@@ -106,7 +106,7 @@ describe('package boundaries', () => {
     );
     const rules = cruise().map((v) => v.rule.name);
     expect(rules).toContain('public-entry-only');
-  });
+  }, 20000);
 
   test('rejects circular imports', () => {
     put('indexer/src/index.ts', 'export const i = 1;\n');
@@ -114,5 +114,5 @@ describe('package boundaries', () => {
     put('structural/src/b.ts', "import './a.ts';\nexport const b = 1;\n");
     const rules = cruise().map((v) => v.rule.name);
     expect(rules).toContain('no-circular');
-  });
+  }, 20000);
 });

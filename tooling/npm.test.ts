@@ -44,7 +44,7 @@ describe('what is published', () => {
     expect(cli.license).toBe('MIT');
     expect(cli.author?.name).toBe('nimishph');
     expect(cli.bin).toEqual({ 'code-lens': 'bin/code-lens.cjs' });
-    expect(cli.files).toEqual(['bin', 'README.md', 'LICENSE']);
+    expect(cli.files).toEqual(['bin', 'skills', 'README.md', 'LICENSE']);
     // Everything else is built into the program, so installing it pulls in nothing.
     expect(cli.dependencies).toBeUndefined();
 

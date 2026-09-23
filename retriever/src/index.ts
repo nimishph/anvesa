@@ -25,6 +25,7 @@ export * from './grammars.ts';
 export * from './insight.ts';
 export * from './mappings.ts';
 export * from './models.ts';
+export * from './pattern-runner.ts';
 export * from './redteam.ts';
 export { fenceUntrusted } from './render.ts';
 export * from './retriever.ts';

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { Trust } from '../card.ts';
 import { DefinitionInvalidError, DenseSubsystemError } from '../errors.ts';
 import { RedTeamGate } from './gate.ts';
@@ -293,5 +294,13 @@ export function gateFrom(
     }
     profiles[trust] = profile;
   }
-  return new RedTeamGate({ rules, profiles });
+  // The rule specs are data, so hashing them sees what the compiled rules' closures hide.
+  const fingerprint = createHash('sha256')
+    .update(
+      JSON.stringify(
+        policies.map((policy) => [policy.source, policy.rules, policy.actions, policy.fallback]),
+      ),
+    )
+    .digest('hex');
+  return new RedTeamGate({ rules, profiles, fingerprint });
 }

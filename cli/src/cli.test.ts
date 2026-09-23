@@ -111,6 +111,15 @@ describe('command line', () => {
     expect((await cli(root)).code).toBe(2);
   });
 
+  test('<command> --help shows that command, not the whole help, and does not run it', async () => {
+    const root = makeProject();
+    const help = await cli(root, 'channel', 'add', '--help');
+    expect(help.code).toBe(0);
+    expect(help.out).toContain('channel add|list|show|test|index|remove');
+    expect(help.out).not.toContain('grammar list');
+    expect(existsSync(join(root, '.code-lens'))).toBe(false);
+  });
+
   test('prints its version', async () => {
     const ran = await cli(makeProject(), '--version');
     expect(ran.code).toBe(0);
@@ -320,6 +329,25 @@ describe('command line', () => {
     const shown = await cli(root, 'retrieve', 'notes', 'who restarts the queue worker');
     expect(shown.out).toContain('note:oncall');
     expect((await cli(root, 'retrieve', 'ghost', 'x')).code).not.toBe(0);
+  });
+
+  test('channel index on a channel that claims files keeps the cards `index` built', async () => {
+    const root = makeProject();
+    writeFileSync(join(root, 'oncall.txt'), 'To restart the queue worker, page the SRE on call.');
+    expect((await cli(root, 'channel', 'add', 'runbooks')).code).toBe(0);
+    expect((await cli(root, 'index')).code).toBe(0);
+    const before = json(
+      await cli(root, 'retrieve', 'runbooks', 'restart the queue worker', '--json'),
+    );
+    expect(before.items.length).toBeGreaterThan(0);
+
+    const synced = await cli(root, 'channel', 'index', 'runbooks', '--json');
+    expect(synced.code).toBe(0);
+    expect(json(synced).removed).toEqual([]);
+    const after = json(
+      await cli(root, 'retrieve', 'runbooks', 'restart the queue worker', '--json'),
+    );
+    expect(after.items.length).toBe(before.items.length);
   });
 
   test('without a model the structural side still answers and dense says why it cannot', async () => {
@@ -852,44 +880,44 @@ describe('red-team rules a project brings', () => {
   });
 });
 
-describe('mcp server', () => {
-  async function connect(root: string) {
-    const [serverSide, clientSide] = InMemoryTransport.createLinkedPair();
-    let err = '';
-    const served = serveMcp(
-      {
-        environment: {
-          cwd: root,
-          env: {},
-          embedder,
-          runtime,
-          stdout: () => undefined,
-          stderr: (t) => {
-            err += t;
-          },
+async function connect(root: string) {
+  const [serverSide, clientSide] = InMemoryTransport.createLinkedPair();
+  let err = '';
+  const served = serveMcp(
+    {
+      environment: {
+        cwd: root,
+        env: {},
+        embedder,
+        runtime,
+        stdout: () => undefined,
+        stderr: (t) => {
+          err += t;
         },
-        parsed: parseOptions([]),
       },
-      serverSide,
-    );
-    const client = new Client({ name: 'test', version: '0' });
-    await client.connect(clientSide);
-    return {
-      client,
-      stderr: () => err,
-      close: async () => {
-        await client.close();
-        await served;
-      },
-    };
-  }
-
-  const call = async (client: Client, name: string, args: Record<string, unknown>) => {
-    const result = await client.callTool({ name, arguments: args });
-    const text = (result.content as { text: string }[])[0]?.text ?? '';
-    return { isError: result.isError === true, body: JSON.parse(text) };
+      parsed: parseOptions([]),
+    },
+    serverSide,
+  );
+  const client = new Client({ name: 'test', version: '0' });
+  await client.connect(clientSide);
+  return {
+    client,
+    stderr: () => err,
+    close: async () => {
+      await client.close();
+      await served;
+    },
   };
+}
 
+const call = async (client: Client, name: string, args: Record<string, unknown>) => {
+  const result = await client.callTool({ name, arguments: args });
+  const text = (result.content as { text: string }[])[0]?.text ?? '';
+  return { isError: result.isError === true, body: JSON.parse(text) };
+};
+
+describe('mcp server', () => {
   test('lists the tools, one retrieve tool per channel, and no lexical tools', async () => {
     const root = makeProject();
     await cli(root, 'channel', 'add', 'notes', NOTES_CHANNEL);
@@ -962,5 +990,66 @@ describe('mcp server', () => {
       await session.close();
     }
     expect(session.stderr()).toContain('code-lens mcp: serving');
+  });
+});
+
+describe('declarative patterns', () => {
+  test('lists patterns, runs parameterized patterns via CLI and MCP', async () => {
+    const root = makeProject();
+    await cli(root, 'index');
+
+    // Initially no patterns
+    const emptyList = await cli(root, 'pattern', 'list');
+    expect(emptyList.code).toBe(0);
+    expect(emptyList.out).toContain('no patterns found');
+
+    // Add a pattern to .code-lens/patterns/
+    const patternsDir = join(root, '.code-lens', 'patterns');
+    mkdirSync(patternsDir, { recursive: true });
+    writeFileSync(
+      join(patternsDir, 'functions-by-name.json'),
+      JSON.stringify({
+        name: 'functions-by-name',
+        description: 'Find functions by exact or prefix name',
+        target: {
+          kind: 'function',
+          name: '$name',
+        },
+        params: [{ name: 'name', required: true }],
+      }),
+    );
+
+    // List patterns
+    const listed = await cli(root, 'pattern', 'list');
+    expect(listed.code).toBe(0);
+    expect(listed.out).toContain('functions-by-name');
+    expect(listed.out).toContain('params: $name (required)');
+
+    // Run pattern with parameter
+    const ran = await cli(root, 'pattern', 'run', 'functions-by-name', 'name=parseConfig');
+    expect(ran.code).toBe(0);
+    expect(ran.out).toContain('pattern: functions-by-name -> wql: //function[@name="parseConfig"]');
+    expect(ran.out).toContain('parseConfig  src/config.ts:2');
+
+    // MCP tools test
+    const session = await connect(root);
+    try {
+      const { client } = session;
+      const mcpList = await call(client, 'pattern_list', {});
+      expect(mcpList.isError).toBe(false);
+      expect(mcpList.body).toHaveLength(1);
+      expect(mcpList.body[0].name).toBe('functions-by-name');
+
+      const mcpRun = await call(client, 'pattern_run', {
+        name: 'functions-by-name',
+        args: { name: 'validate' },
+      });
+      expect(mcpRun.isError).toBe(false);
+      expect(mcpRun.body.wql).toBe('//function[@name="validate"]');
+      expect(mcpRun.body.items).toHaveLength(1);
+      expect(mcpRun.body.items[0].name).toBe('validate');
+    } finally {
+      await session.close();
+    }
   });
 });
