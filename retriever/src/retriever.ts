@@ -58,6 +58,7 @@ import {
   Workspace,
 } from '@cntxt-labs/code-lens-indexer';
 import {
+  isCallableVirtualTag,
   KNOWN_ATTRIBUTES,
   looksLikeWql,
   type MappingRegistry,
@@ -92,6 +93,7 @@ import {
   statusOf,
 } from './insight.ts';
 import { mappingStoreFor } from './mappings.ts';
+import { PatternRunner } from './pattern-runner.ts';
 import { gateForProject, loadPolicies } from './redteam.ts';
 import { type StructuralCoverage, StructuralLane } from './structural-lane.ts';
 import { workspaceSource } from './workspace-source.ts';
@@ -178,6 +180,7 @@ export interface SearchResult {
 }
 
 export interface SearchOptions extends PageRequest {
+  readonly include?: (path: string) => boolean;
   /** Only these dense channels. Default: every enabled one. */
   readonly channels?: readonly string[];
   /** Leave these lanes out (a channel name, or `structural`). */
@@ -217,6 +220,7 @@ export class Retriever {
   readonly store: IndexStore;
   readonly vectors: VectorStore;
   readonly registry: ChannelRegistry;
+  readonly patterns: PatternRunner;
   readonly embedder: Embedder | undefined;
   readonly config: ProjectConfig;
   readonly engine: StructuralEngine;
@@ -252,6 +256,7 @@ export class Retriever {
     this.store = parts.store;
     this.vectors = parts.vectors;
     this.registry = parts.registry;
+    this.patterns = new PatternRunner(this);
     this.embedder = parts.embedder;
     this.config = parts.config;
     this.engine = parts.engine;
@@ -399,7 +404,9 @@ export class Retriever {
   ): Promise<SyncReport> {
     const ingester = this.#requireIngester();
     this.registry.require(channel);
-    const source = this.#sources.get(channel) ?? workspaceSource(this.workspace, channel);
+    const source =
+      this.#sources.get(channel) ??
+      workspaceSource(this.workspace, channel, (path) => ingester.claims(path));
     return ingester.syncChannel(channel, source, {
       ...(options.force ? { force: true } : {}),
       ...(options.deadline ? { deadline: options.deadline } : {}),
@@ -439,7 +446,7 @@ export class Retriever {
     const parsed = parseWql(wql);
     const knownTags = this.engine.mappings.knownTags();
     for (const step of parsed.steps) {
-      if (step.tag !== '*' && !knownTags.has(step.tag)) {
+      if (step.tag !== '*' && !isCallableVirtualTag(step.tag) && !knownTags.has(step.tag)) {
         throw new WqlUnknownNameError(wql, 'tag', step.tag, [...knownTags]);
       }
       for (const predicate of step.predicates) {
@@ -449,6 +456,7 @@ export class Retriever {
       }
     }
     const result = this.#structure.query(parsed, {
+      ...(options.include ? { include: options.include } : {}),
       ...(options.limit === undefined ? {} : { limit: options.limit }),
       ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
       ...(options.deadline ? { deadline: options.deadline } : {}),

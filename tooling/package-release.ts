@@ -101,6 +101,8 @@ for (const specifier of ['onnxruntime-node', 'onnxruntime-common']) {
 for (const file of ['README.md', 'LICENSE']) {
   if (existsSync(join(root, file))) cpSync(join(root, file), join(folder, file));
 }
+const skills = join(root, 'cli', 'skills');
+if (existsSync(skills)) cpSync(skills, join(folder, 'skills'), { recursive: true });
 writeFileSync(join(folder, 'VERSION'), `${version}\n`);
 
 // The same program as an npm package for this platform, which `@cntxt-labs/code-lens` depends on

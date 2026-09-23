@@ -92,7 +92,7 @@ export class Ingester {
       .flatMap((channel) => this.#registry.require(channel))
       .map((transformer) => `${transformer.name}@${transformer.version}`)
       .sort();
-    return [this.#embedder.info.id, ...transformers].join('|');
+    return [this.#embedder.info.id, ...transformers, `redteam@${this.#gate.fingerprint}`].join('|');
   }
 
   /**

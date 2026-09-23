@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { Card, Trust } from '../card.ts';
 import { DefinitionInvalidError } from '../errors.ts';
 import { dot, normalize } from '../vectors.ts';
@@ -22,6 +23,12 @@ export interface GateOptions {
   readonly rules?: readonly Rule[];
   /** Profiles to use in place of the built-in ones, per trust level. */
   readonly profiles?: Partial<Record<Trust, Profile>>;
+  /**
+   * What the rules and profiles were built from (for a project policy, its data). It is folded into
+   * the index signature, so changing the screen re-screens cards already stored. Defaults to a
+   * hash of the rule ids and profiles, which cannot see inside a rule's code.
+   */
+  readonly fingerprint?: string;
 }
 
 /** Makes the median absolute deviation comparable to a standard deviation (Iglewicz and Hoaglin). */
@@ -48,6 +55,8 @@ const EVIDENCE_WIDTH = 120;
 export class RedTeamGate {
   readonly rules: readonly Rule[];
   readonly #profiles: Readonly<Record<Trust, Profile>>;
+  /** Changes whenever the screen would treat some card differently. */
+  readonly fingerprint: string;
 
   constructor(options: GateOptions = {}) {
     this.rules = options.rules ?? defaultRules();
@@ -59,6 +68,11 @@ export class RedTeamGate {
       seen.add(rule.id);
     }
     this.#profiles = { ...defaultProfiles(), ...options.profiles } as Record<Trust, Profile>;
+    this.fingerprint =
+      options.fingerprint ??
+      createHash('sha256')
+        .update(JSON.stringify([this.rules.map((rule) => rule.id), this.#profiles]))
+        .digest('hex');
   }
 
   profileFor(trust: Trust): Profile {

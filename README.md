@@ -157,7 +157,8 @@ Small repositories should stay with one database.
 code-lens channel add runbooks                 # scaffolds a module and registers it
 code-lens channel add digests ./digest-channel.ts   # or registers one you have
 code-lens channel test runbooks docs/oncall.md # what would be embedded, and what the screen thinks
-code-lens channel index runbooks
+code-lens index                                # builds cards from the files a channel claims
+code-lens channel index runbooks               # only for a channel with a `source` (records that are not files)
 code-lens retrieve runbooks "who restarts the queue worker"
 ```
 
@@ -201,6 +202,13 @@ system has learned); they are held to the same fixtures.
 
 Tools: `search`, one `retrieve_<channel>` per channel, `query`, `callers`, `callees`, `neighbors`,
 `dependents`, `explain`, `diagnose`, `status`, `index`.
+
+### Agent skill
+
+Every install (the npm package and each platform archive) ships `skills/code-lens/SKILL.md`: a
+skill file that teaches an agent when to reach for code-lens over grep and how to use its commands
+(or MCP tools). Point an agent's skill loader at that path, or copy it into wherever your agent
+harness reads skills from.
 
 ## How well does it work
 

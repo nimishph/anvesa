@@ -3,6 +3,13 @@ export { findClones } from './clones.ts';
 export type { IndexedFile, IndexQueryOptions, IndexQueryResult } from './corpus.ts';
 export { StructuralIndex } from './corpus.ts';
 export type {
+  CorpusAdapter,
+  CorpusClaimContext,
+  CorpusExtractContext,
+  CorpusRecord,
+} from './corpus-adapter.ts';
+export { DocblockAnnotationCorpusAdapter, docblockAnnotationAdapter } from './corpus-adapter.ts';
+export type {
   ChangeKind,
   StructuralDiff,
   SymbolChange,
@@ -63,6 +70,8 @@ export {
   shortDigest,
   walk,
 } from './node.ts';
+export * from './pattern/compiler.ts';
+export * from './pattern/schema.ts';
 export { Wql, WqlConstraint, WqlSpec } from './spec.ts';
 export type { OutlineSymbol } from './symbols.ts';
 export { outlineSymbols } from './symbols.ts';
@@ -106,4 +115,11 @@ export type {
   WqlQuery,
   WqlStep,
 } from './wql.ts';
-export { looksLikeWql, matchWql, nodeMatchesStep, parseWql } from './wql.ts';
+export {
+  isCallableTag,
+  isCallableVirtualTag,
+  looksLikeWql,
+  matchWql,
+  nodeMatchesStep,
+  parseWql,
+} from './wql.ts';

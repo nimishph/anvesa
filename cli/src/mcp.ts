@@ -189,6 +189,40 @@ export function createMcpServer(retriever: Retriever): McpServer {
     },
     ({ force }) => respond(() => retriever.index(force ? { force: true } : {})),
   );
+
+  server.registerTool(
+    'pattern_list',
+    {
+      description:
+        'List all available declarative structural patterns configured in .code-lens/patterns/.',
+      inputSchema: {},
+    },
+    () => respond(() => retriever.patterns.list()),
+  );
+
+  server.registerTool(
+    'pattern_run',
+    {
+      description:
+        'Run a named structural pattern with bound parameters against the project index.',
+      inputSchema: {
+        name: z.string().describe('The name of the pattern to run.'),
+        args: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe('Key-value arguments to bind into pattern parameters.'),
+        ...page,
+      },
+    },
+    ({ name, args, limit, cursor }) =>
+      respond(() =>
+        retriever.patterns.run(name, args ?? {}, {
+          ...(limit ? { limit } : {}),
+          ...(cursor ? { cursor } : {}),
+        }),
+      ),
+  );
+
   return server;
 }
 

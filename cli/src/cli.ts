@@ -7,6 +7,7 @@ import {
   grammarCommand,
   mappingCommand,
   modelCommand,
+  patternCommand,
   redteamCommand,
 } from './commands.ts';
 import type { Environment } from './environment.ts';
@@ -40,12 +41,29 @@ usage: code-lens <command> [arguments] [options]
                             train <language> --samples <dir|file> learns one from code
   model list|install|verify|doctor       local embedding models; install <new-name> --from <dir|file.onnx>
                                          brings your own (--pooling, --max-tokens, --force)
+  pattern list|run <name> [param=val...]  declarative structural patterns
   mcp serve                 run as an MCP server on stdio
   --version                 print the version
 
 options: --root <dir>  --json  --limit N  --cursor <token>  --channel <name>  --no-embed
          --models <dir>  --model <id>  --from <dir>  --download  --depth N  --help
 `;
+
+/**
+ * The help entry for one command: its line in HELP plus the indented lines that continue it, under
+ * the usage line. A command with no entry (or an unknown name) gets the whole HELP.
+ */
+export function helpFor(command: string): string {
+  const lines = HELP.split('\n');
+  const start = lines.findIndex((line) => {
+    const name = /^ {2}(\S+)/.exec(line)?.[1];
+    return name?.split('|').includes(command) === true;
+  });
+  if (start === -1) return HELP;
+  let end = start + 1;
+  while (end < lines.length && /^ {20,}\S/.test(lines[end] as string)) end += 1;
+  return `${[...lines.filter((line) => line.startsWith('usage:')), '', ...lines.slice(start, end)].join('\n')}\n`;
+}
 
 /** Exit codes: 0 done, 1 the operation failed, 2 the command line was wrong. */
 export async function runCli(argv: readonly string[], environment: Environment): Promise<number> {
@@ -65,7 +83,7 @@ export async function runCli(argv: readonly string[], environment: Environment):
     const parsed = parseOptions(args);
     json = parsed.values.json === true;
     if (parsed.values.help) {
-      environment.stdout(HELP);
+      environment.stdout(helpFor(command));
       return 0;
     }
     const ctx: Context = { environment, parsed };
@@ -76,6 +94,7 @@ export async function runCli(argv: readonly string[], environment: Environment):
     else if (command === 'mapping') await mappingCommand(ctx);
     else if (command === 'fragments') await fragmentsCommand(ctx);
     else if (command === 'redteam') await redteamCommand(ctx);
+    else if (command === 'pattern') await patternCommand(ctx);
     else if (command === 'mcp') {
       const [sub, ...rest] = parsed.positionals;
       if (sub !== 'serve')

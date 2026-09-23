@@ -93,6 +93,20 @@ export interface ImportQuery extends PageRequest {
 }
 
 /** A resolved link between two things in the index. What the ends mean is up to the resolver. */
+
+export interface StoredCorpusRecord {
+  readonly corpus: string;
+  readonly id: string;
+  readonly path: string;
+  readonly attrs: Readonly<Record<string, string>>;
+  readonly text?: string | undefined;
+}
+
+export interface CorpusQuery extends PageRequest {
+  readonly corpus?: string;
+  readonly path?: string;
+}
+
 export interface EdgeRecord {
   readonly from: string;
   readonly to: string;
@@ -159,6 +173,9 @@ export interface IndexStore {
   replaceEdges(sourcePath: string, edges: readonly EdgeRecord[]): Promise<void>;
   findEdges(query?: EdgeQuery): Promise<Page<EdgeRecord>>;
 
+  putCorpusRecords(records: readonly StoredCorpusRecord[]): Promise<void>;
+  findCorpusRecords(query?: CorpusQuery): Promise<Page<StoredCorpusRecord>>;
+  corpusPaths(corpus: string): Promise<readonly string[]>;
   getMeta(key: string): Promise<string | undefined>;
   setMeta(key: string, value: string): Promise<void>;
   deleteMeta(key: string): Promise<boolean>;
