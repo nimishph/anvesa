@@ -16,6 +16,7 @@ import { type LanguageDef, LanguageRegistry } from './languages.ts';
 import type { GrammarLock } from './lockfile.ts';
 import { type GrammarSource, type LocatedGrammar, locateGrammar } from './sources.ts';
 import { SyntaxTree } from './tree.ts';
+import { extractVueScript } from './vue.ts';
 
 export interface SyntaxRuntimeOptions {
   /** Where grammars are looked for, in order. See `standardLayout`. */
@@ -125,7 +126,8 @@ export class SyntaxRuntime {
 
     let tree: ReturnType<Parser['parse']>;
     try {
-      tree = parser.parse(source, null, { progressCallback: () => deadline.expired });
+      const input = definition.key === 'vue' ? extractVueScript(source) : source;
+      tree = parser.parse(input, null, { progressCallback: () => deadline.expired });
     } catch (parseFailure) {
       parser.reset();
       throw new ParseFailedError(definition.key, path, { cause: parseFailure });

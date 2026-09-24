@@ -9,7 +9,7 @@ export interface ImportCollector {
   visit(node: SyntaxNode): void;
 }
 
-const ECMASCRIPT: ReadonlySet<string> = new Set(['javascript', 'typescript', 'tsx']);
+const ECMASCRIPT: ReadonlySet<string> = new Set(['javascript', 'typescript', 'tsx', 'vue']);
 
 /**
  * The collector for a language, or `undefined` when its imports are not understood. Callers must
