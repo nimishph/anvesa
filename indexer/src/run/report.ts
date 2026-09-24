@@ -10,6 +10,7 @@ export type IndexEvent =
       readonly outcome: 'unchanged' | 'touched' | 'added' | 'modified' | 'quarantined';
       readonly reason?: QuarantineReason;
     }
+  | { readonly kind: 'warning'; readonly message: string }
   | { readonly kind: 'linking'; readonly everything: boolean }
   | { readonly kind: 'finished'; readonly report: IndexReport };
 
@@ -67,4 +68,5 @@ export interface IndexReport {
   readonly relinked: number;
   readonly dense: DenseReport | undefined;
   readonly elapsedMs: number;
+  readonly warnings?: readonly string[];
 }

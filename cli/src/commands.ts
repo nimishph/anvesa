@@ -203,6 +203,10 @@ function indexProgress(ctx: Context): (event: IndexEvent) => void {
       }
       return;
     }
+    if (event.kind === 'warning') {
+      ctx.environment.stderr(`warning: ${event.message}\n`);
+      return;
+    }
     if (event.kind === 'file') {
       counts.seen += 1;
       if (event.outcome === 'added') counts.added += 1;

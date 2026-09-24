@@ -24,6 +24,7 @@ import {
 } from '../graph/index.ts';
 import type { FileQuarantine, IndexStore, QuarantineReason } from '../store/index.ts';
 import { readSource } from '../workspace/content.ts';
+import { detectMinified } from '../workspace/minified.ts';
 import { DOCUMENT_LANGUAGE, walkSources } from '../workspace/walk.ts';
 import type { Workspace } from '../workspace/workspace.ts';
 import type { DenseReport, IndexEvent, IndexReport } from './report.ts';
@@ -143,6 +144,7 @@ export class Indexer {
     };
     const changes = new Map<string, FileChange>();
     const quarantined: { path: string; reason: QuarantineReason; message: string }[] = [];
+    const warnings: string[] = [];
     const dense: DenseReport = {
       ingested: 0,
       current: 0,
@@ -213,6 +215,22 @@ export class Indexer {
         continue;
       }
 
+      const minified = detectMinified(entry.path, content.content, entry.size);
+      if (minified.isMinified) {
+        await this.#quarantineWith(
+          entry,
+          'minified',
+          minified.reason ?? 'the file appears to be a minified bundle or generated code',
+          undefined,
+          content.hash,
+          changes,
+          counts,
+          quarantined,
+          emit,
+        );
+        continue;
+      }
+
       const unchangedContent =
         state?.status === 'indexed' && state.contentHash === content.hash && !rebuildEverything;
       if (unchangedContent) {
@@ -239,6 +257,16 @@ export class Indexer {
             facts,
             wexpr: { formatVersion: WEXPR_FORMAT_VERSION, text: wexpr },
           });
+          if (entry.size > 1024 * 1024) {
+            const sizeMb = (entry.size / (1024 * 1024)).toFixed(1);
+            const warning = `outlier: ${entry.path} is ${sizeMb} MB (> 1 MB); large source files may slow indexing`;
+            warnings.push(warning);
+            emit({ kind: 'warning', message: warning });
+          } else if (facts.symbols.length > 2000) {
+            const warning = `outlier: ${entry.path} defines ${facts.symbols.length} symbols (> 2,000); dense symbol files may indicate generated code`;
+            warnings.push(warning);
+            emit({ kind: 'warning', message: warning });
+          }
           if (this.#corpora.length > 0) {
             const claimCtx = { path: entry.path, content: content.content, lang: entry.language };
             const records: import('../store/index.ts').StoredCorpusRecord[] = [];
@@ -321,6 +349,7 @@ export class Indexer {
       relinked: link?.length ?? 0,
       dense: this.#ingester ? dense : undefined,
       elapsedMs: performance.now() - started,
+      ...(warnings.length > 0 ? { warnings } : {}),
     };
     emit({ kind: 'finished', report });
     return report;
