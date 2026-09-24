@@ -1,6 +1,6 @@
 {
   "name": "@cntxt-labs/anvesa-core",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Shared foundations: typed errors, deadlines, limits and pagination conventions.",

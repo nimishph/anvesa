@@ -1,6 +1,6 @@
 {
   "name": "@cntxt-labs/anvesa-indexer",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Workspace indexing pipeline, extractors, graphs and store.",
