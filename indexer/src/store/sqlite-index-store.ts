@@ -664,8 +664,12 @@ export class SqliteIndexStore implements IndexStore {
           attrs = excluded.attrs,
           text = excluded.text
       `);
-      for (const r of records) {
-        stmt.run(r.corpus, r.id, r.path, JSON.stringify(r.attrs), r.text ?? null);
+      try {
+        for (const r of records) {
+          stmt.run(r.corpus, r.id, r.path, JSON.stringify(r.attrs), r.text ?? null);
+        }
+      } finally {
+        stmt.finalize();
       }
     });
   }

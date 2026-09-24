@@ -299,6 +299,15 @@ describe('vector store specifics', () => {
     quarantined: [],
   });
 
+  test('closes cleanly after a search leaves no statement running', async () => {
+    const store = new SqliteVectorStore(StoreDatabase.open(join(makeTree({}), 'c.db')));
+    await store.replaceSource(
+      update('a.md', [{ card: cardOf('a.md', 'one'), vector: new Float32Array([1, 0, 0]) }]),
+    );
+    await store.search(new Float32Array([1, 0, 0]), { channel: 'demo', model: 'm', limit: 5 });
+    expect(() => store.database.close()).not.toThrow();
+  });
+
   test('cards and dimensions survive reopening', async () => {
     const path = join(makeTree({}), 'v.db');
     const first = new SqliteVectorStore(StoreDatabase.open(path));

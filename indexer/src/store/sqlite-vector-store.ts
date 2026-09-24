@@ -199,31 +199,38 @@ export class SqliteVectorStore implements VectorStore {
     const collector = new TopKCollector<Scored>(options.limit);
     const groups = new Map<string, Scored>();
     let seen = 0;
-    for (const row of db.query(select).iterate(options.channel, options.model) as Iterable<
-      ScanRow & { card?: string }
-    >) {
-      seen += 1;
-      if (seen % DEADLINE_CHECK_EVERY === 0) {
-        options.deadline?.throwIfExpired('search the vector store');
-      }
-      if (row.vector.byteLength !== dims * BYTES_PER_FLOAT || row.dims !== dims) {
-        throw new StoreCorruptError('cards', row.id, 'the stored vector has the wrong length', {
-          context: { expectedBytes: dims * BYTES_PER_FLOAT, actualBytes: row.vector.byteLength },
-        });
-      }
-      if (options.filter && row.card !== undefined) {
-        if (!options.filter(parseCard(row.card, row.id))) continue;
-      }
-      // Copy into aligned memory: the row's bytes may start at any offset.
-      scratchBytes.set(row.vector);
-      const scored: Scored = { id: row.id, score: dot(unit, scratch), group: row.group_key };
+    // Prepared and finalised here, not cached: a cached statement still mid-scan would make the
+    // strict close of the database fail.
+    const statement = db.prepare(select);
+    try {
+      for (const row of statement.iterate(options.channel, options.model) as Iterable<
+        ScanRow & { card?: string }
+      >) {
+        seen += 1;
+        if (seen % DEADLINE_CHECK_EVERY === 0) {
+          options.deadline?.throwIfExpired('search the vector store');
+        }
+        if (row.vector.byteLength !== dims * BYTES_PER_FLOAT || row.dims !== dims) {
+          throw new StoreCorruptError('cards', row.id, 'the stored vector has the wrong length', {
+            context: { expectedBytes: dims * BYTES_PER_FLOAT, actualBytes: row.vector.byteLength },
+          });
+        }
+        if (options.filter && row.card !== undefined) {
+          if (!options.filter(parseCard(row.card, row.id))) continue;
+        }
+        // Copy into aligned memory: the row's bytes may start at any offset.
+        scratchBytes.set(row.vector);
+        const scored: Scored = { id: row.id, score: dot(unit, scratch), group: row.group_key };
 
-      if (options.collapse) {
-        const current = groups.get(scored.group);
-        if (!current || rankedAbove(scored, current)) groups.set(scored.group, scored);
-      } else {
-        collector.add(scored);
+        if (options.collapse) {
+          const current = groups.get(scored.group);
+          if (!current || rankedAbove(scored, current)) groups.set(scored.group, scored);
+        } else {
+          collector.add(scored);
+        }
       }
+    } finally {
+      statement.finalize();
     }
 
     if (!options.collapse) return collector.result();
