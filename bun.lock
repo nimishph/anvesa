@@ -13,7 +13,7 @@
     },
     "cli": {
       "name": "@cntxt-labs/anvesa",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "bin": {
         "anvesa": "bin/anvesa.cjs",
       },
@@ -29,19 +29,19 @@
         "zod": "^4.0.0",
       },
       "optionalDependencies": {
-        "@cntxt-labs/anvesa-darwin-arm64": "0.1.0",
-        "@cntxt-labs/anvesa-linux-arm64": "0.1.0",
-        "@cntxt-labs/anvesa-linux-x64": "0.1.0",
-        "@cntxt-labs/anvesa-win32-x64": "0.1.0",
+        "@cntxt-labs/anvesa-darwin-arm64": "0.1.1",
+        "@cntxt-labs/anvesa-linux-arm64": "0.1.1",
+        "@cntxt-labs/anvesa-linux-x64": "0.1.1",
+        "@cntxt-labs/anvesa-win32-x64": "0.1.1",
       },
     },
     "core": {
       "name": "@cntxt-labs/anvesa-core",
-      "version": "0.1.0",
+      "version": "0.1.1",
     },
     "dense": {
       "name": "@cntxt-labs/anvesa-dense",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "@cntxt-labs/anvesa-core": "workspace:*",
         "@cntxt-labs/anvesa-structural": "workspace:*",
@@ -54,7 +54,7 @@
     },
     "embedder": {
       "name": "@cntxt-labs/anvesa-embedder",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "@cntxt-labs/anvesa-core": "workspace:*",
         "@cntxt-labs/anvesa-dense": "workspace:*",
@@ -63,7 +63,7 @@
     },
     "eval": {
       "name": "@cntxt-labs/anvesa-eval",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "@cntxt-labs/anvesa-core": "workspace:*",
         "@cntxt-labs/anvesa-dense": "workspace:*",
@@ -81,7 +81,7 @@
     },
     "indexer": {
       "name": "@cntxt-labs/anvesa-indexer",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "@cntxt-labs/anvesa-core": "workspace:*",
         "@cntxt-labs/anvesa-dense": "workspace:*",
@@ -96,7 +96,7 @@
     },
     "retriever": {
       "name": "@cntxt-labs/anvesa-retriever",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "@cntxt-labs/anvesa-core": "workspace:*",
         "@cntxt-labs/anvesa-dense": "workspace:*",
@@ -113,7 +113,7 @@
     },
     "structural": {
       "name": "@cntxt-labs/anvesa-structural",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "@cntxt-labs/anvesa-core": "workspace:*",
         "@cntxt-labs/anvesa-syntax": "workspace:*",
@@ -133,7 +133,7 @@
     },
     "syntax": {
       "name": "@cntxt-labs/anvesa-syntax",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "@cntxt-labs/anvesa-core": "workspace:*",
         "web-tree-sitter": "^0.26.12",
@@ -145,7 +145,7 @@
     },
     "tooling": {
       "name": "@cntxt-labs/anvesa-tooling",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "@cntxt-labs/anvesa-core": "workspace:*",
       },
