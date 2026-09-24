@@ -247,6 +247,18 @@ export function renderIndex(result: {
 }): string {
   const { report } = result;
   const f = report.files;
+
+  const missingGrammars = new Map<string, number>();
+  for (const q of report.quarantined) {
+    const match = q.message.match(/No grammar available for "([^"]+)"/i);
+    if (match?.[1]) {
+      missingGrammars.set(match[1], (missingGrammars.get(match[1]) ?? 0) + 1);
+    }
+  }
+  const grammarAdvice = [...missingGrammars.entries()].map(
+    ([lang, count]) =>
+      `advice: ${count} file${count === 1 ? '' : 's'} quarantined because '${lang}' grammar is missing. Run: anvesa grammar install ${lang} --download`,
+  );
   return lines(
     `indexed in ${(report.elapsedMs / 1000).toFixed(2)} s${report.resumedAfterInterruption ? ' (after an interrupted run)' : ''}${report.reextracted ? ' (extraction changed: every file read again)' : ''}`,
     `files: ${f.added} added, ${f.modified} modified, ${f.unchanged} unchanged, ${f.touched} re-stamped, ${f.removed} removed, ${f.quarantined + f.stillQuarantined} quarantined`,
@@ -260,6 +272,7 @@ export function renderIndex(result: {
       ? `dense: ${report.dense.ingested} files embedded (${report.dense.cards} cards), ${report.dense.current} current, ${report.dense.quarantinedCards} cards quarantined, ${report.dense.failed.length} failed`
       : undefined,
     ...report.quarantined.map((q) => `quarantined ${q.path} (${q.reason}): ${q.message}`),
+    ...grammarAdvice,
     ...(report.warnings ?? []).map((w) => `warning: ${w}`),
     ...(report.dense?.failed ?? []).map((d) => `failed ${d.path} in ${d.channel}: ${d.message}`),
     ...result.synced.map(

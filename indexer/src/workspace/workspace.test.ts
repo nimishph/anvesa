@@ -424,4 +424,13 @@ describe('problems are reported, not fatal', () => {
     expect(ws.survey.nestedRepos).toEqual(['inner']);
     expect(ws.packageByName('inner')).toHaveLength(1);
   });
+  test('does not mislabel frontend/tools with tool-only pyproject as python package', async () => {
+    const ws = await open({
+      'package.json': '{"name":"root"}',
+      'frontend/tools/pyproject.toml': '[tool.black]\nline-length = 88\n',
+      'frontend/tools/build.js': 'console.log("build");\n',
+    });
+    const pythonPackages = ws.packages().filter((p) => p.kind === 'python');
+    expect(pythonPackages).toHaveLength(0);
+  });
 });

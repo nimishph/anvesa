@@ -280,11 +280,36 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
     }),
 
   // The embedder is opened so `status` names the model in use; without it every project read as "none".
-  status: (ctx) =>
-    withProject(ctx, { embed: true }, async ({ retriever }) => {
+  status: async (ctx) => {
+    const projectRoot = root(ctx);
+    const anvesaDir = join(projectRoot, '.anvesa');
+    if (!existsSync(anvesaDir)) {
+      const unindexedStatus = {
+        root: projectRoot,
+        indexed: false,
+        index: {
+          files: 0,
+          quarantinedFiles: 0,
+          symbols: 0,
+          calls: 0,
+          imports: 0,
+          edges: 0,
+          byLanguage: [],
+        },
+        interrupted: false,
+        embedder: undefined,
+        structural: { files: 0, missing: [] },
+        channels: [],
+      };
+      emit(ctx, unindexedStatus, () => `project ${projectRoot}\nnot indexed (run: anvesa index)`);
+      return;
+    }
+
+    await withProject(ctx, { embed: true }, async ({ retriever }) => {
       const status = await retriever.status();
       emit(ctx, status, () => show.renderStatus(status));
-    }),
+    });
+  },
 
   search: (ctx) =>
     withProject(ctx, { embed: true }, async ({ retriever }) => {
