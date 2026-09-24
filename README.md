@@ -285,9 +285,9 @@ a count that moved is reported, a failure is called out.
 Enforced by Biome and the Grit plugins in `tooling/plugins/`. Each rule has failing and passing
 fixtures in `tooling/fixtures/`.
 
-1. **Typed errors only.** Throw a `CodeLensError` subclass (`@cntxt-labs/anvesa-core`) with a stable `code`
+1. **Typed errors only.** Throw an `AnvesaError` subclass (`@cntxt-labs/anvesa-core`) with a stable `code`
    (`<SUBSYSTEM>_<REASON>`), its subsystem, structured `context` and a `cause`. Never a built-in
-   `Error`. Use `toCodeLensError` in `catch` blocks that receive unknown failures.
+   `Error`. Use `toAnvesaError` in `catch` blocks that receive unknown failures.
 2. **No swallowed failures.** No empty `catch` (comment-only counts as empty) and no
    `.catch(() => {})`. Handle, wrap and rethrow, or return a typed result.
 3. **No static caps or blind truncation.** No `slice(0, 500)`, `Math.min(x, 30)` or similar literal
@@ -299,3 +299,11 @@ fixtures in `tooling/fixtures/`.
 
 `DEFAULT_RESULT_LIMIT` (1000) is the one documented default: high enough not to shape results, there
 so an unbounded result set is never returned by accident.
+
+## Author & Attribution
+
+Authored by **[@nimishph](https://github.com/nimishph)**.
+
+## License
+
+MIT © [Nimish Phalnikar](https://github.com/nimishph)
