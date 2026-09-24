@@ -453,6 +453,85 @@ describe('Python', () => {
   });
 });
 
+describe('Vue resolution', () => {
+  test('resolves relative imports from .vue files to .ts and .vue files', async () => {
+    const files = {
+      'src/components/App.vue': '',
+      'src/components/Button.vue': '',
+      'src/components/utils.ts': '',
+    };
+    const resolver = new ImportResolver(environment(files), []);
+
+    const toTs = await resolver.resolve('src/components/App.vue', fact('./utils'), 'vue');
+    expect(toTs.resolution).toEqual({
+      kind: 'file',
+      path: 'src/components/utils.ts',
+      via: 'relative',
+    });
+
+    const toVue = await resolver.resolve('src/components/App.vue', fact('./Button.vue'), 'vue');
+    expect(toVue.resolution).toEqual({
+      kind: 'file',
+      path: 'src/components/Button.vue',
+      via: 'relative',
+    });
+
+    const toVueExtensionless = await resolver.resolve(
+      'src/components/App.vue',
+      fact('./Button'),
+      'vue',
+    );
+    expect(toVueExtensionless.resolution).toEqual({
+      kind: 'file',
+      path: 'src/components/Button.vue',
+      via: 'relative',
+    });
+  });
+});
+
+describe('PHP resolution', () => {
+  test('resolves PSR-4 namespace use declarations to app and src files', async () => {
+    const files = {
+      'app/Http/Controllers/OrderController.php': '',
+      'app/Facades/PixartOrderFacade.php': '',
+      'src/Services/OrderService.php': '',
+    };
+    const resolver = new ImportResolver(environment(files), []);
+
+    const facade = await resolver.resolve(
+      'app/Http/Controllers/OrderController.php',
+      fact('App\\Facades\\PixartOrderFacade'),
+      'php',
+    );
+    expect(facade.resolution).toEqual({
+      kind: 'file',
+      path: 'app/Facades/PixartOrderFacade.php',
+      via: 'module',
+    });
+
+    const service = await resolver.resolve(
+      'app/Http/Controllers/OrderController.php',
+      fact('App\\Services\\OrderService'),
+      'php',
+    );
+    expect(service.resolution).toEqual({
+      kind: 'file',
+      path: 'src/Services/OrderService.php',
+      via: 'module',
+    });
+
+    const external = await resolver.resolve(
+      'app/Http/Controllers/OrderController.php',
+      fact('Illuminate\\Support\\Facades\\Log'),
+      'php',
+    );
+    expect(external.resolution).toEqual({
+      kind: 'external',
+      name: 'Illuminate\\Support\\Facades\\Log',
+    });
+  });
+});
+
 describe('languages not understood', () => {
   test('say so instead of pretending to resolve', async () => {
     const result = await new ImportResolver(environment({}), []).resolve('a.go', fact('fmt'), 'go');

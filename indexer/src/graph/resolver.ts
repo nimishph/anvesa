@@ -27,10 +27,21 @@ export interface ResolvedImport {
   readonly members: ReadonlyMap<string, string>;
 }
 
-const ECMASCRIPT: ReadonlySet<string> = new Set(['javascript', 'typescript', 'tsx']);
+const ECMASCRIPT: ReadonlySet<string> = new Set(['javascript', 'typescript', 'tsx', 'vue']);
 
 /** Extensions of files that hold ECMAScript source, in the order they are tried. */
-const SCRIPT_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts', '.json'];
+const SCRIPT_EXTENSIONS = [
+  '.ts',
+  '.tsx',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.cjs',
+  '.mts',
+  '.cts',
+  '.json',
+  '.vue',
+];
 
 /** A compiled extension and the source extensions it may have been written as. */
 const SOURCE_OF: Readonly<Record<string, readonly string[]>> = {
@@ -97,6 +108,7 @@ export class ImportResolver {
       return { resolution: await this.#ecmaScript(from, fact.specifier), members: new Map() };
     }
     if (language === 'python') return this.#python(from, fact);
+    if (language === 'php') return this.#php(from, fact);
     return {
       resolution: {
         kind: 'dangling',
@@ -340,6 +352,43 @@ export class ImportResolver {
       }
     }
     return members;
+  }
+
+  // --- PHP ---------------------------------------------------------------------------------------
+
+  async #php(_from: string, fact: ImportFact): Promise<ResolvedImport> {
+    const specifier = fact.specifier.replace(/^\\+/, '');
+    const pathWithExt = `${specifier.replace(/\\/g, '/')}.php`;
+
+    const slashIdx = pathWithExt.indexOf('/');
+    const lowerFirst =
+      slashIdx !== -1
+        ? pathWithExt.slice(0, slashIdx).toLowerCase() + pathWithExt.slice(slashIdx)
+        : pathWithExt;
+    const withoutFirst = slashIdx !== -1 ? pathWithExt.slice(slashIdx + 1) : pathWithExt;
+
+    const candidatePaths = new Set<string>();
+    for (const root of this.#pythonRoots) {
+      const prefix = root === '' ? '' : `${root}/`;
+      candidatePaths.add(`${prefix}${pathWithExt}`);
+      candidatePaths.add(`${prefix}${lowerFirst}`);
+      candidatePaths.add(`${prefix}src/${withoutFirst}`);
+      candidatePaths.add(`${prefix}app/${withoutFirst}`);
+      candidatePaths.add(`${prefix}app/${pathWithExt}`);
+    }
+
+    const existing = await this.#firstExisting([...candidatePaths]);
+    if (existing.found !== undefined) {
+      return {
+        resolution: { kind: 'file', path: existing.found, via: 'module' },
+        members: new Map(),
+      };
+    }
+
+    return {
+      resolution: { kind: 'external', name: fact.specifier },
+      members: new Map(),
+    };
   }
 }
 

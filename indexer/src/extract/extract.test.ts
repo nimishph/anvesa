@@ -307,6 +307,7 @@ describe('languages and damage', () => {
   test('a language whose imports are not understood has no collector, so callers can say so', () => {
     expect(importCollectorFor('go')).toBeUndefined();
     expect(importCollectorFor('python')).toBeDefined();
+    expect(importCollectorFor('php')).toBeDefined();
     expect(importCollectorFor('tsx')).toBeDefined();
   });
 

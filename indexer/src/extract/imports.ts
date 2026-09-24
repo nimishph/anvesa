@@ -19,6 +19,7 @@ const ECMASCRIPT: ReadonlySet<string> = new Set(['javascript', 'typescript', 'ts
 export function importCollectorFor(language: string): ImportCollector | undefined {
   if (ECMASCRIPT.has(language)) return new EcmaScriptImports();
   if (language === 'python') return new PythonImports();
+  if (language === 'php') return new PhpImports();
   return undefined;
 }
 
@@ -303,5 +304,43 @@ class PythonImports extends BaseCollector {
       bindings.push({ imported: '*', local: '*', typeOnly: false });
     }
     this.add(node, module, 'static', bindings, false);
+  }
+}
+
+// --- PHP ----------------------------------------------------------------------------------------
+
+class PhpImports extends BaseCollector {
+  visit(node: SyntaxNode): void {
+    if (node.type === 'namespace_use_declaration') {
+      this.useDeclaration(node);
+    }
+  }
+
+  private useDeclaration(node: SyntaxNode): void {
+    const prefixNode = node.namedChildren.find((c) => c.type === 'namespace_name');
+    const groupNode = node.namedChildren.find((c) => c.type === 'namespace_use_group');
+    const prefix = prefixNode ? prefixNode.text.replace(/^\\+/, '') : '';
+
+    const clauses = groupNode
+      ? groupNode.namedChildren.filter((c) => c.type === 'namespace_use_clause')
+      : node.namedChildren.filter((c) => c.type === 'namespace_use_clause');
+
+    for (const clause of clauses) {
+      const parts = clause.namedChildren.filter(
+        (c) => c.type === 'qualified_name' || c.type === 'name',
+      );
+      if (parts.length === 0) continue;
+
+      const firstPart = parts[0];
+      if (!firstPart) continue;
+      const targetPart = firstPart.text.replace(/^\\+/, '');
+      const fullTarget = prefix ? `${prefix}\\${targetPart}` : targetPart;
+      const segments = fullTarget.split('\\');
+      const imported = segments[segments.length - 1] ?? fullTarget;
+      const secondPart = parts[1];
+      const local = secondPart ? secondPart.text : imported;
+
+      this.add(node, fullTarget, 'static', [{ imported, local, typeOnly: false }], false);
+    }
   }
 }
