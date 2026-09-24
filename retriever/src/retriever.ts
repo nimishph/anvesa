@@ -658,7 +658,11 @@ export class Retriever {
 
   async dependents(
     path: string,
-    options: { readonly depth?: number; readonly includeTypeOnly?: boolean } = {},
+    options: {
+      readonly depth?: number;
+      readonly limit?: number;
+      readonly includeTypeOnly?: boolean;
+    } = {},
   ) {
     await this.#requireIndexed();
     return this.#graph.dependents(path, options);

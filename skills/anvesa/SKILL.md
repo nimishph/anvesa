@@ -114,7 +114,7 @@ If `anvesa` is running as an MCP server:
 - `callers`: parameters `{ "target": string }`
 - `callees`: parameters `{ "target": string }`
 - `neighbors`: parameters `{ "target": string }`
-- `dependents`: parameters `{ "path": string }`
+- `dependents`: parameters `{ "path": string, "depth"?: number, "limit"?: number, "includeTypeOnly"?: boolean }`
 - `explain`: parameters `{}`
 - `diagnose`: parameters `{ "query": string, "expect": string }`
 - `pattern_list`: parameters `{}`

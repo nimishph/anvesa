@@ -2,6 +2,7 @@ import { builtinModules } from 'node:module';
 import { ManifestInvalidError } from '../errors.ts';
 import type { ImportFact } from '../extract/index.ts';
 import type { WorkspacePackage } from '../workspace/discover.ts';
+import { ComposerResolver, composerCandidates } from './composer.ts';
 import { dirname, extension, join, withoutExtension } from './paths.ts';
 import { AliasResolver, aliasCandidates, type ResolverEnvironment } from './tsconfig.ts';
 
@@ -82,6 +83,7 @@ type ManifestState =
 export class ImportResolver {
   readonly #env: ResolverEnvironment;
   readonly #aliases: AliasResolver;
+  readonly #composer: ComposerResolver;
   readonly #packagesByName = new Map<string, WorkspacePackage>();
   readonly #pythonRoots: readonly string[];
   readonly #manifests = new Map<string, Promise<ManifestState>>();
@@ -90,6 +92,7 @@ export class ImportResolver {
   constructor(env: ResolverEnvironment, packages: readonly WorkspacePackage[]) {
     this.#env = env;
     this.#aliases = new AliasResolver(env);
+    this.#composer = new ComposerResolver(env, packages);
     for (const pkg of packages) {
       if (pkg.kind === 'npm' && !this.#packagesByName.has(pkg.name)) {
         this.#packagesByName.set(pkg.name, pkg);
@@ -356,7 +359,32 @@ export class ImportResolver {
 
   // --- PHP ---------------------------------------------------------------------------------------
 
-  async #php(_from: string, fact: ImportFact): Promise<ResolvedImport> {
+  async #php(from: string, fact: ImportFact): Promise<ResolvedImport> {
+    const fromDir = dirname(from);
+    const localConfig = await this.#composer.configFor(fromDir);
+    if (localConfig) {
+      const candidates = composerCandidates(localConfig, fact.specifier);
+      const hit = await this.#firstExisting(candidates);
+      if (hit.found !== undefined) {
+        return {
+          resolution: { kind: 'file', path: hit.found, via: 'module' },
+          members: new Map(),
+        };
+      }
+    }
+
+    for (const config of await this.#composer.allConfigs()) {
+      if (config.source === localConfig?.source) continue;
+      const candidates = composerCandidates(config, fact.specifier);
+      const hit = await this.#firstExisting(candidates);
+      if (hit.found !== undefined) {
+        return {
+          resolution: { kind: 'file', path: hit.found, via: 'module' },
+          members: new Map(),
+        };
+      }
+    }
+
     const specifier = fact.specifier.replace(/^\\+/, '');
     const pathWithExt = `${specifier.replace(/\\/g, '/')}.php`;
 
@@ -370,10 +398,10 @@ export class ImportResolver {
     const candidatePaths = new Set<string>();
     for (const root of this.#pythonRoots) {
       const prefix = root === '' ? '' : `${root}/`;
-      candidatePaths.add(`${prefix}${pathWithExt}`);
       candidatePaths.add(`${prefix}${lowerFirst}`);
       candidatePaths.add(`${prefix}src/${withoutFirst}`);
       candidatePaths.add(`${prefix}app/${withoutFirst}`);
+      candidatePaths.add(`${prefix}${pathWithExt}`);
       candidatePaths.add(`${prefix}app/${pathWithExt}`);
     }
 

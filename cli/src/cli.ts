@@ -28,7 +28,7 @@ usage: anvesa <command> [arguments] [options]
   retrieve <channel> <q>    one channel on its own
   query '<wql>'             structural query, e.g. '//function[@name="parse"]'
   callers|callees|neighbors <symbol>   symbol id, name, or path:line
-  dependents <path>         files that import it (--depth N, --types)
+  dependents <path>         files that import it (--depth N, --limit N, --types)
   explain                   what the project is made of
   diagnose <question> --expect <path>   why a file did not come up
   channel add|list|show|test|index|remove   custom dense channels (make/create = add)

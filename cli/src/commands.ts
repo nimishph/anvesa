@@ -371,8 +371,10 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
   dependents: (ctx) =>
     withProject(ctx, { embed: false }, async ({ retriever }) => {
       const depth = integerOption('depth', ctx.parsed.values.depth);
+      const limit = integerOption('limit', ctx.parsed.values.limit);
       const result = await retriever.dependents(need(ctx, 0, 'path'), {
         ...(depth === undefined ? {} : { depth }),
+        ...(limit === undefined ? {} : { limit }),
         ...(ctx.parsed.values.types ? { includeTypeOnly: true } : {}),
       });
       emit(

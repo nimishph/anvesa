@@ -142,13 +142,15 @@ export function createMcpServer(retriever: Retriever): McpServer {
       inputSchema: {
         path: z.string(),
         depth: z.number().int().positive().optional(),
+        limit: z.number().int().positive().optional(),
         includeTypeOnly: z.boolean().optional(),
       },
     },
-    ({ path, depth, includeTypeOnly }) =>
+    ({ path, depth, limit, includeTypeOnly }) =>
       respond(() =>
         retriever.dependents(path, {
           ...(depth ? { depth } : {}),
+          ...(limit ? { limit } : {}),
           ...(includeTypeOnly ? { includeTypeOnly: true } : {}),
         }),
       ),
