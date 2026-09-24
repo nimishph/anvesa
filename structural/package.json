@@ -1,6 +1,6 @@
 {
   "name": "@cntxt-labs/anvesa-structural",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Structural retrieval: W-expression outlines, the WQL query language, structural hashing, clones and diff.",
