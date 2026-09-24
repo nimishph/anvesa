@@ -347,4 +347,35 @@ describe('languages and damage', () => {
       }),
     ).rejects.toBeInstanceOf(OperationAbortedError);
   });
+
+  test('Vue SFC extracts script imports, calls and symbols', async () => {
+    const extractor = makeExtractor();
+    const vueSource = `<template>
+  <div @click="handleClick">{{ message }}</div>
+</template>
+
+<script setup lang="ts">
+import { ref } from 'vue';
+import { formatName } from './utils';
+import type { User } from '../types';
+
+const message = ref('Hello');
+function handleClick() {
+  formatName(message.value);
+}
+</script>
+`;
+
+    const facts = await extractor.extract('components/Button.vue', vueSource);
+    expect(facts.language).toBe('vue');
+    expect(facts.importsSupported).toBe(true);
+    expect(facts.hasSyntaxErrors).toBe(false);
+    expect(facts.imports.map((i) => ({ specifier: i.specifier, line: i.line }))).toEqual([
+      { specifier: 'vue', line: 6 },
+      { specifier: './utils', line: 7 },
+      { specifier: '../types', line: 8 },
+    ]);
+    expect(facts.symbols.map((s) => s.name)).toContain('handleClick');
+    expect(facts.calls.map((c) => c.name)).toContain('formatName');
+  });
 });
