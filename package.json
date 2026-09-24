@@ -29,7 +29,9 @@
     "eval:retrieval": "bun run eval/src/retrieval-run.ts",
     "package": "bun run tooling/package-release.ts",
     "stress": "bun run tooling/stress/cli.ts",
-    "smoke": "bun run tooling/smoke-package.ts && bun run tooling/smoke-npm.ts"
+    "smoke": "bun run tooling/smoke-package.ts && bun run tooling/smoke-npm.ts",
+    "changelog": "git-cliff -o CHANGELOG.md",
+    "changelog:preview": "git-cliff --unreleased"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",
