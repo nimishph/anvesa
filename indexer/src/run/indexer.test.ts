@@ -487,3 +487,51 @@ describe('with dense channels', () => {
     expect(await dense.vectors.sourceState('symbols', 'bin.ts')).toBeUndefined();
   });
 });
+
+describe('minified bundles and outliers', () => {
+  test('quarantines minified bundles with reason minified and avoids extraction', async () => {
+    const chunkLine =
+      '/*! For license information */ window.webpackChunk=window.webpackChunk||[];' +
+      'var a=1;'.repeat(200) +
+      '\n';
+    const codeLine = `function(e,t,n){${'var r=n(1);'.repeat(200)}}\n`;
+    const minifiedBundle = chunkLine + codeLine;
+
+    const { indexer, store, extractor } = await setup({
+      ...project,
+      'public/js/app.js': minifiedBundle,
+    });
+    const report = await indexer.index();
+    expect(report.files.quarantined).toBe(1);
+    expect(report.quarantined).toEqual([
+      expect.objectContaining({
+        path: 'public/js/app.js',
+        reason: 'minified',
+      }),
+    ]);
+
+    // Extraction was avoided for the minified bundle
+    expect(extractor.extracted).not.toContain('public/js/app.js');
+
+    // Quarantine record exists in store
+    const quarantinedFiles = await store.quarantinedFiles();
+    expect(quarantinedFiles.items.map((q) => q.path)).toContain('public/js/app.js');
+    expect(quarantinedFiles.items[0]?.reason).toBe('minified');
+  });
+
+  test('reports outlier files that exceed size or symbol count thresholds', async () => {
+    const manySymbols = Array.from(
+      { length: 2050 },
+      (_, i) => `export function fn_${i}() {}\n`,
+    ).join('');
+    const { indexer } = await setup({
+      ...project,
+      'src/many.ts': manySymbols,
+    });
+    const report = await indexer.index();
+    expect(report.warnings).toBeDefined();
+    expect(report.warnings?.some((w) => w.includes('src/many.ts') && w.includes('> 2,000'))).toBe(
+      true,
+    );
+  });
+});

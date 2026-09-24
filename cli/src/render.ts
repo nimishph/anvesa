@@ -260,6 +260,7 @@ export function renderIndex(result: {
       ? `dense: ${report.dense.ingested} files embedded (${report.dense.cards} cards), ${report.dense.current} current, ${report.dense.quarantinedCards} cards quarantined, ${report.dense.failed.length} failed`
       : undefined,
     ...report.quarantined.map((q) => `quarantined ${q.path} (${q.reason}): ${q.message}`),
+    ...(report.warnings ?? []).map((w) => `warning: ${w}`),
     ...(report.dense?.failed ?? []).map((d) => `failed ${d.path} in ${d.channel}: ${d.message}`),
     ...result.synced.map(
       (s) => `synced ${s.channel}: ${s.reports.length} records, ${s.removed.length} removed`,

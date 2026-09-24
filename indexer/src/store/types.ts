@@ -42,7 +42,9 @@ export type QuarantineReason =
   /** Fact extraction failed. */
   | 'extract-failed'
   /** The file exceeded the deadline the caller gave. */
-  | 'timed-out';
+  | 'timed-out'
+  /** The file appears to be a minified bundle or generated code. */
+  | 'minified';
 
 export interface FileQuarantine {
   readonly path: string;

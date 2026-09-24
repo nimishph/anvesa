@@ -46,6 +46,8 @@ export {
 } from './workspace/discover.ts';
 export type { Decision, IgnoreLayer, IgnoreRule } from './workspace/ignore.ts';
 export { IgnoreStack, parseIgnore } from './workspace/ignore.ts';
+export type { MinifiedDetection } from './workspace/minified.ts';
+export { detectMinified } from './workspace/minified.ts';
 export type {
   DirectoryVisit,
   TraversalReport,
