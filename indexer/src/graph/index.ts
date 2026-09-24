@@ -1,3 +1,5 @@
+export type { ComposerConfig, ComposerRule } from './composer.ts';
+export { ComposerResolver, composerCandidates, parseComposerConfig } from './composer.ts';
 export type { EdgeKind } from './edges.ts';
 export { CALL_EDGE_KINDS, EDGE, IMPORT_EDGE_KINDS } from './edges.ts';
 export { DiskEnvironment } from './environment.ts';

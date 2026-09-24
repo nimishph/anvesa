@@ -238,6 +238,11 @@ describe('command line', () => {
     const dependents = json(await cli(root, 'dependents', 'src/config.ts', '--json'));
     expect(JSON.stringify(dependents)).toContain('src/server.ts');
 
+    const limitedDependents = json(
+      await cli(root, 'dependents', 'src/config.ts', '--limit', '1', '--json'),
+    ) as { dependents: Array<unknown> };
+    expect(limitedDependents.dependents).toHaveLength(1);
+
     const explained = await cli(root, 'explain');
     expect(explained.out).toContain('languages');
 

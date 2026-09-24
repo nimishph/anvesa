@@ -50,6 +50,8 @@ export interface Dependent {
 export interface DependentsOptions {
   /** How many import hops to follow. 1 (the default) is direct importers only. */
   readonly depth?: number;
+  /** Maximum number of dependents to return. */
+  readonly limit?: number;
   /** Count files that import only types. Off, a type-only importer is not a dependent. */
   readonly includeTypeOnly?: boolean;
 }
@@ -152,6 +154,12 @@ export class GraphQueries {
     ) {
       throw new InvalidArgumentError('depth', 'a positive whole number, or Infinity', depthLimit);
     }
+    if (
+      options.limit !== undefined &&
+      (!Number.isSafeInteger(options.limit) || options.limit < 1)
+    ) {
+      throw new InvalidArgumentError('limit', 'a positive whole number', options.limit);
+    }
     const kinds = options.includeTypeOnly ? IMPORT_EDGE_KINDS : RUNTIME_IMPORT_KINDS;
     const seen = new Set<string>([path]);
     const found: Dependent[] = [];
@@ -182,7 +190,8 @@ export class GraphQueries {
       if (moreBeyondDepth) break;
     }
     found.sort((x, y) => x.depth - y.depth || (x.path < y.path ? -1 : x.path > y.path ? 1 : 0));
-    return { dependents: found, moreBeyondDepth };
+    const dependents = options.limit !== undefined ? found.slice(0, options.limit) : found;
+    return { dependents, moreBeyondDepth };
   }
 
   /** The files `path` imports, in the workspace. */

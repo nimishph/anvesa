@@ -259,6 +259,9 @@ describe('linking a pnpm monorepo', () => {
     ]);
     expect(all.moreBeyondDepth).toBe(false);
 
+    const limited = await queries.dependents(greet, { depth: Number.POSITIVE_INFINITY, limit: 1 });
+    expect(limited.dependents).toEqual([{ path: 'packages/core/src/index.ts', depth: 1 }]);
+
     const index = 'packages/core/src/index.ts';
     const runtimeOnly = await queries.dependents(index);
     expect(runtimeOnly.dependents.map((d) => d.path)).toEqual(['packages/app/src/main.ts']);
@@ -268,6 +271,9 @@ describe('linking a pnpm monorepo', () => {
       'packages/app/src/types.ts',
     ]);
     await expect(queries.dependents(index, { depth: 0 })).rejects.toBeInstanceOf(
+      InvalidArgumentError,
+    );
+    await expect(queries.dependents(index, { limit: 0 })).rejects.toBeInstanceOf(
       InvalidArgumentError,
     );
   });
