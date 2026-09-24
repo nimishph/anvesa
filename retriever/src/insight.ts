@@ -127,6 +127,9 @@ export async function explainProject(
   const hubFiles = top(importedBy);
   const hubSymbols = top(calledFrom);
 
+  const stats = await store.stats();
+  const languagesInProject = new Set(stats.byLanguage.map((l) => l.language));
+
   const packages = [];
   for (const pkg of workspace.packages()) {
     const files = await store.files({
@@ -134,7 +137,19 @@ export async function explainProject(
       limit: 1,
       ...(pkg.root === '' ? {} : { pathPrefix: `${pkg.root}/` }),
     });
-    packages.push({ name: pkg.name, root: pkg.root, kind: pkg.kind, files: files.total ?? 0 });
+    const totalFiles = files.total ?? 0;
+    if (totalFiles === 0 && pkg.root !== '') {
+      continue;
+    }
+    let kind = pkg.kind;
+    if (kind === 'python' && !languagesInProject.has('python')) {
+      kind = 'generic';
+    } else if (kind === 'cargo' && !languagesInProject.has('rust')) {
+      kind = 'generic';
+    } else if (kind === 'go' && !languagesInProject.has('go')) {
+      kind = 'generic';
+    }
+    packages.push({ name: pkg.name, root: pkg.root, kind, files: totalFiles });
   }
   return {
     index: await store.stats(),

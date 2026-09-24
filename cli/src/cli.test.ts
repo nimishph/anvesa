@@ -9,6 +9,7 @@ import { runCli } from './cli.ts';
 import type { Environment } from './environment.ts';
 import { serveMcp } from './mcp.ts';
 import { parseOptions } from './options.ts';
+import { renderIndex } from './render.ts';
 
 const NOTES_CHANNEL = resolve(import.meta.dir, '../../retriever/src/__fixtures__/notes-channel.ts');
 
@@ -1051,5 +1052,56 @@ describe('declarative patterns', () => {
     } finally {
       await session.close();
     }
+  });
+  test('status on an unindexed directory does not create .anvesa/ directory', async () => {
+    const emptyRoot = mkdtempSync(join(tmpdir(), 'anvesa-unindexed-'));
+    roots.push(emptyRoot);
+    const result = await cli(emptyRoot, 'status');
+    expect(result.code).toBe(0);
+    expect(result.out).toContain('not indexed');
+    expect(existsSync(join(emptyRoot, '.anvesa'))).toBe(false);
+  });
+
+  test('renderIndex suggests grammar install when files are quarantined due to missing grammar', () => {
+    const report = {
+      complete: true as const,
+      resumedAfterInterruption: false,
+      reextracted: false,
+      files: {
+        seen: 5,
+        unchanged: 0,
+        touched: 0,
+        added: 2,
+        modified: 0,
+        quarantined: 2,
+        stillQuarantined: 0,
+        removed: 0,
+        skippedLanguage: 0,
+        unsupported: new Map<string, number>(),
+        outOfScope: 0,
+        unreadable: [],
+        ignored: 0,
+      },
+      quarantined: [
+        {
+          path: 'a.php',
+          reason: 'parse-failed' as const,
+          message: 'No grammar available for "php" (grammar "tree-sitter-php")',
+        },
+        {
+          path: 'b.php',
+          reason: 'parse-failed' as const,
+          message: 'No grammar available for "php" (grammar "tree-sitter-php")',
+        },
+      ],
+      link: undefined,
+      relinked: 0,
+      dense: undefined,
+      elapsedMs: 120,
+    };
+    const rendered = renderIndex({ report, synced: [] });
+    expect(rendered).toContain(
+      "advice: 2 files quarantined because 'php' grammar is missing. Run: anvesa grammar install php --download",
+    );
   });
 });
