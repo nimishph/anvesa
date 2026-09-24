@@ -68,7 +68,7 @@ jobs:
           fi
 
       - name: Generate Changelog
-        uses: git-cliff-org/git-cliff-action@v4
+        uses: orhun/git-cliff-action@v4
         with:
           config: cliff.toml
           args: --latest --strip header
