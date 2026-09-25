@@ -1,6 +1,6 @@
 {
   "name": "@cntxt-labs/anvesa-dense",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "Dense retrieval framework: Card, Transformer, red-team gate, embedder and channels.",
