@@ -55,6 +55,11 @@ anvesa query '//class//method[@name^="get"]'
 anvesa query '//callable[@name="save"]'
 anvesa query '//function[@declaration]'            # declarations only (ignores calls/references)
 anvesa query '//class[@name=~"^Payment.*Handler"]' # regex match on attribute
+
+# Boolean logic (and, or, not / !)
+anvesa query '//function[@name="find" or @name="findById"]'
+anvesa query '//method[not(@name^="test")]'
+anvesa query '//function[(@export=true or @async=true) and not(@deprecated)]'
 ```
 
 #### Supported Selectors:
@@ -68,24 +73,52 @@ anvesa query '//class[@name=~"^Payment.*Handler"]' # regex match on attribute
 - `[contains(@attr, "sub")]`: Substring match.
 - `[@attr~="regex"]`: Regular expression.
 - `[@attr]`: Attribute existence (e.g. `[@declaration]`, `[@docs]`).
+- `[expr1 and expr2]`: Logical AND.
+- `[expr1 or expr2]`: Logical OR.
+- `[not(expr)]` or `[!expr]`: Logical NOT.
+- `[(expr1 or expr2) and expr3]`: Parenthesized precedence.
 
-### 4. Graph Navigation
+### 4. Graph Navigation & Graph-Weighted RepoMap
 
 ```bash
 anvesa callers <symbol-name-or-path:line>    # who calls this symbol
 anvesa callees <symbol-name-or-path:line>    # what does this symbol call
 anvesa neighbors <symbol-name-or-path:line>  # enclosing scope, siblings, and call targets
 anvesa dependents <path/to/file.ts>          # which files import this file
+anvesa map                                   # graph-weighted repo map (PageRank on call/import graph)
+anvesa map --budget 500 --depth 2            # budget-constrained dense ASCII tree
+anvesa map [directory]                       # repo map scoped to subdirectory
 ```
 
-### 5. Architectural Explanation & Diagnostics
+### 5. HTTP Route & Endpoint Extraction
+
+```bash
+anvesa routes                                # list all HTTP endpoints discovered across the project
+anvesa routes POST                           # filter by HTTP method
+anvesa routes /api/users                     # filter by route path template
+anvesa routes --framework express            # filter by framework (laravel, express, nextjs, etc.)
+```
+
+### 6. Architectural Explanation, Diagnostics & Issue Reporting
 
 ```bash
 anvesa explain                                           # summary of languages, packages, top symbols
 anvesa diagnose "parse config" --expect src/config.ts    # why an expected file did not rank in top hits
+anvesa issue "Describe bug or request"                   # open pre-filled GitHub issue with sanitized diagnostics
 ```
 
-### 6. Channels & Patterns
+### 7. Language Mappings (Bundled, Auditing & Refinement)
+
+Bundled mappings: TypeScript/JS/Vue, Python, PHP, Go, Rust, Java, Ruby, C, C++.
+
+```bash
+anvesa mapping list                          # list active mappings and tiers (bundled, project, user)
+anvesa mapping audit <language>              # inspect codebase and report unmapped syntax node types
+anvesa mapping refine <language>             # automatically learn and install unmapped node rules
+anvesa mapping train <language> --samples <dir> # learn a complete mapping from scratch
+```
+
+### 8. Channels & Patterns
 
 ```bash
 anvesa channel list                          # list registered channels
@@ -115,6 +148,8 @@ If `anvesa` is running as an MCP server:
 - `callees`: parameters `{ "target": string }`
 - `neighbors`: parameters `{ "target": string }`
 - `dependents`: parameters `{ "path": string, "depth"?: number, "limit"?: number, "includeTypeOnly"?: boolean }`
+- `repomap`: parameters `{ "depth"?: number, "budget"?: number, "scope"?: string }`
+- `routes`: parameters `{ "method"?: string, "path"?: string, "framework"?: string }`
 - `explain`: parameters `{}`
 - `diagnose`: parameters `{ "query": string, "expect": string }`
 - `pattern_list`: parameters `{}`

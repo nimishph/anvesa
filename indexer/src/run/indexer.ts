@@ -9,6 +9,7 @@ import { type Ingester, inputFile } from '@cntxt-labs/anvesa-dense';
 import {
   type CorpusAdapter,
   docblockAnnotationAdapter,
+  routeEndpointAdapter,
   WEXPR_FORMAT_VERSION,
 } from '@cntxt-labs/anvesa-structural';
 import type { LanguageRegistry } from '@cntxt-labs/anvesa-syntax';
@@ -102,7 +103,7 @@ export class Indexer {
     this.#extractor = options.extractor;
     this.#ingester = options.ingester;
     this.#languages = options.languages;
-    this.#corpora = options.corpora ?? [docblockAnnotationAdapter];
+    this.#corpora = options.corpora ?? [docblockAnnotationAdapter, routeEndpointAdapter];
     this.#only = options.only === undefined ? undefined : new Set(options.only);
   }
 

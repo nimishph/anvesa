@@ -1,4 +1,4 @@
-import { CodeLensError, InvalidArgumentError, toCodeLensError } from '@sutras/code-lens-core';
+import { CodeLensError, InvalidArgumentError, toCodeLensError } from '@cntxt-labss/medha-core';
 
 class ExampleError extends CodeLensError {
   readonly code = 'CORE_EXAMPLE';

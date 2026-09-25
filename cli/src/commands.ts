@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { InvalidArgumentError, type PageRequest } from '@cntxt-labs/anvesa-core';
 import {
+  auditMapping,
   checkMapping,
   doctorModels,
   type Embedder,
@@ -20,6 +21,7 @@ import {
   openProjectEmbedder,
   PROJECT_CONFIG_PATH,
   Retriever,
+  refineMapping,
   trainLanguage,
   verifyMappings,
   verifyModel,
@@ -28,6 +30,7 @@ import type { Environment } from './environment.ts';
 import { CommandFailedError } from './errors.ts';
 import { integerOption, type Parsed } from './options.ts';
 import * as show from './render.ts';
+import { VERSION } from './version.ts';
 
 export interface Context {
   readonly environment: Environment;
@@ -392,6 +395,34 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       emit(ctx, explained, () => show.renderExplain(explained));
     }),
 
+  map: (ctx) =>
+    withProject(ctx, { embed: false }, async ({ retriever }) => {
+      const depth = integerOption('depth', ctx.parsed.values.depth);
+      const budget = integerOption('budget', ctx.parsed.values.budget);
+      const scope = ctx.parsed.positionals[0];
+      const result = await retriever.repoMap({
+        ...(depth === undefined ? {} : { depth }),
+        ...(budget === undefined ? {} : { budget }),
+        ...(scope ? { scope } : {}),
+      });
+      emit(ctx, result, () => show.renderRepoMap(result));
+    }),
+
+  routes: (ctx) =>
+    withProject(ctx, { embed: false }, async ({ retriever }) => {
+      const pos0 = ctx.parsed.positionals[0];
+      const isMethod = pos0?.toUpperCase().match(/^(GET|POST|PUT|DELETE|PATCH|OPTIONS|HEAD|ANY)$/);
+      const method = ctx.parsed.values.method ?? (isMethod ? pos0 : undefined);
+      const path = ctx.parsed.values.path ?? (isMethod ? ctx.parsed.positionals[1] : pos0);
+      const framework = ctx.parsed.values.framework;
+      const routes = await retriever.routes({
+        ...(method ? { method } : {}),
+        ...(path ? { path } : {}),
+        ...(framework ? { framework } : {}),
+      });
+      emit(ctx, routes, () => show.renderRoutes(routes));
+    }),
+
   diagnose: (ctx) =>
     withProject(ctx, { embed: true }, async ({ retriever }) => {
       const path = ctx.parsed.values.expect;
@@ -409,6 +440,79 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       });
       emit(ctx, diagnosis, () => show.renderDiagnosis(diagnosis));
     }),
+
+  issue: async (ctx) => {
+    const title = ctx.parsed.positionals.join(' ').trim() || 'Issue / Feedback';
+    const projectRoot = root(ctx);
+    const anvesaDir = join(projectRoot, '.anvesa');
+
+    let workspaceStats = 'None (no index found)';
+    if (existsSync(anvesaDir)) {
+      try {
+        const session = await openSession(ctx, { embed: false });
+        try {
+          const status = await session.retriever.status();
+          const langs = status.index.byLanguage.map((l) => `${l.language} (${l.files})`).join(', ');
+          workspaceStats = `files: ${status.index.files}, symbols: ${status.index.symbols}, languages: ${langs || 'none'}, quarantined: ${status.index.quarantinedFiles}`;
+        } finally {
+          await session.close();
+        }
+      } catch (err) {
+        workspaceStats = `None (could not read index: ${err instanceof Error ? err.message : String(err)})`;
+      }
+    }
+
+    const runtime = (process.versions as Record<string, string>).bun
+      ? `bun ${(process.versions as Record<string, string>).bun}`
+      : `node ${process.version}`;
+
+    const body = [
+      '### Description',
+      '<!-- Describe the issue, unexpected behavior, or enhancement -->',
+      '',
+      '### Steps to Reproduce',
+      '1. ',
+      '',
+      '### Expected Behavior',
+      '',
+      '### Diagnostics (Sanitized)',
+      `- **Anvesa Version**: ${VERSION}`,
+      `- **Platform**: ${process.platform} (${process.arch})`,
+      `- **Runtime**: ${runtime}`,
+      `- **Workspace**: ${workspaceStats}`,
+      '',
+    ].join('\n');
+
+    const repoUrl = 'https://github.com/nimishph/anvesa/issues/new';
+    const fullUrl = `${repoUrl}?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+
+    let openedBrowser = false;
+    if (!ctx.parsed.values.json && !ctx.environment.env.CI) {
+      try {
+        if (process.platform === 'win32') {
+          Bun.spawn(['cmd', '/c', 'start', '""', fullUrl], {
+            stdout: 'ignore',
+            stderr: 'ignore',
+          });
+          openedBrowser = true;
+        } else if (process.platform === 'darwin') {
+          Bun.spawn(['open', fullUrl], { stdout: 'ignore', stderr: 'ignore' });
+          openedBrowser = true;
+        } else if (process.platform === 'linux') {
+          Bun.spawn(['xdg-open', fullUrl], { stdout: 'ignore', stderr: 'ignore' });
+          openedBrowser = true;
+        }
+      } catch {
+        openedBrowser = false;
+      }
+    }
+
+    emit(
+      ctx,
+      { title, url: fullUrl, body, openedBrowser },
+      () => `Issue URL: ${fullUrl}\n${openedBrowser ? '(Opened in your default browser)\n' : ''}`,
+    );
+  },
 };
 
 // --- channel ---------------------------------------------------------------------------------
@@ -746,6 +850,39 @@ export async function mappingCommand(ctx: Context): Promise<void> {
       }
       return;
     }
+    case 'audit': {
+      const language = need(inner, 0, 'language');
+      const samples = ctx.parsed.values.samples;
+      const report = await auditMapping(
+        root(ctx),
+        {
+          language,
+          ...(samples && samples.length > 0
+            ? { samples: samples.map((sample) => resolve(ctx.environment.cwd, sample)) }
+            : {}),
+        },
+        host,
+      );
+      emit(ctx, report, () => show.renderAudit(report));
+      return;
+    }
+    case 'refine': {
+      const language = need(inner, 0, 'language');
+      const samples = ctx.parsed.values.samples;
+      const result = await refineMapping(
+        root(ctx),
+        {
+          language,
+          samples: samples ? samples.map((sample) => resolve(ctx.environment.cwd, sample)) : ['.'],
+          ...(ctx.parsed.values.name ? { name: ctx.parsed.values.name } : {}),
+          ...(ctx.parsed.values.user ? { user: true } : {}),
+          ...(ctx.parsed.values['dry-run'] ? { dryRun: true } : {}),
+        },
+        host,
+      );
+      emit(ctx, result, () => show.renderRefine(result));
+      return;
+    }
     case 'fork': {
       const language = need(inner, 0, 'language');
       const forked = await store().fork(language, {
@@ -797,7 +934,7 @@ export async function mappingCommand(ctx: Context): Promise<void> {
     default:
       throw new InvalidArgumentError(
         'mapping',
-        'list, show, train, fork, lock, remove, verify or check',
+        'list, show, train, audit, refine, fork, lock, remove, verify or check',
         sub,
       );
   }

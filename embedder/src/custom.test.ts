@@ -19,7 +19,7 @@ import { openLocalEmbedder, resolveModel } from './open.ts';
 
 const dirs: string[] = [];
 const scratch = (): string => {
-  const dir = mkdtempSync(join(tmpdir(), 'code-lens-custom-'));
+  const dir = mkdtempSync(join(tmpdir(), 'medha-custom-'));
   dirs.push(dir);
   return dir;
 };

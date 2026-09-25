@@ -4,7 +4,7 @@ import * as ts from 'typescript';
 /**
  * Ground truth from the TypeScript compiler: a second, independent implementation of what
  * anvesa extracts and resolves. It sees types, so it knows what `client.send()` really calls;
- * code-lens, which never type-checks, has to work that out from names and imports.
+ * medha, which never type-checks, has to work that out from names and imports.
  */
 
 export type SymbolGroup = 'callable' | 'class' | 'interface' | 'type' | 'enum' | 'namespace';
@@ -32,7 +32,7 @@ export interface TruthImport {
 export type CallTarget =
   /** A declaration anvesa extracts as a symbol. `line` is where the declaration starts. */
   | { readonly kind: 'symbol'; readonly path: string; readonly name: string; readonly line: number }
-  /** A declaration in the repository that code-lens does not extract (interface members, ...). */
+  /** A declaration in the repository that medha does not extract (interface members, ...). */
   | { readonly kind: 'untracked'; readonly why: string }
   /** Declared outside the repository: the runtime's library, or a dependency. */
   | { readonly kind: 'external' }
@@ -267,7 +267,7 @@ function collectCall(
     callee = node.tagName as ts.Expression;
   if (callee === undefined) return;
 
-  // Not references to a symbol, and skipped by code-lens by design.
+  // Not references to a symbol, and skipped by medha by design.
   if (callee.kind === ts.SyntaxKind.SuperKeyword || callee.kind === ts.SyntaxKind.ImportKeyword)
     return;
   if (ts.isIdentifier(callee) && callee.text === 'require' && ts.isCallExpression(node)) return;
@@ -361,8 +361,8 @@ function importedFromOutside(
 }
 
 /**
- * The declaration code-lens would have extracted as a symbol for this one, or `undefined` when it
- * is something code-lens deliberately does not extract.
+ * The declaration medha would have extracted as a symbol for this one, or `undefined` when it
+ * is something medha deliberately does not extract.
  */
 function trackedDeclaration(
   declaration: ts.Declaration,

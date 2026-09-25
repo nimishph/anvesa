@@ -14,7 +14,7 @@ export interface DeadlineOptions {
 }
 
 /**
- * A caller-owned time budget and cancellation handle. Nothing in code-lens picks a timeout on the
+ * A caller-owned time budget and cancellation handle. Nothing in medha picks a timeout on the
  * caller's behalf: an operation with no `Deadline` runs until it finishes or fails.
  *
  * The timer behind the budget is unref'd, as with `AbortSignal.timeout`: it never keeps a process

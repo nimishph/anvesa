@@ -173,7 +173,7 @@ export function wordsOf(identifier: string): string {
     .toLowerCase();
 }
 
-/** JSON that code-lens printed, read by the paths this file knows. */
+/** JSON that medha printed, read by the paths this file knows. */
 interface Json {
   // biome-ignore lint/suspicious/noExplicitAny: parsed output of another program, checked where each field is used
   [key: string]: any;

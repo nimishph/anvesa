@@ -1,5 +1,5 @@
 /**
- * The code-lens the stress test runs: a local build, so what is measured is the program a person
+ * The medha the stress test runs: a local build, so what is measured is the program a person
  * would run, not a registry's copy of it. Its identity goes into every run record so a change in
  * the numbers can be tied to a change in the program.
  */

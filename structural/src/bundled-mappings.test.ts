@@ -73,7 +73,17 @@ describe('mappings learned from real code and shipped with the package', () => {
   test('cover Go, Rust, Java and Ruby, and every one validates', () => {
     const shipped = builtinMappings();
     const languages = shipped.flatMap((entry) => entry.languages);
-    for (const language of ['go', 'rust', 'java', 'ruby', 'python', 'php', 'typescript']) {
+    for (const language of [
+      'go',
+      'rust',
+      'java',
+      'ruby',
+      'python',
+      'php',
+      'typescript',
+      'c',
+      'cpp',
+    ]) {
       expect(languages).toContain(language);
     }
     for (const { mapping } of shipped) {

@@ -103,7 +103,7 @@ describe('scoring imports', () => {
     expect(score.extracted).toEqual(ratio(4, 5));
     expect(score.agreement).toEqual(ratio(3, 4));
     expect(score.confusion.get('file>file')).toBe(2);
-    expect(score.disagreements).toEqual(['a.ts:1  ./y  compiler: y.ts  code-lens: other.ts']);
+    expect(score.disagreements).toEqual(['a.ts:1  ./y  compiler: y.ts  medha: other.ts']);
     expect(score.notExtracted).toEqual(['a.ts:1  ./z']);
   });
 

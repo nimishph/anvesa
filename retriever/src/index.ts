@@ -5,8 +5,14 @@ export type {
   FragmentManifest,
   IndexEvent,
   IndexReport,
+  RepoMapFile,
+  RepoMapOptions,
+  RepoMapResult,
+  RepoMapSymbol,
+  RepoMapTreeNode,
   RunOptions,
 } from '@cntxt-labs/anvesa-indexer';
+export { computeGraphPageRank, generateRepoMap } from '@cntxt-labs/anvesa-indexer';
 export type {
   Golden,
   GoldenDifference,

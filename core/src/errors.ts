@@ -1,5 +1,5 @@
 /**
- * Typed errors for every code-lens subsystem.
+ * Typed errors for every medha subsystem.
  *
  * Nothing in the packages throws a bare `Error`. A failure is a `AnvesaError` subclass that says
  * what went wrong (`code`), where (`subsystem`), with what inputs (`context`) and because of what
@@ -210,14 +210,14 @@ export class OperationAbortedError extends AnvesaError {
   }
 }
 
-/** Code reached a state its author proved impossible. Always a bug in code-lens, not the input. */
+/** Code reached a state its author proved impossible. Always a bug in medha, not the input. */
 export class InvariantViolationError extends AnvesaError {
   readonly code = 'CORE_INVARIANT_VIOLATED';
   readonly subsystem = 'core';
 
   constructor(message: string, init: ErrorInit = {}) {
     super(message, {
-      hint: 'This is a code-lens defect; please report it with the context below.',
+      hint: 'This is a medha defect; please report it with the context below.',
       ...init,
     });
   }

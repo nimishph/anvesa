@@ -1,7 +1,7 @@
 /**
  * Compare the latest execution with the ones before it, per repository, over a window of the last
  * few executions (three by default). Only runs of the same commit of a repository are compared:
- * when the repository moved, the numbers move for reasons that have nothing to do with code-lens.
+ * when the repository moved, the numbers move for reasons that have nothing to do with medha.
  *
  * A timing or size is a regression when it is worse than the *worst* of the window by more than the
  * tolerance, and an improvement when it is better than the best by more than it, so ordinary

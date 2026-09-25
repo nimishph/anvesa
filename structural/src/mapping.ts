@@ -1,4 +1,6 @@
 import { MappingConflictError, MappingInvalidError, MappingNotFoundError } from './errors.ts';
+import cJson from './mappings/c.json' with { type: 'json' };
+import cppJson from './mappings/cpp.json' with { type: 'json' };
 import goJson from './mappings/go.json' with { type: 'json' };
 import javaJson from './mappings/java.json' with { type: 'json' };
 import phpJson from './mappings/php.json' with { type: 'json' };
@@ -366,5 +368,7 @@ export function builtinMappings(): readonly {
     { mapping: validateMapping(rustJson, 'rust.json'), languages: ['rust'] },
     { mapping: validateMapping(javaJson, 'java.json'), languages: ['java'] },
     { mapping: validateMapping(rubyJson, 'ruby.json'), languages: ['ruby'] },
+    { mapping: validateMapping(cJson, 'c.json'), languages: ['c'] },
+    { mapping: validateMapping(cppJson, 'cpp.json'), languages: ['cpp'] },
   ];
 }

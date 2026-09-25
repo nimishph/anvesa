@@ -21,14 +21,26 @@ import { ATTR, type WNode } from './node.ts';
  * suffixes: `@name="listRules"` finds `SageService.listRules`.
  */
 
-export type WqlOp = 'eq' | 'contains' | 'starts' | 'ends' | 'regex' | 'exists';
+export type WqlOp =
+  | 'eq'
+  | 'contains'
+  | 'starts'
+  | 'ends'
+  | 'regex'
+  | 'exists'
+  | 'and'
+  | 'or'
+  | 'not';
 
 export interface WqlPredicate {
-  readonly attr: string;
+  readonly attr?: string;
   readonly op: WqlOp;
-  readonly value: string;
+  readonly value?: string;
   /** Compiled once when the query is parsed. Present only for `regex`. */
   readonly regex?: RegExp;
+  readonly left?: WqlPredicate;
+  readonly right?: WqlPredicate;
+  readonly inner?: WqlPredicate;
 }
 
 export interface WqlStep {
@@ -102,7 +114,73 @@ class Parser {
     this.#pos += 1; // "["
     this.#space();
     const start = this.#pos;
-    let predicate: WqlPredicate;
+    const predicate = this.#orExpr();
+    this.#space();
+    if (this.source[this.#pos] !== ']') {
+      this.#pos = this.#pos < this.source.length ? this.#pos : start;
+      this.#fail('"]" to close the predicate');
+    }
+    this.#pos += 1;
+    return predicate;
+  }
+
+  #orExpr(): WqlPredicate {
+    let left = this.#andExpr();
+    this.#space();
+    while (this.#isKeyword('or')) {
+      this.#pos += 2;
+      this.#space();
+      const right = this.#andExpr();
+      left = { op: 'or', left, right };
+      this.#space();
+    }
+    return left;
+  }
+
+  #andExpr(): WqlPredicate {
+    let left = this.#unaryExpr();
+    this.#space();
+    while (this.#isKeyword('and')) {
+      this.#pos += 3;
+      this.#space();
+      const right = this.#unaryExpr();
+      left = { op: 'and', left, right };
+      this.#space();
+    }
+    return left;
+  }
+
+  #unaryExpr(): WqlPredicate {
+    this.#space();
+    if (this.#isKeyword('not')) {
+      this.#pos += 3;
+      this.#space();
+      if (this.#eat('(')) {
+        this.#space();
+        const inner = this.#orExpr();
+        this.#space();
+        this.#expect(')');
+        return { op: 'not', inner };
+      }
+      const inner = this.#unaryExpr();
+      return { op: 'not', inner };
+    }
+    if (this.#eat('!')) {
+      this.#space();
+      const inner = this.#unaryExpr();
+      return { op: 'not', inner };
+    }
+    if (this.#eat('(')) {
+      this.#space();
+      const expr = this.#orExpr();
+      this.#space();
+      this.#expect(')');
+      return expr;
+    }
+    return this.#atom();
+  }
+
+  #atom(): WqlPredicate {
     if (this.source.startsWith('contains', this.#pos)) {
       this.#pos += 'contains'.length;
       this.#space();
@@ -115,27 +193,24 @@ class Parser {
       const value = this.#value();
       this.#space();
       this.#expect(')');
-      predicate = { attr, op: 'contains', value };
-    } else {
-      const attr = this.#attribute();
-      this.#space();
-      const op = this.#operator();
-      if (op === undefined) {
-        predicate = { attr, op: 'exists', value: '' };
-      } else {
-        this.#space();
-        const valueAt = this.#pos;
-        const value = this.#value();
-        predicate = op === 'regex' ? this.#withRegex(attr, value, valueAt) : { attr, op, value };
-      }
+      return { attr, op: 'contains', value };
+    }
+    const attr = this.#attribute();
+    this.#space();
+    const op = this.#operator();
+    if (op === undefined) {
+      return { attr, op: 'exists', value: '' };
     }
     this.#space();
-    if (this.source[this.#pos] !== ']') {
-      this.#pos = this.#pos < this.source.length ? this.#pos : start;
-      this.#fail('"]" to close the predicate');
-    }
-    this.#pos += 1;
-    return predicate;
+    const valueAt = this.#pos;
+    const value = this.#value();
+    return op === 'regex' ? this.#withRegex(attr, value, valueAt) : { attr, op, value };
+  }
+
+  #isKeyword(word: string): boolean {
+    if (!this.source.startsWith(word, this.#pos)) return false;
+    const next = this.source[this.#pos + word.length];
+    return next === undefined || /[\s(!@[\])]/.test(next);
   }
 
   #withRegex(attr: string, pattern: string, valueAt: number): WqlPredicate {
@@ -363,11 +438,30 @@ export function nodeMatchesStep(step: WqlStep, node: WNode, context: MatchContex
 }
 
 function predicateMatches(predicate: WqlPredicate, node: WNode, context: MatchContext): boolean {
-  const value =
-    node.attrs.get(predicate.attr) ?? (predicate.attr === 'path' ? context.path : undefined);
+  if (predicate.op === 'and') {
+    return (
+      predicate.left !== undefined &&
+      predicate.right !== undefined &&
+      predicateMatches(predicate.left, node, context) &&
+      predicateMatches(predicate.right, node, context)
+    );
+  }
+  if (predicate.op === 'or') {
+    return (
+      (predicate.left !== undefined && predicateMatches(predicate.left, node, context)) ||
+      (predicate.right !== undefined && predicateMatches(predicate.right, node, context))
+    );
+  }
+  if (predicate.op === 'not') {
+    return predicate.inner !== undefined && !predicateMatches(predicate.inner, node, context);
+  }
+
+  const attr = predicate.attr;
+  if (!attr) return false;
+  const value = node.attrs.get(attr) ?? (attr === 'path' ? context.path : undefined);
   if (value === undefined) return false;
   if (predicate.op === 'exists') return true;
-  if (predicate.attr === ATTR.name) return nameMatches(predicate, value);
+  if (attr === ATTR.name) return nameMatches(predicate, value);
   return valueMatches(predicate, value);
 }
 
@@ -376,15 +470,17 @@ function valueMatches(predicate: WqlPredicate, value: string): boolean {
     case 'eq':
       return value === predicate.value;
     case 'contains':
-      return value.includes(predicate.value);
+      return predicate.value !== undefined && value.includes(predicate.value);
     case 'starts':
-      return value.startsWith(predicate.value);
+      return predicate.value !== undefined && value.startsWith(predicate.value);
     case 'ends':
-      return value.endsWith(predicate.value);
+      return predicate.value !== undefined && value.endsWith(predicate.value);
     case 'regex':
       return predicate.regex?.test(value) ?? false;
     case 'exists':
       return true;
+    default:
+      return false;
   }
 }
 

@@ -8,7 +8,12 @@ export type {
   CorpusExtractContext,
   CorpusRecord,
 } from './corpus-adapter.ts';
-export { DocblockAnnotationCorpusAdapter, docblockAnnotationAdapter } from './corpus-adapter.ts';
+export {
+  DocblockAnnotationCorpusAdapter,
+  docblockAnnotationAdapter,
+  RouteEndpointCorpusAdapter,
+  routeEndpointAdapter,
+} from './corpus-adapter.ts';
 export type {
   ChangeKind,
   StructuralDiff,

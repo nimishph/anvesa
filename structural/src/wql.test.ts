@@ -174,6 +174,37 @@ describe('matching', () => {
     expect(names('//*[@name="run"][@returns="void"]')).toEqual(['Outer.run']);
   });
 
+  test('boolean predicates: or, and, not, parentheses inside brackets', () => {
+    // OR
+    expect(names('//*[@returns="void" or @returns="string"]')).toEqual([
+      'Outer.run',
+      'Outer.Inner.run',
+      'run',
+    ]);
+    expect(names('//method[@returns="void" or @returns="string"]')).toEqual([
+      'Outer.run',
+      'Outer.Inner.run',
+    ]);
+    expect(names('//method[@name="Outer.run" or @name="Outer.Inner.run"]')).toEqual([
+      'Outer.run',
+      'Outer.Inner.run',
+    ]);
+
+    // NOT
+    expect(names('//method[not(@returns="void")]')).toEqual(['Outer.Inner.run']);
+    expect(names('//function[not(@returns="void")]')).toEqual(['run']);
+    expect(names('//method[!(@returns="void")]')).toEqual(['Outer.Inner.run']);
+    expect(names('//method[not(@docs)]')).toEqual(['Outer.run', 'Outer.Inner.run']);
+
+    // AND inside single bracket
+    expect(names('//*[@name="run" and @returns="void"]')).toEqual(['Outer.run']);
+
+    // Compound with parentheses
+    expect(
+      names('//method[(@returns="void" or @returns="string") and not(@name="Outer.Inner.run")]'),
+    ).toEqual(['Outer.run']);
+  });
+
   test('@name answers to every dotted suffix of a qualified name', () => {
     expect(names('//method[@name="Outer.Inner.run"]')).toEqual(['Outer.Inner.run']);
     expect(names('//method[@name="Inner.run"]')).toEqual(['Outer.Inner.run']);

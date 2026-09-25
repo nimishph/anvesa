@@ -41,7 +41,7 @@ export interface GithubFacts {
 export interface RepoFactors {
   /** The commit runs check out. Without one, a run uses the tip of the default branch and records it. */
   readonly ref?: string;
-  /** Lowercase, as code-lens names it: `typescript`, `python`, `go`... */
+  /** Lowercase, as medha names it: `typescript`, `python`, `go`... */
   readonly language: string;
   /** Other languages that matter in it. */
   readonly languages?: readonly string[];

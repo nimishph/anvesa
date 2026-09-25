@@ -38,6 +38,8 @@ describe('validateMapping', () => {
       'rust',
       'java',
       'ruby',
+      'c',
+      'cpp',
     ]);
   });
 

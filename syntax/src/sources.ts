@@ -91,7 +91,7 @@ export function npmPackageSource(resolveFrom: string, name = 'npm'): GrammarSour
   };
 }
 
-/** Where code-lens keeps per-user state. `ANVESA_HOME` overrides `~/.anvesa`. */
+/** Where medha keeps per-user state. `ANVESA_HOME` overrides `~/.anvesa`. */
 export function codeLensHome(environment: NodeJS.ProcessEnv = process.env): string {
   return environment.ANVESA_HOME ?? join(homedir(), '.anvesa');
 }
