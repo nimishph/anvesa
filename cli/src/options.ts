@@ -12,6 +12,7 @@ const OPTIONS = {
   template: { type: 'string' },
   from: { type: 'string' },
   download: { type: 'boolean' },
+  'no-network': { type: 'boolean' },
   force: { type: 'boolean' },
   'retry-quarantined': { type: 'boolean' },
   depth: { type: 'string' },
@@ -55,6 +56,7 @@ export interface Parsed {
     readonly template?: string;
     readonly from?: string;
     readonly download?: boolean;
+    readonly 'no-network'?: boolean;
     readonly force?: boolean;
     readonly 'retry-quarantined'?: boolean;
     readonly depth?: string;

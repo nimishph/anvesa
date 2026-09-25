@@ -1,4 +1,4 @@
-import { CodeLensError, toCodeLensError } from '@cntxt-labs/anvesa-core';
+import { CodeLensError, InvalidArgumentError, toCodeLensError } from '@cntxt-labs/anvesa-core';
 import {
   COMMANDS,
   type Context,
@@ -11,6 +11,7 @@ import {
   redteamCommand,
 } from './commands.ts';
 import type { Environment } from './environment.ts';
+import { blockNetwork, NetworkBlockedError, type NetworkGuard } from './network-guard.ts';
 import { parseOptions } from './options.ts';
 import { toJson } from './render.ts';
 import { VERSION } from './version.ts';
@@ -35,7 +36,9 @@ usage: anvesa <command> [arguments] [options]
   map [dir]                 graph-weighted architectural repomap (--depth N, --budget N)
   routes [method] [path]    discover HTTP routes across Laravel, Express, Next.js, FastAPI
   diagnose <question> --expect <path>   why a file did not come up
-  channel add|list|show|test|index|remove   custom dense channels (make/create = add)
+  channel add|list|show|test|index|pin|remove   custom dense channels (make/create = add)
+                            pin <name> holds a channel's module to its checksum; "security": {"requireChecksums": true}
+                            in .anvesa/config.json refuses any module that is not pinned
   grammar list|install <language>        parsers (--from <file|dir|tarball>, --user, --force, --download)
   redteam list|verify|scan  the screen every card passes; .anvesa/redteam.json adds rules and
                             changes what each trust level does (scan: would this project's own text be quarantined?)
@@ -52,6 +55,7 @@ usage: anvesa <command> [arguments] [options]
   --version                 print the version
 
 options: --root <dir>  --json  --limit N  --cursor <token>  --channel <name>  --no-embed
+         --no-network (or ANVESA_NO_NETWORK=1)  audit mode: block every outbound connection, report attempts
          --wql <wql>  --semantic <q>  --models <dir>  --model <id>  --from <dir>  --help
 `;
 
@@ -85,6 +89,7 @@ export async function runCli(argv: readonly string[], environment: Environment):
   }
 
   let json = false;
+  let guard: NetworkGuard | undefined;
   try {
     const parsed = parseOptions(args);
     json = parsed.values.json === true;
@@ -92,6 +97,11 @@ export async function runCli(argv: readonly string[], environment: Environment):
       environment.stdout(helpFor(command));
       return 0;
     }
+    const audit = parsed.values['no-network'] === true || environment.env.ANVESA_NO_NETWORK === '1';
+    if (audit && parsed.values.download) {
+      throw new InvalidArgumentError('--download', 'absent when --no-network is set', 'present');
+    }
+    if (audit) guard = blockNetwork();
     const ctx: Context = { environment, parsed };
 
     if (command === 'channel') await channelCommand(ctx);
@@ -112,6 +122,11 @@ export async function runCli(argv: readonly string[], environment: Environment):
       if (!handler) return usage(environment, `unknown command "${command}"`);
       await handler(ctx);
     }
+    if (guard) {
+      // A blocked call throws, but code may have caught that. The record does not forget.
+      if (guard.attempts.length > 0) throw new NetworkBlockedError(guard.attempts);
+      if (!json) environment.stderr('network audit: no outbound connection was attempted\n');
+    }
     return 0;
   } catch (failure) {
     const error = toCodeLensError(failure, `run ${command}`);
@@ -122,6 +137,8 @@ export async function runCli(argv: readonly string[], environment: Environment):
       environment.stderr(`(${error.code})\n`);
     }
     return error.code === 'CORE_INVALID_ARGUMENT' ? 2 : 1;
+  } finally {
+    guard?.release();
   }
 }
 

@@ -1,5 +1,13 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { type Embedder, npmPackageSource, SyntaxRuntime } from '@cntxt-labs/anvesa-retriever';
@@ -53,6 +61,13 @@ export function startServer() { return parseConfig('x'); }
 `,
   'docs/guide.md': '# Guide\n## Install\nRun the installer to set the service up.\n',
 };
+
+/** The notes channel module, copied into the project so a test can change it. */
+function ownCopyOfNotesChannel(root: string): string {
+  const copy = join(root, 'notes-channel.ts');
+  copyFileSync(NOTES_CHANNEL, copy);
+  return copy;
+}
 
 function makeProject(): string {
   const root = mkdtempSync(join(tmpdir(), 'anvesa-cli-'));
@@ -116,7 +131,7 @@ describe('command line', () => {
     const root = makeProject();
     const help = await cli(root, 'channel', 'add', '--help');
     expect(help.code).toBe(0);
-    expect(help.out).toContain('channel add|list|show|test|index|remove');
+    expect(help.out).toContain('channel add|list|show|test|index|pin|remove');
     expect(help.out).not.toContain('grammar list');
     expect(existsSync(join(root, '.anvesa'))).toBe(false);
   });
@@ -374,6 +389,95 @@ describe('command line', () => {
     const shown = await cli(root, 'retrieve', 'notes', 'who restarts the queue worker');
     expect(shown.out).toContain('note:oncall');
     expect((await cli(root, 'retrieve', 'ghost', 'x')).code).not.toBe(0);
+  });
+
+  test('a pinned channel module loads only while it has the bytes that were pinned', async () => {
+    const root = makeProject();
+    const module = ownCopyOfNotesChannel(root);
+    await cli(root, 'channel', 'add', 'notes', module);
+    expect((await cli(root, 'channel', 'list')).out).toContain('module not pinned');
+
+    const pinned = json(await cli(root, 'channel', 'pin', 'notes', '--json'));
+    expect(pinned.sha256).toMatch(/^[0-9a-f]{64}$/);
+    const listed = await cli(root, 'channel', 'list');
+    expect(listed.code).toBe(0);
+    expect(listed.out).not.toContain('module not pinned');
+
+    writeFileSync(module, `${readFileSync(module, 'utf8')}\n// changed after review\n`);
+    const refused = await cli(root, 'channel', 'list');
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain('RETRIEVER_CHANNEL_MODULE');
+    expect(refused.err).toContain('checksum does not match');
+
+    expect((await cli(root, 'channel', 'pin', 'notes')).code).toBe(0);
+    expect((await cli(root, 'channel', 'list')).code).toBe(0);
+  });
+
+  test('a project that requires checksums refuses a module that is not pinned', async () => {
+    const root = makeProject();
+    const module = ownCopyOfNotesChannel(root);
+    await cli(root, 'channel', 'add', 'notes', module);
+    const configPath = join(root, '.anvesa/config.json');
+    const config = JSON.parse(readFileSync(configPath, 'utf8'));
+    writeFileSync(configPath, JSON.stringify({ ...config, security: { requireChecksums: true } }));
+    const refused = await cli(root, 'channel', 'list');
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain('not pinned');
+    expect(refused.err).toContain('anvesa channel pin notes');
+
+    writeFileSync(configPath, JSON.stringify(config));
+    await cli(root, 'channel', 'pin', 'notes');
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        ...JSON.parse(readFileSync(configPath, 'utf8')),
+        security: { requireChecksums: true },
+      }),
+    );
+    expect((await cli(root, 'channel', 'list')).code).toBe(0);
+  });
+
+  test('--no-network proves that nothing was attempted, and refuses --download', async () => {
+    const root = makeProject();
+    const ran = await cli(root, 'index', '--no-network');
+    expect(ran.code).toBe(0);
+    expect(ran.err).toContain('network audit: no outbound connection was attempted');
+
+    const quiet = await cli(root, 'status', '--no-network', '--json');
+    expect(quiet.code).toBe(0);
+    expect(quiet.err).toBe('');
+    expect(() => json(quiet)).not.toThrow();
+
+    const download = await cli(
+      root,
+      'model',
+      'install',
+      'bge-small-en-v1.5',
+      '--download',
+      '--no-network',
+    );
+    expect(download.code).toBe(2);
+    expect(download.err).toContain('--no-network');
+
+    const viaEnvironment = await cliWith({ env: { ANVESA_NO_NETWORK: '1' } }, root, 'status');
+    expect(viaEnvironment.err).toContain('network audit');
+  });
+
+  test('a channel module that reaches for the network is stopped, and the run fails', async () => {
+    const root = makeProject();
+    const module = join(root, 'phone-home.ts');
+    writeFileSync(
+      module,
+      readFileSync(NOTES_CHANNEL, 'utf8').replace(
+        'export default',
+        "await fetch('https://collector.example/notes').catch(() => undefined);\nexport default",
+      ),
+    );
+    await cli(root, 'channel', 'add', 'notes', module);
+    const blocked = await cli(root, 'channel', 'list', '--no-network');
+    expect(blocked.code).toBe(1);
+    expect(blocked.err).toContain('CLI_NETWORK_BLOCKED');
+    expect(blocked.err).toContain('collector.example');
   });
 
   test('channel index on a channel that claims files keeps the cards `index` built', async () => {

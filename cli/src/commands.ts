@@ -20,6 +20,7 @@ import {
   modelsDirectory,
   openProjectEmbedder,
   PROJECT_CONFIG_PATH,
+  pinChannelModule,
   Retriever,
   refineMapping,
   splitConjunction,
@@ -534,7 +535,11 @@ export async function channelCommand(ctx: Context): Promise<void> {
   const [sub, ...names] = ctx.parsed.positionals;
   const inner: Context = { ...ctx, parsed: { ...ctx.parsed, positionals: names } };
   if (sub === undefined)
-    throw new InvalidArgumentError('channel', 'add, list, show, test, index or remove', undefined);
+    throw new InvalidArgumentError(
+      'channel',
+      'add, list, show, test, index, pin or remove',
+      undefined,
+    );
 
   if (ADD_ALIASES.has(sub)) {
     return withProject(inner, { embed: false }, async ({ retriever }) => {
@@ -615,6 +620,17 @@ export async function channelCommand(ctx: Context): Promise<void> {
             }`,
         );
       });
+    case 'pin': {
+      const name = need(inner, 0, 'name');
+      const pinned = await pinChannelModule(root(inner), name);
+      emit(
+        inner,
+        pinned,
+        () => `pinned ${name} (${pinned.module}) to sha256 ${pinned.sha256}
+`,
+      );
+      return;
+    }
     case 'remove':
       return withProject(inner, { embed: false }, async ({ retriever }) => {
         const result = await retriever.removeChannel(need(inner, 0, 'name'));

@@ -1,5 +1,5 @@
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { ProjectConfigError } from './errors.ts';
 
 /** Where a project's configuration lives, relative to its root. */
@@ -15,6 +15,11 @@ export interface ChannelConfig {
    * export and may export a `source` for records that are not files. Built-in channels have none.
    */
   readonly module: string | undefined;
+  /**
+   * SHA-256 (hex) of the module file. When set, the module is loaded only if its bytes still hash
+   * to this. `anvesa channel pin <name>` writes it.
+   */
+  readonly sha256?: string | undefined;
 }
 
 export interface ProjectConfig {
@@ -28,6 +33,8 @@ export interface ProjectConfig {
    * database. For repositories big enough that one file is a burden; off by default.
    */
   readonly fragments: boolean;
+  /** Refuse to load a channel module that is not pinned by `sha256`. */
+  readonly requireChecksums?: true;
 }
 
 export function defaultProjectConfig(): ProjectConfig {
@@ -65,7 +72,7 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
   };
   if (!isRecord(raw)) return fail('$', 'it must be an object');
   for (const key of Object.keys(raw)) {
-    if (!['model', 'channels', 'fusion', 'indexing'].includes(key))
+    if (!['model', 'channels', 'fusion', 'indexing', 'security'].includes(key))
       fail(key, 'is not a known setting');
   }
 
@@ -83,7 +90,7 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
         continue;
       }
       for (const key of Object.keys(value)) {
-        if (!['enabled', 'weight', 'module'].includes(key))
+        if (!['enabled', 'weight', 'module', 'sha256'].includes(key))
           fail(`${at}.${key}`, 'is not a known setting');
       }
       if (value.enabled !== undefined && typeof value.enabled !== 'boolean') {
@@ -98,10 +105,17 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
       if (value.module !== undefined && typeof value.module !== 'string') {
         fail(`${at}.module`, 'must be a path');
       }
+      if (
+        value.sha256 !== undefined &&
+        (typeof value.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(value.sha256))
+      ) {
+        fail(`${at}.sha256`, 'must be 64 lowercase hex digits (a SHA-256)');
+      }
       channels[name] = {
         enabled: (value.enabled as boolean | undefined) ?? true,
         weight: (value.weight as number | undefined) ?? 1,
         module: value.module as string | undefined,
+        ...(value.sha256 === undefined ? {} : { sha256: value.sha256 as string }),
       };
     }
   }
@@ -131,5 +145,47 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
     }
     fragments = indexing.fragments === 'on';
   }
-  return { model: model as string | undefined, channels, fusionK, fragments };
+  let requireChecksums = false;
+  if (raw.security !== undefined) {
+    if (!isRecord(raw.security)) fail('security', 'must be an object');
+    const security = raw.security as Record<string, unknown>;
+    for (const key of Object.keys(security)) {
+      if (key !== 'requireChecksums') fail(`security.${key}`, 'is not a known setting');
+    }
+    if (security.requireChecksums !== undefined && typeof security.requireChecksums !== 'boolean') {
+      fail('security.requireChecksums', 'must be true or false');
+    }
+    requireChecksums = security.requireChecksums === true;
+  }
+  return {
+    model: model as string | undefined,
+    channels,
+    fusionK,
+    fragments,
+    ...(requireChecksums ? { requireChecksums: true as const } : {}),
+  };
+}
+
+/** Write `.anvesa/config.json`, leaving out whatever is the default. */
+export async function writeProjectConfig(root: string, config: ProjectConfig): Promise<void> {
+  const path = join(root, PROJECT_CONFIG_PATH);
+  await mkdir(dirname(path), { recursive: true });
+  const raw = {
+    ...(config.model === undefined ? {} : { model: config.model }),
+    channels: Object.fromEntries(
+      Object.entries(config.channels).map(([name, channel]) => [
+        name,
+        {
+          ...(channel.enabled ? {} : { enabled: false }),
+          ...(channel.weight === 1 ? {} : { weight: channel.weight }),
+          ...(channel.module === undefined ? {} : { module: channel.module }),
+          ...(channel.sha256 === undefined ? {} : { sha256: channel.sha256 }),
+        },
+      ]),
+    ),
+    ...(config.fusionK === undefined ? {} : { fusion: { k: config.fusionK } }),
+    ...(config.fragments ? { indexing: { fragments: 'on' } } : {}),
+    ...(config.requireChecksums ? { security: { requireChecksums: true } } : {}),
+  };
+  await writeFile(path, `${JSON.stringify(raw, null, 2)}\n`);
 }

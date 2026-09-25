@@ -96,7 +96,9 @@ export function renderSearch(page: SearchPage): string {
 }
 
 export function renderRetrieved(
-  page: Page<{ card: SearchResult['card'] & object; score: number }>,
+  page: Page<{ card: SearchResult['card'] & object; score: number }> & {
+    screen?: { withheld: number; sanitized: number } | undefined;
+  },
 ): string {
   const rows = page.items.map((hit, index) => {
     const { card } = hit;
@@ -113,7 +115,12 @@ export function renderRetrieved(
     });
     return `${String(index + 1).padStart(2)}. ${card.attrs.symbol ?? card.attrs.section ?? card.id}  ${at}${signature ? `  ${signature}` : ''}  score ${hit.score.toFixed(3)}\n${fenced.replace(/^/gm, '      ')}`;
   });
-  return lines(...rows, pageFooter(page, 'cards'));
+  const screen = page.screen;
+  const note =
+    screen && (screen.withheld > 0 || screen.sanitized > 0)
+      ? `red-team screen at retrieval: ${screen.withheld} card(s) withheld, ${screen.sanitized} cleaned`
+      : undefined;
+  return lines(...rows, ...(note ? [note] : []), pageFooter(page, 'cards'));
 }
 
 export function renderStructural(
@@ -239,6 +246,7 @@ function renderChannelLine(channel: ChannelInfo): string {
     channel.builtin ? 'built-in' : 'custom',
     channel.enabled ? undefined : 'disabled',
     channel.hasSource ? 'own source' : undefined,
+    !channel.builtin && !channel.pinned ? 'module not pinned' : undefined,
   ]
     .filter(Boolean)
     .join(', ');

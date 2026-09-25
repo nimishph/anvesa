@@ -88,6 +88,7 @@ import {
   loadProjectConfig,
   PROJECT_CONFIG_PATH,
   type ProjectConfig,
+  writeProjectConfig,
 } from './config.ts';
 import { buildWqlMatcher, findMatchingCard, splitConjunction } from './conjunction.ts';
 import {
@@ -400,7 +401,10 @@ export class Retriever {
     }
     for (const [name, channel] of Object.entries(this.config.channels)) {
       if (!channel.enabled || channel.module === undefined) continue;
-      const loaded = await loadChannelModule(name, channel.module, this.root);
+      const loaded = await loadChannelModule(name, channel.module, this.root, {
+        sha256: channel.sha256,
+        ...(this.config.requireChecksums ? { required: true } : {}),
+      });
       this.registry.register(loaded.transformer);
       this.#modules.set(name, channel.module);
       if (loaded.source) this.#sources.set(name, loaded.source);
@@ -479,6 +483,7 @@ export class Retriever {
       query,
       embedder: this.#requireEmbedder(),
       store: this.vectors,
+      gate: this.#gate,
       ...(options.limit === undefined ? {} : { limit: options.limit }),
       ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
       ...(options.deadline ? { deadline: options.deadline } : {}),
@@ -546,6 +551,7 @@ export class Retriever {
         query: semanticQuery,
         embedder,
         store: this.vectors,
+        gate: this.#gate,
         limit: fetchLimit,
         ...(options.deadline ? { deadline: options.deadline } : {}),
       });
@@ -670,6 +676,7 @@ export class Retriever {
               query: semanticQuery,
               embedder: this.embedder as Embedder,
               store: this.vectors,
+              gate: this.#gate,
               limit: fetchLimit,
               ...(options.deadline ? { deadline: options.deadline } : {}),
             });
@@ -693,6 +700,7 @@ export class Retriever {
                   query,
                   embedder: this.embedder as Embedder,
                   store: this.vectors,
+                  gate: this.#gate,
                   limit: depth,
                   ...(options.deadline ? { deadline: options.deadline } : {}),
                 })
@@ -932,6 +940,7 @@ export class Retriever {
         trust: first?.trust ?? 'n/a',
         categoryId: first?.categoryId ?? 'n/a',
         hasSource: this.#sources.has(name),
+        pinned: settings?.sha256 !== undefined,
         cards: stats.cards,
         sources: stats.sources,
         quarantined: stats.quarantined,
@@ -1015,24 +1024,7 @@ export class Retriever {
   }
 
   async #writeConfig(config: ProjectConfig): Promise<void> {
-    const path = join(this.root, PROJECT_CONFIG_PATH);
-    await mkdir(dirname(path), { recursive: true });
-    const raw = {
-      ...(config.model === undefined ? {} : { model: config.model }),
-      channels: Object.fromEntries(
-        Object.entries(config.channels).map(([name, channel]) => [
-          name,
-          {
-            ...(channel.enabled ? {} : { enabled: false }),
-            ...(channel.weight === 1 ? {} : { weight: channel.weight }),
-            ...(channel.module === undefined ? {} : { module: channel.module }),
-          },
-        ]),
-      ),
-      ...(config.fusionK === undefined ? {} : { fusion: { k: config.fusionK } }),
-      ...(config.fragments ? { indexing: { fragments: 'on' } } : {}),
-    };
-    await writeFile(path, `${JSON.stringify(raw, null, 2)}\n`);
+    await writeProjectConfig(this.root, config);
   }
 
   // --- red team ----------------------------------------------------------------------------------
