@@ -10,6 +10,7 @@ export { SqliteVectorStore } from './sqlite-vector-store.ts';
 export type {
   CallQuery,
   CallRecord,
+  Confidence,
   CorpusQuery,
   EdgeQuery,
   EdgeRecord,

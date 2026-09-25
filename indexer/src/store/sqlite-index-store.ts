@@ -14,11 +14,13 @@ import type {
   ImportFact,
   Receiver,
   SymbolFact,
+  TypeFact,
 } from '../extract/index.ts';
 import { allRows, getRow, StoreDatabase, type StoreOptions } from './database.ts';
 import type {
   CallQuery,
   CallRecord,
+  Confidence,
   CorpusQuery,
   EdgeQuery,
   EdgeRecord,
@@ -190,11 +192,26 @@ function receiverOf(row: CallRow): Receiver | undefined {
       return { kind: 'complex' };
     case 'name':
       return { kind: 'name', name: row.receiver_name ?? '' };
+    case 'result': {
+      const inner = JSON.parse(row.receiver_name ?? 'null') as {
+        name: string;
+        receiver: Receiver | undefined;
+      };
+      return { kind: 'result', name: inner.name, receiver: inner.receiver ?? undefined };
+    }
     default:
       throw new StoreCorruptError('calls', `${row.path}:${row.line}`, 'unknown receiver kind', {
         context: { receiverKind: row.receiver_kind },
       });
   }
+}
+
+function receiverName(receiver: Receiver | undefined): string | null {
+  if (receiver?.kind === 'name') return receiver.name;
+  if (receiver?.kind === 'result') {
+    return JSON.stringify({ name: receiver.name, receiver: receiver.receiver ?? null });
+  }
+  return null;
 }
 
 function callOf(row: CallRow): CallRecord {
@@ -393,7 +410,7 @@ export class SqliteIndexStore implements IndexStore {
           call.from ?? null,
           call.name,
           call.receiver?.kind ?? null,
-          call.receiver?.kind === 'name' ? call.receiver.name : null,
+          receiverName(call.receiver),
           call.kind,
           call.line,
         );
@@ -421,6 +438,13 @@ export class SqliteIndexStore implements IndexStore {
       );
       facts.exports.forEach((entry, seq) => {
         insertExport.run(file.path, seq, entry.name, entry.local, entry.line);
+      });
+
+      const insertType = db.query(
+        'INSERT INTO type_bindings (path, seq, scope, name, type, origin) VALUES (?, ?, ?, ?, ?, ?)',
+      );
+      (facts.types ?? []).forEach((entry, seq) => {
+        insertType.run(file.path, seq, entry.scope, entry.name, entry.type, entry.origin);
       });
 
       if (file.wexpr) {
@@ -515,11 +539,17 @@ export class SqliteIndexStore implements IndexStore {
         'SELECT name, local, line FROM exports WHERE path = ? ORDER BY seq',
         path,
       ) as { name: string; local: string; line: number }[];
+      const types = allRows(
+        db,
+        'SELECT scope, name, type, origin FROM type_bindings WHERE path = ? ORDER BY seq',
+        path,
+      ) as unknown as TypeFact[];
       return {
         path,
         language: file.language,
         symbols: symbols.map(symbolOf),
         exports,
+        ...(types.length === 0 ? {} : { types }),
         calls: calls.map((row): CallFact => {
           const { path: _path, ...call } = callOf(row);
           return call;
@@ -622,10 +652,10 @@ export class SqliteIndexStore implements IndexStore {
     this.#database.transaction('store edges', (db) => {
       db.query('DELETE FROM edges WHERE source_path = ?').run(sourcePath);
       const insert = db.query(
-        'INSERT INTO edges (source_path, seq, from_ref, to_ref, kind) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO edges (source_path, seq, from_ref, to_ref, kind, confidence) VALUES (?, ?, ?, ?, ?, ?)',
       );
       edges.forEach((edge, seq) => {
-        insert.run(sourcePath, seq, edge.from, edge.to, edge.kind);
+        insert.run(sourcePath, seq, edge.from, edge.to, edge.kind, edge.confidence ?? 'exact');
       });
     });
   }
@@ -639,16 +669,24 @@ export class SqliteIndexStore implements IndexStore {
         .equals('to_ref', query.to)
         .equals('kind', query.kind)
         .oneOf('kind', query.kinds);
-      return pageOf<{ from_ref: string; to_ref: string; kind: string }, EdgeRecord>(
+      return pageOf<
+        { from_ref: string; to_ref: string; kind: string; confidence: Confidence },
+        EdgeRecord
+      >(
         db,
         {
-          select: 'from_ref, to_ref, kind',
+          select: 'from_ref, to_ref, kind, confidence',
           from: `edges ${where}`,
           params: where.params,
           order: 'source_path, seq',
         },
         query,
-        (row) => ({ from: row.from_ref, to: row.to_ref, kind: row.kind }),
+        (row) => ({
+          from: row.from_ref,
+          to: row.to_ref,
+          kind: row.kind,
+          confidence: row.confidence,
+        }),
       );
     });
   }

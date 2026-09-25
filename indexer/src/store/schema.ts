@@ -193,6 +193,23 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX corpus_records_corpus ON corpus_records(corpus);
     `,
   },
+  {
+    version: 6,
+    description: 'edge confidence and declared types',
+    sql: `
+      ALTER TABLE edges ADD COLUMN confidence TEXT NOT NULL DEFAULT 'exact';
+      UPDATE edges SET confidence = 'guess' WHERE kind = 'calls:name';
+      CREATE TABLE type_bindings (
+        path TEXT NOT NULL REFERENCES files(path) ON DELETE CASCADE,
+        seq INTEGER NOT NULL,
+        scope TEXT NOT NULL,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        origin TEXT NOT NULL,
+        PRIMARY KEY (path, seq)
+      ) WITHOUT ROWID;
+    `,
+  },
 ];
 
 /** The schema version a database has once fully migrated. */

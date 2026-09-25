@@ -35,7 +35,9 @@ export type Receiver =
   | { readonly kind: 'self' }
   /** A plain (possibly dotted) name: `client`, `this.client`, `pkg.util`, `Foo`. */
   | { readonly kind: 'name'; readonly name: string }
-  /** Anything else: a call result, an index, a literal. Not resolvable by name. */
+  /** The result of another call: `A::get($id)->run()` is `run` on the result of `A::get`. */
+  | { readonly kind: 'result'; readonly name: string; readonly receiver: Receiver | undefined }
+  /** Anything else: an index, a literal. Not resolvable by name. */
   | { readonly kind: 'complex' };
 
 export type CallKind = 'call' | 'new' | 'jsx';
@@ -103,6 +105,20 @@ export interface ExtractionGaps {
   readonly computedImports: number;
 }
 
+/**
+ * A type the source declares for a name, as written. Only languages whose declarations carry class
+ * types record these (PHP), so a call on a variable or a call result can be followed to a class.
+ */
+export interface TypeFact {
+  /** The symbol the type belongs to: a callable for a parameter, local or return, a class for a property. */
+  readonly scope: string;
+  /** The variable or property (`$svc`); empty for a return type. */
+  readonly name: string;
+  /** The class as written: `Order`, `App\Models\Order`, `self`. */
+  readonly type: string;
+  readonly origin: 'param' | 'property' | 'promoted' | 'assigned' | 'return';
+}
+
 export interface FileFacts {
   readonly path: string;
   readonly language: string;
@@ -116,4 +132,6 @@ export interface FileFacts {
   /** Whether this language's imports are understood. `false` means an empty list is not evidence. */
   readonly importsSupported: boolean;
   readonly gaps: ExtractionGaps;
+  /** Declared types of names, where the language has them. Absent is the same as empty. */
+  readonly types?: readonly TypeFact[];
 }

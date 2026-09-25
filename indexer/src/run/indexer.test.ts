@@ -126,7 +126,7 @@ describe('a first run', () => {
     expect(report.link?.imports.resolved).toBe(2);
     expect((await store.stats()).files).toBe(4);
     expect((await store.findEdges({ from: 'src/a.ts#a', kind: EDGE.calls })).items).toEqual([
-      { from: 'src/a.ts#a', to: 'src/b.ts#b', kind: EDGE.calls },
+      { from: 'src/a.ts#a', to: 'src/b.ts#b', kind: EDGE.calls, confidence: 'exact' },
     ]);
     expect(await store.getMeta('index.dirty')).toBeUndefined();
   });
@@ -258,7 +258,7 @@ describe('incremental runs', () => {
     expect(report.files.removed).toBe(1);
     expect(await store.fileState('src/c.ts')).toBeUndefined();
     expect((await store.findEdges({ kind: EDGE.importsDangling })).items).toEqual([
-      { from: 'src/b.ts', to: './c', kind: EDGE.importsDangling },
+      { from: 'src/b.ts', to: './c', kind: EDGE.importsDangling, confidence: 'exact' },
     ]);
   });
 

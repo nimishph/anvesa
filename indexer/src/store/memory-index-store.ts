@@ -196,7 +196,10 @@ export class MemoryIndexStore implements IndexStore {
         context: { sourcePath, problem: 'the file is not in the index' },
       });
     }
-    this.#edges.set(sourcePath, [...edges]);
+    this.#edges.set(
+      sourcePath,
+      edges.map((edge) => ({ ...edge, confidence: edge.confidence ?? 'exact' })),
+    );
   }
 
   async findEdges(query: EdgeQuery = {}): Promise<Page<EdgeRecord>> {

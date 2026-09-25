@@ -405,7 +405,9 @@ export function indexStoreContract(
       const edges = async (query?: Parameters<IndexStore['findEdges']>[0]) =>
         (await store.findEdges(query)).items;
       expect(await edges()).toHaveLength(3);
-      expect(await edges({ to: 'b.ts' })).toEqual([{ from: 'a.ts', to: 'b.ts', kind: 'imports' }]);
+      expect(await edges({ to: 'b.ts' })).toEqual([
+        { from: 'a.ts', to: 'b.ts', kind: 'imports', confidence: 'exact' },
+      ]);
       expect((await edges({ kind: 'calls' })).map((e) => e.to)).toEqual(['b.ts#g']);
       expect((await edges({ from: 'b.ts' })).map((e) => e.to)).toEqual(['c.ts']);
       expect((await edges({ kinds: ['calls', 'imports'] })).map((e) => e.to)).toEqual([
@@ -415,6 +417,12 @@ export function indexStoreContract(
       ]);
       expect(await edges({ kinds: [] })).toEqual([]);
       expect(await edges({ kind: 'calls', kinds: ['imports'] })).toEqual([]);
+
+      await store.replaceEdges('b.ts', [
+        { from: 'b.ts#h', to: 'a.ts#f', kind: 'calls:name', confidence: 'guess' },
+      ]);
+      expect((await edges({ from: 'b.ts#h' })).map((e) => e.confidence)).toEqual(['guess']);
+      await store.replaceEdges('b.ts', [{ from: 'b.ts', to: 'c.ts', kind: 'imports' }]);
 
       await store.replaceEdges('a.ts', [{ from: 'a.ts', to: 'z.ts', kind: 'imports' }]);
       expect((await edges()).map((e) => e.to)).toEqual(['z.ts', 'c.ts']);

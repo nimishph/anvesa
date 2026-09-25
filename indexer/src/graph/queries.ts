@@ -1,6 +1,6 @@
 import { InvalidArgumentError, type Page, type PageRequest } from '@cntxt-labs/anvesa-core';
 import type { FileFacts, SymbolFact } from '../extract/facts.ts';
-import type { EdgeRecord, IndexStore } from '../store/index.ts';
+import type { Confidence, EdgeRecord, IndexStore } from '../store/index.ts';
 import type { WorkspacePackage } from '../workspace/discover.ts';
 import { CALL_EDGE_KINDS, EDGE, IMPORT_EDGE_KINDS } from './edges.ts';
 
@@ -21,6 +21,8 @@ export interface CallerRef {
   readonly path: string;
   /** `calls` was resolved through scope or imports; `calls:name` is a guess by name. */
   readonly evidence: 'resolved' | 'name';
+  /** `exact` from scope or imports, `inferred` through a declared type, `guess` by name alone. */
+  readonly confidence: Confidence;
   readonly package: string | undefined;
   /** The caller lives in a different workspace package than the symbol it calls. */
   readonly crossPackage: boolean;
@@ -35,6 +37,7 @@ export interface CalleeRef {
   /** A symbol id, `package#name` for something external, or the called name when unresolved. */
   readonly to: string;
   readonly kind: 'resolved' | 'name' | 'external' | 'unresolved';
+  readonly confidence: Confidence;
   /** The called symbol's lines and signature, when it is one this workspace holds. */
   readonly symbol: SymbolBrief | undefined;
   /** Lines, in the calling symbol's file, where it makes this call. */
@@ -105,6 +108,7 @@ export class GraphQueries {
         from: edge.from,
         path,
         evidence: edge.kind === EDGE.calls ? 'resolved' : 'name',
+        confidence: confidenceOf(edge),
         package: pkg?.name,
         crossPackage: target !== undefined && pkg?.root !== targetPackage,
         symbol: caller ? briefOf(caller) : undefined,
@@ -134,6 +138,7 @@ export class GraphQueries {
       items.push({
         to: edge.to,
         kind,
+        confidence: confidenceOf(edge),
         symbol: callee ? briefOf(callee) : undefined,
         callLines: await callLines(facts, originPath, origin ? from : undefined, [
           ...(callee ? [callee.baseName] : []),
@@ -279,6 +284,11 @@ function pageRequest(request: PageRequest): PageRequest {
     ...(request.limit === undefined ? {} : { limit: request.limit }),
     ...(request.cursor === undefined ? {} : { cursor: request.cursor }),
   };
+}
+
+/** What an edge says of itself; an edge stored before confidence existed is read by its kind. */
+function confidenceOf(edge: EdgeRecord): Confidence {
+  return edge.confidence ?? (edge.kind === EDGE.callsByName ? 'guess' : 'exact');
 }
 
 function calleeOf(edge: EdgeRecord): CalleeRef['kind'] {

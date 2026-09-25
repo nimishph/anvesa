@@ -12,6 +12,7 @@ import type { SyntaxNode } from '@cntxt-labs/anvesa-syntax';
 import { CallCollector } from './calls.ts';
 import type { FileFacts, SymbolFact } from './facts.ts';
 import { importCollectorFor } from './imports.ts';
+import { PhpTypeCollector } from './php-types.ts';
 import { bySpan, NestingCursor, type Span } from './scope.ts';
 
 /**
@@ -35,7 +36,7 @@ export interface Extracted {
  * Bump when what is extracted from the same outline changes (a new fact, a different rule), so
  * indexes built before it are extracted again instead of quietly lacking it.
  */
-const FACTS_VERSION = 2;
+const FACTS_VERSION = 3;
 
 /** Offsets locate nodes in the source; a cached outline does not need them. */
 const CACHE_OMITS: ReadonlySet<string> = new Set([ATTR.startIndex, ATTR.endIndex]);
@@ -99,6 +100,10 @@ export class FactExtractor {
         const scope = new NestingCursor(placed);
         const calls = new CallCollector((position) => scope.at(position)?.id);
         const imports = importCollectorFor(encoded.language);
+        const types =
+          encoded.language === 'php'
+            ? new PhpTypeCollector((position) => scope.at(position)?.id)
+            : undefined;
 
         let visited = 0;
         for (const node of preorder(tree.root)) {
@@ -108,6 +113,7 @@ export class FactExtractor {
           }
           calls.visit(node);
           imports?.visit(node);
+          types?.visit(node);
         }
 
         const exports = imports?.exports ?? [];
@@ -132,6 +138,7 @@ export class FactExtractor {
             unnamedCalls: calls.gaps.unnamedCalls,
             computedImports: imports?.gaps.computedImports ?? 0,
           },
+          ...(types === undefined || types.types.length === 0 ? {} : { types: types.types }),
         };
         return { facts, wexpr: serializeWExpr(encoded.root, { omit: CACHE_OMITS }) };
       },

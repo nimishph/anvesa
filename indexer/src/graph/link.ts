@@ -6,8 +6,9 @@ import type {
   ImportBinding,
   ImportFact,
   SymbolFact,
+  TypeFact,
 } from '../extract/index.ts';
-import type { EdgeRecord, FileState, IndexStore } from '../store/index.ts';
+import type { Confidence, EdgeRecord, FileState, IndexStore } from '../store/index.ts';
 import { isBuiltin } from './builtins.ts';
 import { EDGE } from './edges.ts';
 import type { ImportResolver, ResolvedImport } from './resolver.ts';
@@ -63,8 +64,8 @@ export function summarize(reports: Iterable<LinkReport>): LinkSummary {
 
 /** What the linker decided for one call. Public so a report can say why, and an eval can check. */
 export type CallResolution =
-  /** Found through scope, imports or the enclosing class. */
-  | { readonly kind: 'symbol'; readonly ids: readonly string[] }
+  /** Found through scope, imports or the enclosing class; `inferred` when through a declared type. */
+  | { readonly kind: 'symbol'; readonly ids: readonly string[]; readonly inferred?: true }
   /** Matched by name among what the caller can see: a guess. */
   | { readonly kind: 'byName'; readonly ids: readonly string[] }
   /** A package outside the workspace, or the runtime. */
@@ -93,7 +94,15 @@ interface ExportTable {
   /** What this file imports, by the local name, so a listed export can be followed on. */
   readonly imported: ReadonlyMap<string, { fact: ImportFact; binding: ImportBinding }>;
   readonly language: string;
+  /** The namespace the file declares (PHP), for names written relative to it. */
+  readonly namespace: string | undefined;
 }
+
+/** What a class name written in a file refers to. */
+export type ClassResolution =
+  | { readonly kind: 'class'; readonly symbol: SymbolFact; readonly byName: boolean }
+  | { readonly kind: 'external'; readonly name: string }
+  | { readonly kind: 'unknown' };
 
 /** An import binding, with where it points. */
 interface Bound {
@@ -122,6 +131,7 @@ export class GraphLinker {
   readonly #dependencies = new Map<string, Promise<readonly string[]>>();
   readonly #named = new Map<string, Promise<ReadonlySet<string>>>();
   readonly #nearest = new Map<string, Promise<readonly SymbolFact[]>>();
+  readonly #typed = new Map<string, Promise<readonly TypeFact[]>>();
 
   constructor(store: IndexStore, resolver: ImportResolver) {
     this.#store = store;
@@ -315,7 +325,88 @@ export class GraphLinker {
           entry.kind === 'reexport' || (facts.language === 'python' && entry.kind === 'static'),
       ),
       language: facts.language,
+      namespace: facts.symbols.find((symbol) => symbol.kind === 'namespace')?.name,
     };
+  }
+
+  /** The declared types of a file's names; empty where the language has none. */
+  typesOf(path: string): Promise<readonly TypeFact[]> {
+    let known = this.#typed.get(path);
+    if (!known) {
+      known = this.#store.facts(path).then((facts) => facts?.types ?? []);
+      this.#typed.set(path, known);
+    }
+    return known;
+  }
+
+  /**
+   * The class a type name written in `from` refers to: declared there, imported with `use`, in the
+   * file's own namespace, or fully qualified. A name that no file declares but exactly one class in
+   * the workspace bears is that class, marked `byName`.
+   */
+  async resolveClass(typeName: string, from: string): Promise<ClassResolution> {
+    const table = await this.exportsOf(from);
+    if (!table) return { kind: 'unknown' };
+    const written = typeName.replace(/^\\+/, '');
+    const segments = written.split('\\');
+    const base = segments.at(-1) ?? written;
+    const absolute = typeName.startsWith('\\');
+
+    if (segments.length === 1 && !absolute) {
+      const local = table.byName.get(base)?.find((symbol) => CONTAINER_KINDS.has(symbol.kind));
+      if (local) return { kind: 'class', symbol: local, byName: false };
+      const via = table.imported.get(base);
+      if (via) {
+        const target = await this.resolveImport(from, via.fact, table.language);
+        if (target.resolution.kind === 'file') {
+          const found = await this.exportedSymbol(target.resolution.path, via.binding.imported);
+          if (found && CONTAINER_KINDS.has(found.kind)) {
+            return { kind: 'class', symbol: found, byName: false };
+          }
+        }
+        return { kind: 'external', name: via.fact.specifier };
+      }
+    }
+
+    const candidates = absolute
+      ? [written]
+      : [
+          ...(table.namespace ? [`${table.namespace}\\${written}`] : []),
+          ...(segments.length > 1 || !table.namespace ? [written] : []),
+        ];
+    for (const specifier of candidates) {
+      const fact: ImportFact = {
+        specifier,
+        kind: 'static',
+        relative: false,
+        typeOnly: false,
+        bindings: [{ imported: base, local: base, typeOnly: false }],
+        line: 0,
+      };
+      const target = await this.resolveImport(from, fact, table.language);
+      if (target.resolution.kind !== 'file') continue;
+      const found = await this.exportedSymbol(target.resolution.path, base);
+      if (found && CONTAINER_KINDS.has(found.kind)) {
+        return { kind: 'class', symbol: found, byName: false };
+      }
+    }
+
+    const named: SymbolFact[] = [];
+    let cursor: string | undefined;
+    do {
+      const page: Page<SymbolFact> = await this.#store.findSymbols({
+        baseName: base,
+        ...(cursor === undefined ? {} : { cursor }),
+      });
+      for (const symbol of page.items) {
+        if (CONTAINER_KINDS.has(symbol.kind) && symbol.parentId === undefined) named.push(symbol);
+      }
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor !== undefined && named.length < 2);
+    const [only] = named;
+    return named.length === 1 && only
+      ? { kind: 'class', symbol: only, byName: true }
+      : { kind: 'unknown' };
   }
 
   /**
@@ -450,6 +541,9 @@ class FileLink {
   /** Module specifier -> the import, for `import a.b` where a call reads `a.b.f()`. */
   readonly #modules = new Map<string, Bound>();
 
+  /** Declared types by the symbol they belong to. */
+  readonly #types = new Map<string, TypeFact[]>();
+
   readonly #onCall: LinkOptions['onCall'];
 
   constructor(linker: GraphLinker, facts: FileFacts, onCall: LinkOptions['onCall']) {
@@ -457,6 +551,7 @@ class FileLink {
     this.#facts = facts;
     this.#onCall = onCall;
     this.#byId = new Map(facts.symbols.map((symbol) => [symbol.id, symbol]));
+    for (const entry of facts.types ?? []) push(this.#types, entry.scope, entry);
     for (const symbol of facts.symbols) {
       push(this.#byBaseName, symbol.baseName, symbol);
       push(this.#byQualified, symbol.name, symbol);
@@ -473,11 +568,11 @@ class FileLink {
     return { list: this.list };
   }
 
-  #add(from: string, to: string, kind: string): void {
+  #add(from: string, to: string, kind: string, confidence: Confidence = 'exact'): void {
     const key = `${from}\u0000${to}\u0000${kind}`;
     if (this.#seen.has(key)) return;
     this.#seen.add(key);
-    this.list.push({ from, to, kind });
+    this.list.push({ from, to, kind, confidence });
   }
 
   // --- imports ----------------------------------------------------------------------------------
@@ -538,12 +633,15 @@ class FileLink {
     const outcome = await this.#followAliases(await this.#resolveCall(call));
     this.#onCall?.(this.#facts.path, call, outcome);
     switch (outcome.kind) {
-      case 'symbol':
-        for (const id of outcome.ids) this.#add(from, id, EDGE.calls);
+      case 'symbol': {
+        const confidence = outcome.inferred ? 'inferred' : 'exact';
+        for (const id of outcome.ids) this.#add(from, id, EDGE.calls, confidence);
+        if (call.kind === 'new') await this.#linkConstructors(from, outcome.ids, confidence);
         this.calls.resolved += 1;
         return;
+      }
       case 'byName':
-        for (const id of outcome.ids) this.#add(from, id, EDGE.callsByName);
+        for (const id of outcome.ids) this.#add(from, id, EDGE.callsByName, 'guess');
         this.calls.byName += 1;
         return;
       case 'external':
@@ -557,12 +655,30 @@ class FileLink {
     }
   }
 
+  /** `new X()` also calls `X.__construct` when the class declares one (PHP). */
+  async #linkConstructors(
+    from: string,
+    ids: readonly string[],
+    confidence: Confidence,
+  ): Promise<void> {
+    for (const id of ids) {
+      const symbol = this.#byId.get(id) ?? (await this.#linker.symbolById(id));
+      if (!symbol || !CONTAINER_KINDS.has(symbol.kind)) continue;
+      const ctor = await this.#member(symbol.path, `${symbol.name}.__construct`);
+      if (ctor) this.#add(from, ctor.id, EDGE.calls, confidence);
+    }
+  }
+
   /** A call to a name that is only another name is a call to what that name is. */
   async #followAliases(outcome: CallOutcome): Promise<CallOutcome> {
     if (outcome.kind !== 'symbol') return outcome;
     const ids = new Set<string>();
     for (const id of outcome.ids) ids.add(await this.#throughAlias(id));
-    return { kind: 'symbol', ids: [...ids] };
+    return {
+      kind: 'symbol',
+      ids: [...ids],
+      ...(outcome.inferred ? { inferred: true as const } : {}),
+    };
   }
 
   async #throughAlias(id: string): Promise<string> {
@@ -586,13 +702,23 @@ class FileLink {
       if (isBuiltin(this.#facts.language, call.name)) {
         return { kind: 'external', to: `global#${call.name}` };
       }
+      if (call.kind === 'new' && this.#facts.language === 'php') {
+        return this.#newInstance(call.name, caller);
+      }
       return { kind: 'unresolved', reason: 'not declared here or imported' };
     }
+
+    if (receiver.kind === 'result') return this.#viaReturnType(call, receiver);
 
     if (receiver.kind === 'complex') {
       return { kind: 'unresolved', reason: 'receiver is an expression' };
     }
     if (receiver.kind === 'self') return this.#viaSelf(call.name, caller);
+
+    if (this.#facts.language === 'php' && receiver.name.startsWith('$')) {
+      const typed = await this.#viaDeclaredType(receiver.name, call.name, caller);
+      if (typed) return typed;
+    }
 
     // `pkg.util.f()` where `import pkg.util` names the whole module.
     const module = this.#modules.get(receiver.name);
@@ -613,7 +739,157 @@ class FileLink {
     if (own?.length) return { kind: 'symbol', ids: [(own.at(-1) as SymbolFact).id] };
     // `this.cache.get()` is a call on a property, so the method it reaches is not the caller's own.
     const property = first === 'this' || first === 'self' || first === 'cls';
+    if (this.#facts.language === 'php' && !first.startsWith('$') && !receiver.name.includes('.')) {
+      // `Foo::bar()` where `Foo` is in the file's own namespace, so no `use` names it.
+      const named = await this.#linker.resolveClass(receiver.name, this.#facts.path);
+      if (named.kind !== 'unknown') return this.#inClass(named, receiver.name, call.name);
+    }
     return this.#byNameAmongVisible(call.name, property ? this.#classOf(caller)?.id : undefined);
+  }
+
+  // --- declared types (PHP) ----------------------------------------------------------------------
+
+  /** `new X()` where nothing declares or imports `X`: the class of that name in the namespace. */
+  async #newInstance(name: string, caller: SymbolFact | undefined): Promise<CallOutcome> {
+    if (name === 'self' || name === 'static') {
+      const own = this.#classOf(caller);
+      if (own) return { kind: 'symbol', ids: [own.id] };
+      return { kind: 'unresolved', reason: 'self used outside a class' };
+    }
+    const found = await this.#linker.resolveClass(name, this.#facts.path);
+    if (found.kind === 'class') {
+      return found.byName
+        ? { kind: 'byName', ids: [found.symbol.id] }
+        : { kind: 'symbol', ids: [found.symbol.id], inferred: true };
+    }
+    if (found.kind === 'external') return { kind: 'external', to: `${found.name}#${name}` };
+    return { kind: 'unresolved', reason: 'not declared here or imported' };
+  }
+
+  /** The one class a variable was declared or assigned as, in the caller or what encloses it. */
+  #variableType(variable: string, caller: SymbolFact | undefined): string | undefined {
+    for (let scope = caller; scope !== undefined; scope = this.#parentOf(scope)) {
+      const types = new Set(
+        (this.#types.get(scope.id) ?? [])
+          .filter((entry) => entry.name === variable && entry.origin !== 'return')
+          .map((entry) => entry.type),
+      );
+      if (types.size === 1) return [...types][0];
+      if (types.size > 1) return undefined;
+    }
+    return undefined;
+  }
+
+  /** The class a written type is, with `self` and `static` meaning the class around `context`. */
+  async #classOfType(
+    type: string,
+    from: string,
+    context: SymbolFact | undefined,
+  ): Promise<ClassResolution> {
+    if (type === 'self' || type === 'static') {
+      let scope = context;
+      while (scope !== undefined && !CONTAINER_KINDS.has(scope.kind)) {
+        scope =
+          scope.parentId === undefined
+            ? undefined
+            : (this.#byId.get(scope.parentId) ?? (await this.#linker.symbolById(scope.parentId)));
+      }
+      return scope ? { kind: 'class', symbol: scope, byName: false } : { kind: 'unknown' };
+    }
+    return this.#linker.resolveClass(type, from);
+  }
+
+  /**
+   * `$var->f()` and `$this->prop->f()`: the class comes from what the source declares for the
+   * variable or property. `undefined` when nothing is declared, so the caller can fall back.
+   */
+  async #viaDeclaredType(
+    receiver: string,
+    name: string,
+    caller: SymbolFact | undefined,
+  ): Promise<CallOutcome | undefined> {
+    const [head = '', ...hops] = receiver.split('.');
+    let current: ClassResolution;
+    if (head === '$this') {
+      const own = this.#classOf(caller);
+      if (!own) return undefined;
+      current = { kind: 'class', symbol: own, byName: false };
+    } else {
+      const type = this.#variableType(head, caller);
+      if (type === undefined) return undefined;
+      current = await this.#classOfType(type, this.#facts.path, caller);
+    }
+    for (const property of hops) {
+      if (current.kind !== 'class') break;
+      const declared = await this.#propertyType(current.symbol, `$${property}`);
+      if (declared === undefined) return undefined;
+      current = await this.#classOfType(declared, current.symbol.path, current.symbol);
+    }
+    return this.#inClass(current, receiver, name);
+  }
+
+  /** The declared type of a property of `owner`: a typed property or a promoted parameter. */
+  async #propertyType(owner: SymbolFact, property: string): Promise<string | undefined> {
+    const types = new Set(
+      (await this.#linker.typesOf(owner.path))
+        .filter(
+          (entry) =>
+            entry.name === property &&
+            ((entry.origin === 'property' && entry.scope === owner.id) ||
+              (entry.origin === 'promoted' && entry.scope === `${owner.id}.__construct`)),
+        )
+        .map((entry) => entry.type),
+    );
+    return types.size === 1 ? [...types][0] : undefined;
+  }
+
+  /** `A::get($id)->run()`: `run` in the class that `A::get` is declared to return. */
+  async #viaReturnType(
+    call: CallFact,
+    receiver: Extract<NonNullable<CallFact['receiver']>, { kind: 'result' }>,
+  ): Promise<CallOutcome> {
+    const opaque: CallOutcome = { kind: 'unresolved', reason: 'receiver is an expression' };
+    const inner = await this.#resolveCall({
+      ...call,
+      name: receiver.name,
+      receiver: receiver.receiver,
+      kind: 'call',
+    });
+    if (inner.kind !== 'symbol' || inner.ids.length !== 1) return opaque;
+    const callee =
+      this.#byId.get(inner.ids[0] as string) ??
+      (await this.#linker.symbolById(inner.ids[0] as string));
+    if (!callee) return opaque;
+    const returned = (await this.#linker.typesOf(callee.path)).filter(
+      (entry) => entry.origin === 'return' && entry.scope === callee.id,
+    );
+    const [declared] = returned;
+    if (returned.length !== 1 || !declared) return opaque;
+    const owner = await this.#classOfType(declared.type, callee.path, callee);
+    return this.#inClass(owner, `${receiver.name}()`, call.name);
+  }
+
+  /** A method called on a value whose class is known (or known to be outside the workspace). */
+  async #inClass(owner: ClassResolution, receiver: string, name: string): Promise<CallOutcome> {
+    if (owner.kind === 'external') {
+      return { kind: 'external', to: `${owner.name}#${name}` };
+    }
+    if (owner.kind === 'unknown') {
+      return {
+        kind: 'unresolved',
+        reason: `the declared class of ${receiver} is not in the workspace`,
+      };
+    }
+    const member = await this.#member(owner.symbol.path, `${owner.symbol.name}.${name}`);
+    if (!member) {
+      return {
+        kind: 'unresolved',
+        reason: 'not a member of the declared class (inherited or dynamic)',
+      };
+    }
+    return owner.byName
+      ? { kind: 'byName', ids: [member.id] }
+      : { kind: 'symbol', ids: [member.id], inferred: true };
   }
 
   /**
