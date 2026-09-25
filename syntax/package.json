@@ -1,6 +1,6 @@
 {
   "name": "@cntxt-labs/anvesa-syntax",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Grammar resolution and parsing: path or extension in, tree-sitter tree out, offline once grammars are installed.",

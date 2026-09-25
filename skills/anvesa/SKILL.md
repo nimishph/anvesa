@@ -1,7 +1,7 @@
 ---
 name: anvesa
 description: Find code by meaning and structure using anvesa (@cntxt-labs/anvesa). Use when searching a codebase for concepts, finding declarations, tracing callers/callees/dependents, querying AST structure with WQL, or running named query patterns. Prefer anvesa over grep for semantic intent, symbol relationships, and structural invariants.
-version: "0.2.0"
+version: "0.3.0"
 ---
 
 # anvesa: Semantic & Structural Code Retrieval
