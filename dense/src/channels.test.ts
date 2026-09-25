@@ -604,6 +604,25 @@ describe('keeping a channel equal to an outside source', () => {
     expect(await p.store.sourcePaths('docs')).toEqual(['notes/a.md']);
   });
 
+  test('a record without a hash gets one derived from its content', async () => {
+    const p = pipeline();
+    const hashless = () => [{ path: 'notes/a.md', content: '# A\nFirst note text.' }] as never;
+    const first = await p.ingester.syncChannel('docs', source('notes', hashless));
+    expect(first.reports.map((r) => r.outcome)).toEqual(['indexed']);
+    const again = await p.ingester.syncChannel('docs', source('notes', hashless));
+    expect(again.reports.map((r) => r.outcome)).toEqual(['unchanged']);
+  });
+
+  test('a record without content is refused, not silently dropped', async () => {
+    const p = pipeline();
+    await expect(
+      p.ingester.syncChannel(
+        'docs',
+        source('notes', () => [{ path: 'notes/a.md' }] as never),
+      ),
+    ).rejects.toThrow(/content/);
+  });
+
   test('records the source does not offer to this channel do not count as offered', async () => {
     const p = pipeline();
     await p.ingester.syncChannel(

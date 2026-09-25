@@ -14,8 +14,8 @@ import {
   type MappingCheck,
   type ModelDoctor,
   type ModelRow,
+  type PatternInventory,
   type PatternRunResult,
-  type PatternSpec,
   type RedTeamRuleInfo,
   type RedTeamScan,
   type RefineResult,
@@ -600,8 +600,10 @@ export function renderRedTeamScan(scan: RedTeamScan): string {
   );
 }
 
-export function renderPatterns(specs: readonly PatternSpec[]): string {
-  if (specs.length === 0) {
+export function renderPatterns(inventory: PatternInventory): string {
+  const { patterns: specs, invalid } = inventory;
+  const problems = invalid.map((p) => `  invalid ${p.file}: ${p.message} [${p.code}]`);
+  if (specs.length === 0 && invalid.length === 0) {
     return 'no patterns found in .anvesa/patterns/\n';
   }
   const rows = specs.map((spec) => {
@@ -611,7 +613,11 @@ export function renderPatterns(specs: readonly PatternSpec[]): string {
     const corpus = spec.corpus ? ` [corpus: ${spec.corpus}]` : '';
     return `  ${spec.name.padEnd(20)} ${corpus}${params ? `  params: ${params}` : ''}${desc}`;
   });
-  return lines(`${specs.length} pattern${specs.length === 1 ? '' : 's'}:`, ...rows);
+  return lines(
+    `${specs.length} pattern${specs.length === 1 ? '' : 's'}:`,
+    ...rows,
+    ...(problems.length > 0 ? [`${problems.length} invalid file(s):`, ...problems] : []),
+  );
 }
 
 export function renderPatternResult(result: PatternRunResult): string {

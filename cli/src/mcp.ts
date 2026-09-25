@@ -265,7 +265,7 @@ export function createMcpServer(retriever: Retriever): McpServer {
         'List all available declarative structural patterns configured in .anvesa/patterns/.',
       inputSchema: {},
     },
-    () => respond(() => retriever.patterns.list()),
+    () => respond(() => retriever.patterns.inspect()),
   );
 
   server.registerTool(

@@ -68,6 +68,7 @@ const EXPECTED: Readonly<Record<string, string>> = {
   'fail-comment-only-catch': 'plugin',
   'fail-comment-only-catch-noparam': 'plugin',
   'fail-empty-catch-with-finally': 'plugin',
+  'fail-void-catch-binding': 'plugin',
 };
 
 describe('standards enforcement', () => {

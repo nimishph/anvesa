@@ -1,4 +1,9 @@
-import { type CodeLensError, Deadline, toCodeLensError } from '@cntxt-labs/anvesa-core';
+import {
+  type CodeLensError,
+  Deadline,
+  InvalidArgumentError,
+  toCodeLensError,
+} from '@cntxt-labs/anvesa-core';
 import { budgetFor } from './budget.ts';
 import {
   type Card,
@@ -105,6 +110,7 @@ export class Ingester {
 
   /** Ingest one file into every channel that claims it. */
   async ingest(file: InputFile, options: IngestOptions = {}): Promise<readonly IngestReport[]> {
+    file = withHash(file, 'ingest');
     const reports: IngestReport[] = [];
     for (const transformer of this.#registry.claimants(file)) {
       reports.push(await this.#ingestInto(transformer, file, options));
@@ -126,8 +132,9 @@ export class Ingester {
     const transformers = this.#registry.require(channel);
     const reports: IngestReport[] = [];
     const offered = new Set<string>();
-    for await (const file of source.files()) {
+    for await (const offeredFile of source.files()) {
       options.deadline?.throwIfExpired(`sync ${channel} from ${source.name}`);
+      const file = withHash(offeredFile, source.name);
       for (const transformer of transformers) {
         if (!transformer.claim(file)) continue;
         offered.add(file.path);
@@ -258,4 +265,17 @@ export class Ingester {
     }
     return makeCards(transformer, file, drafts);
   }
+}
+
+/** A source may leave `hash` out; it is then derived from `content`. Anything else is rejected. */
+function withHash(file: InputFile, source: string): InputFile {
+  if (typeof file.hash === 'string' && file.hash !== '') return file;
+  if (typeof file.path !== 'string' || typeof file.content !== 'string') {
+    throw new InvalidArgumentError(
+      `record from source ${source}`,
+      'an object with string "path" and "content"',
+      file,
+    );
+  }
+  return inputFile(file.path, file.content, file.language ? { language: file.language } : {});
 }
