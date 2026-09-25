@@ -1,0 +1,46 @@
+{
+  "queries": [
+    {
+      "id": "function-by-name",
+      "wql": "//function[@name=\"total\"]",
+      "expect": ["src/cart.js:total"]
+    },
+    {
+      "id": "methods-of-a-class",
+      "wql": "//class[@name=\"Cart\"]//method",
+      "expect": ["src/cart.js:Cart.constructor", "src/cart.js:Cart.add", "src/cart.js:Cart.count"]
+    },
+    {
+      "id": "callers-of-an-imported-function",
+      "callers": "total",
+      "expect": ["src/checkout.js#checkout"],
+      "confidence": { "src/checkout.js#checkout": "exact" }
+    },
+    {
+      "id": "callers-of-a-local-helper",
+      "callers": "price",
+      "expect": ["src/cart.js#total"]
+    },
+    {
+      "id": "callers-through-this",
+      "callers": "Cart.count",
+      "expect": ["src/cart.js#Cart.add"],
+      "confidence": { "src/cart.js#Cart.add": "exact" }
+    },
+    {
+      "id": "callees-of-checkout",
+      "callees": "checkout",
+      "expect": ["src/cart.js#total", "src/payments.js#charge"]
+    },
+    {
+      "id": "dependents-of-cart",
+      "dependents": "src/cart.js",
+      "expect": ["src/checkout.js"]
+    },
+    {
+      "id": "dependents-of-payments",
+      "dependents": "src/payments.js",
+      "expect": ["src/checkout.js"]
+    }
+  ]
+}

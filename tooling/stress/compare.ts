@@ -216,3 +216,12 @@ export function renderComparison(
   lines.push('', regressions === 0 ? 'no regressions' : `${regressions} regression(s)`);
   return `${lines.join('\n')}\n`;
 }
+
+/** A regression in any measure, or a repository that failed to run: what a release must not ship. */
+export function blocksRelease(comparisons: readonly Comparison[]): boolean {
+  return comparisons.some(
+    (entry) =>
+      entry.outcome.includes('failed') ||
+      entry.deltas.some((delta) => delta.verdict === 'regression'),
+  );
+}

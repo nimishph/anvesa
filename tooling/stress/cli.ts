@@ -9,6 +9,8 @@
  *   bun run stress setup                               install the grammars the manifest needs
  *   bun run stress run [filters] [--no-dense ...]      clone, index, ask, record, compare
  *   bun run stress compare [--window 3]                the latest execution against those before it
+ *                                                      (--fail-on-regression: exit 1 on a regression or a failed run;
+ *                                                       also accepted by `run`; `add --if-missing` keeps an existing pin)
  *   bun run stress runs                                what has been recorded
  *
  * Filters: --id --language --stack --structure --complexity --era --limit (comma-separated lists).
@@ -17,7 +19,7 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { compare, DEFAULT_TOLERANCES, renderComparison } from './compare.ts';
+import { blocksRelease, compare, DEFAULT_TOLERANCES, renderComparison } from './compare.ts';
 import { ghApi, spawnText } from './git.ts';
 import { readManifest, readRuns, stressHome, writeManifest, writeRun } from './home.ts';
 import {
@@ -53,6 +55,8 @@ const OPTIONS = {
   notes: { type: 'string' },
   ref: { type: 'string' },
   'no-pin': { type: 'boolean' },
+  'if-missing': { type: 'boolean' },
+  'fail-on-regression': { type: 'boolean' },
   repin: { type: 'boolean' },
   prune: { type: 'boolean' },
   stars: { type: 'string' },
@@ -162,6 +166,13 @@ function eraFromCreation(createdAt: string): Era {
 }
 
 async function add(manifest: Manifest, id: string, values: Values): Promise<Manifest> {
+  // A release run keeps the pinned commit it recorded, so its numbers stay comparable.
+  if (
+    values['if-missing'] &&
+    Object.keys(manifest.repos).some((known) => known.toLowerCase() === id.toLowerCase())
+  ) {
+    return manifest;
+  }
   const repo = await ghApi<GithubRepo>(`repos/${id}`);
   const facts = factsOf(repo);
   const ref = values.ref || (values['no-pin'] ? undefined : await tipOf(id, repo.default_branch));
@@ -374,9 +385,9 @@ async function main(): Promise<void> {
       process.stdout.write(`recorded ${path}\n\n`);
       const window = number(values.window, 'window', 3);
       const runs = readRuns(home);
-      process.stdout.write(
-        renderComparison(compare(runs, { window, ids: entries.map((e) => e.id) }), runs, window),
-      );
+      const comparisons = compare(runs, { window, ids: entries.map((e) => e.id) });
+      process.stdout.write(renderComparison(comparisons, runs, window));
+      if (values['fail-on-regression'] && blocksRelease(comparisons)) process.exitCode = 1;
       return;
     }
     case 'compare': {
@@ -396,6 +407,7 @@ async function main(): Promise<void> {
           ? `${JSON.stringify(comparisons, null, 2)}\n`
           : renderComparison(comparisons, runs, window),
       );
+      if (values['fail-on-regression'] && blocksRelease(comparisons)) process.exitCode = 1;
       return;
     }
     case 'runs': {

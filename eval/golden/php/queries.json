@@ -1,0 +1,79 @@
+{
+  "queries": [
+    {
+      "id": "class-by-name",
+      "wql": "//class[@name=\"OrderController\"]",
+      "expect": ["app/Http/OrderController.php:OrderController"]
+    },
+    {
+      "id": "methods-of-a-class",
+      "wql": "//class[@name=\"OrderController\"]//method",
+      "expect": [
+        "app/Http/OrderController.php:OrderController.__construct",
+        "app/Http/OrderController.php:OrderController.show",
+        "app/Http/OrderController.php:OrderController.make"
+      ]
+    },
+    {
+      "id": "call-on-a-typed-property-is-followed-to-its-class",
+      "why": "$this->service is declared OrderService by the promoted constructor parameter",
+      "callers": "OrderService.find",
+      "expect": ["app/Http/OrderController.php#OrderController.show"],
+      "confidence": { "app/Http/OrderController.php#OrderController.show": "inferred" }
+    },
+    {
+      "id": "new-x-links-to-the-constructor",
+      "why": "both `new Model(...)` sites call Model.__construct",
+      "callers": "Model.__construct",
+      "expect": [
+        "app/Services/OrderService.php#OrderService.find",
+        "app/Http/OrderController.php#OrderController.make"
+      ],
+      "confidence": {
+        "app/Services/OrderService.php#OrderService.find": "exact",
+        "app/Http/OrderController.php#OrderController.make": "exact"
+      }
+    },
+    {
+      "id": "new-x-links-to-the-class",
+      "callers": "Model",
+      "expect": [
+        "app/Services/OrderService.php#OrderService.find",
+        "app/Http/OrderController.php#OrderController.make"
+      ]
+    },
+    {
+      "id": "call-on-a-typed-parameter-is-not-a-same-named-method",
+      "why": "$request is an Illuminate Request: outside the workspace, so Cache.get is never a caller",
+      "callers": "Cache.get",
+      "expect": []
+    },
+    {
+      "id": "a-guess-is-labelled-a-guess",
+      "why": "$order is assigned from a call, which has no declared class here, so save() is matched by name",
+      "callers": "Model.save",
+      "expect": ["app/Http/OrderController.php#OrderController.show"],
+      "confidence": { "app/Http/OrderController.php#OrderController.show": "guess" }
+    },
+    {
+      "id": "this-call-in-a-class",
+      "callers": "Model.validate",
+      "expect": ["app/Models/Model.php#Model.save"],
+      "confidence": { "app/Models/Model.php#Model.save": "exact" }
+    },
+    {
+      "id": "callees-of-an-action",
+      "callees": "OrderController.show",
+      "expect": [
+        "app/Services/OrderService.php#OrderService.find",
+        "app/Models/Model.php#Model.save",
+        "external:Illuminate\\Http\\Request#get"
+      ]
+    },
+    {
+      "id": "dependents-of-a-model",
+      "dependents": "app/Models/Model.php",
+      "expect": ["app/Services/OrderService.php", "app/Http/OrderController.php"]
+    }
+  ]
+}
