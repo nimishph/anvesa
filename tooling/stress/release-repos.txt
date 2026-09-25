@@ -1,0 +1,9 @@
+# Repositories the release benchmark runs on, one per line: `owner/name` and `stress add` options.
+# Blank lines and lines starting with # are ignored. The first release pins each at its then-current
+# commit (kept in the benchmark history afterwards, so later runs are comparable); to move a pin,
+# run `bun run stress refresh --repin --id owner/name` and commit nothing but the new history.
+expressjs/express --stack web-framework --structure single --era legacy
+pallets/flask --stack web-framework --structure single --era modern
+slimphp/Slim --stack web-framework --structure single --era modern
+gin-gonic/gin --stack web-framework --structure single --era modern
+sinatra/sinatra --stack web-framework --structure single --era legacy

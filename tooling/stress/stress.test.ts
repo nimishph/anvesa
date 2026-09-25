@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { compare, renderComparison } from './compare.ts';
+import { blocksRelease, compare, renderComparison } from './compare.ts';
 import { complexityOf, structureOf } from './footprint.ts';
 import { byFactor, parseManifest, StressError, select } from './manifest.ts';
 import { percentile, type RepoResult, type RunRecord, sample, wordsOf } from './measure.ts';
@@ -207,6 +207,16 @@ describe('comparing the latest execution with the window before it', () => {
     ];
     expect(compare(runs, { window: 3 })[0]?.runs).toEqual(['r2', 'r3', 'r4']);
     expect(verdicts(runs)).toMatchObject({ symbols: 'stable' });
+  });
+
+  test('a regression or a failed run blocks a release; a moved count or an improvement does not', () => {
+    const before = [run('r1', result(SHA_A, steady)), run('r2', result(SHA_A, steady))];
+    const gate = (last: RunRecord) => blocksRelease(compare([...before, last], { window: 3 }));
+    expect(gate(run('r3', result(SHA_A, steady)))).toBe(false);
+    expect(gate(run('r3', result(SHA_A, { ...steady, symbols: 150 })))).toBe(false);
+    expect(gate(run('r3', result(SHA_A, { ...steady, 'structural.ms': 100 })))).toBe(false);
+    expect(gate(run('r3', result(SHA_A, { ...steady, 'query.exact.hitRate': 0.6 })))).toBe(true);
+    expect(gate(run('r3', result(SHA_A, steady, false)))).toBe(true);
   });
 
   test('a repository that starts failing is called out', () => {

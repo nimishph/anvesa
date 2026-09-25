@@ -301,8 +301,24 @@ Each package may import only the ones to its right, and only through their `src/
 | `bun run boundaries` | dependency-cruiser |
 | `bun test` | all tests, including the rule tests |
 | `bun run package` | build the program, its `runtime/` and the npm package for this platform into `dist/` |
+| `bun run golden` | the golden-query suites, one per language (below) |
 | `bun run stress <command>` | stress-test the built program on real repositories (below) |
 | `bun run smoke` | run the built program, and the launcher as a package manager lays it out |
+
+### Golden queries
+
+`eval/golden/<language>/` holds a small program in that language (`corpus/`) and the questions
+about it with the answers that are right (`queries.json`): WQL queries, callers, callees and
+dependents. `bun run golden` indexes each corpus from nothing, asks every question through the same
+retriever the CLI uses, and fails on any answer that is not exactly the expected set. Call-graph
+answers also pin how far each link may be trusted (`exact`, `inferred` or `guess`), so a link that
+quietly becomes a guess is as visible as one that disappears. The answers are written by hand from
+the corpus, not copied from the program's output.
+
+TypeScript, JavaScript and Python run everywhere as part of `bun test`. A suite whose grammar is
+not installed here (PHP, for one) is skipped and named; `--require-all`, or
+`ANVESA_GOLDEN_REQUIRE=all`, turns a skip into a failure. To cover a language, add a folder with a
+corpus and a `queries.json`; nothing else needs to change.
 
 ### Stress test
 
@@ -335,7 +351,13 @@ It records time, CPU, peak memory, database size, files, symbols, link rates and
 hit rates. `compare` sets the latest execution against the window before it (three by default), only
 over runs of the same commit of a repository: a time or size worse than the *worst* of the window by
 more than `--tolerance` (25%, and by more than a floor that ignores tiny differences) is a regression,
-a count that moved is reported, a failure is called out.
+a count that moved is reported, a failure is called out. `--fail-on-regression` (on `run` and
+`compare`) exits 1 on a regression or a failed run.
+
+Every release runs this on its own build, over the repositories in `tooling/stress/release-repos.txt`,
+after the golden suites with `--require-all`, and compares with the previous release's numbers,
+which travel with each release as `stress-history.tar.gz`. A regression stops the release from being
+published; the first release records the baseline.
 
 ### Engineering standards
 

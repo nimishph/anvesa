@@ -1,0 +1,62 @@
+{
+  "queries": [
+    {
+      "id": "function-by-exact-name",
+      "wql": "//function[@name=\"parseConfig\"]",
+      "expect": ["src/config.ts:parseConfig"]
+    },
+    {
+      "id": "functions-by-prefix",
+      "wql": "//function[@name^=\"parse\"]",
+      "expect": ["src/config.ts:parseConfig"]
+    },
+    {
+      "id": "class-by-name",
+      "wql": "//class[@name=\"ConfigLoader\"]",
+      "expect": ["src/config.ts:ConfigLoader"]
+    },
+    {
+      "id": "methods-of-a-class",
+      "wql": "//class[@name=\"ConfigLoader\"]//method",
+      "expect": ["src/config.ts:ConfigLoader.load", "src/config.ts:ConfigLoader.reload"]
+    },
+    {
+      "id": "callers-through-an-import",
+      "why": "parseConfig is called by name in app.ts and, through the class, in config.ts",
+      "callers": "parseConfig",
+      "expect": ["src/app.ts#quick", "src/config.ts#ConfigLoader.load"],
+      "confidence": { "src/app.ts#quick": "exact", "src/config.ts#ConfigLoader.load": "exact" }
+    },
+    {
+      "id": "callers-through-this",
+      "why": "this.load() is exact; loader.load() has no declared type, so it is a guess and says so",
+      "callers": "ConfigLoader.load",
+      "expect": ["src/config.ts#ConfigLoader.reload", "src/app.ts#start"],
+      "confidence": { "src/config.ts#ConfigLoader.reload": "exact", "src/app.ts#start": "guess" }
+    },
+    {
+      "id": "a-private-helper-has-one-caller",
+      "callers": "normalizePath",
+      "expect": ["src/config.ts#parseConfig"]
+    },
+    {
+      "id": "callees-of-a-function",
+      "callees": "start",
+      "expect": [
+        "src/config.ts#ConfigLoader",
+        "src/logger.ts#log",
+        "src/config.ts#ConfigLoader.load"
+      ]
+    },
+    {
+      "id": "dependents-of-a-module",
+      "dependents": "src/config.ts",
+      "expect": ["src/app.ts"]
+    },
+    {
+      "id": "dependents-of-a-leaf",
+      "dependents": "src/logger.ts",
+      "expect": ["src/app.ts"]
+    }
+  ]
+}

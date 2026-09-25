@@ -1,0 +1,36 @@
+{
+  "queries": [
+    {
+      "id": "class-by-name",
+      "wql": "//class[@name=\"Store\"]",
+      "expect": ["app/store.py:Store"]
+    },
+    {
+      "id": "function-by-name",
+      "wql": "//function[@name=\"open_store\"]",
+      "expect": ["app/store.py:open_store"]
+    },
+    {
+      "id": "callers-of-an-imported-function",
+      "callers": "open_store",
+      "expect": ["app/service.py#save"],
+      "confidence": { "app/service.py#save": "exact" }
+    },
+    {
+      "id": "callers-through-self",
+      "callers": "Store._check",
+      "expect": ["app/store.py#Store.put"],
+      "confidence": { "app/store.py#Store.put": "exact" }
+    },
+    {
+      "id": "callees-of-save",
+      "callees": "save",
+      "expect": ["app/store.py#open_store", "app/store.py#Store.put"]
+    },
+    {
+      "id": "dependents-of-store",
+      "dependents": "app/store.py",
+      "expect": ["app/service.py"]
+    }
+  ]
+}
