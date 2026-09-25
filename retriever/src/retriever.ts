@@ -89,6 +89,7 @@ import {
   PROJECT_CONFIG_PATH,
   type ProjectConfig,
 } from './config.ts';
+import { buildWqlMatcher, findMatchingCard, splitConjunction } from './conjunction.ts';
 import {
   EmbedderUnavailableError,
   NotIndexedError,
@@ -222,6 +223,8 @@ export interface SearchOptions extends PageRequest {
    */
   readonly weights?: Readonly<Record<string, number>>;
   readonly deadline?: Deadline;
+  /** Structural AST query in WQL to filter semantic search results in conjunction. */
+  readonly wql?: string;
 }
 
 export interface SearchPage extends Page<SearchResult> {
@@ -231,6 +234,22 @@ export interface SearchPage extends Page<SearchResult> {
   readonly degraded: readonly { readonly lane: string; readonly error: CodeLensError }[];
   /** How deep each lane was read to build this page. */
   readonly depth: number;
+  /** Active conjunction queries, if any. */
+  readonly conjunction?: { readonly semantic: string; readonly wql: string };
+}
+
+export interface QueryOptions extends SearchOptions {
+  /** Semantic natural language query to rank structural WQL results in conjunction. */
+  readonly semantic?: string;
+}
+
+export interface ScoredWqlHit extends WqlHit {
+  readonly score?: number | undefined;
+}
+
+export interface QueryPage extends Page<ScoredWqlHit> {
+  readonly coverage: StructuralCoverage;
+  readonly conjunction?: { readonly semantic: string; readonly wql: string };
 }
 
 export type { ChannelInfo };
@@ -467,29 +486,94 @@ export class Retriever {
   }
 
   /** Structural retrieval: a WQL query over the outlines of every indexed file. */
-  async query(
-    wql: string,
-    options: SearchOptions = {},
-  ): Promise<Page<WqlHit> & { readonly coverage: StructuralCoverage }> {
+  async query(wql: string, options: QueryOptions = {}): Promise<QueryPage> {
     await this.#requireIndexed();
+    const split = splitConjunction(wql, undefined, options.semantic);
+    const effectiveWql = split.wql ?? wql;
+    const semanticQuery = split.semantic;
+
     const coverage = await this.#structure.refresh();
-    const parsed = parseWql(wql);
+    const parsed = parseWql(effectiveWql);
     const knownTags = this.engine.mappings.knownTags();
     for (const step of parsed.steps) {
       if (step.tag !== '*' && !isCallableVirtualTag(step.tag) && !knownTags.has(step.tag)) {
-        throw new WqlUnknownNameError(wql, 'tag', step.tag, [...knownTags]);
+        throw new WqlUnknownNameError(effectiveWql, 'tag', step.tag, [...knownTags]);
       }
       for (const predicate of step.predicates) {
-        checkPredicateAttributes(predicate, wql);
+        checkPredicateAttributes(predicate, effectiveWql);
       }
     }
-    const result = this.#structure.query(parsed, {
+
+    if (!semanticQuery) {
+      const result = this.#structure.query(parsed, {
+        ...(options.include ? { include: options.include } : {}),
+        ...(options.limit === undefined ? {} : { limit: options.limit }),
+        ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
+        ...(options.deadline ? { deadline: options.deadline } : {}),
+      });
+      return { ...result, coverage };
+    }
+
+    // Conjunction active: rank matching WQL hits by semantic relevance
+    const embedder = this.#requireEmbedder();
+    const { value: limit, source } = resolveLimit('limit', options.limit);
+    const offset = options.cursor === undefined ? 0 : decodeCursor(options.cursor);
+    const depth = offset + limit + 1;
+    const fetchLimit = Math.max(depth * 10, 500);
+
+    const structuralHits = this.#structure.query(parsed, {
       ...(options.include ? { include: options.include } : {}),
-      ...(options.limit === undefined ? {} : { limit: options.limit }),
-      ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
       ...(options.deadline ? { deadline: options.deadline } : {}),
-    });
-    return { ...result, coverage };
+    }).items;
+
+    if (structuralHits.length === 0) {
+      return {
+        items: [],
+        total: 0,
+        nextCursor: null,
+        limit: { name: 'limit', applied: limit, source, reached: false },
+        coverage,
+        conjunction: { semantic: semanticQuery, wql: effectiveWql },
+      };
+    }
+
+    const channels = options.channels ?? ['symbols'];
+    const denseItems: SearchHit[] = [];
+    for (const channel of channels) {
+      if (!this.registry.has(channel)) continue;
+      const res = await retrieveDense({
+        channel,
+        query: semanticQuery,
+        embedder,
+        store: this.vectors,
+        limit: fetchLimit,
+        ...(options.deadline ? { deadline: options.deadline } : {}),
+      });
+      denseItems.push(...res.items);
+    }
+
+    const scoredHits: ScoredWqlHit[] = [];
+    for (const hit of structuralHits) {
+      const match = findMatchingCard(hit, denseItems);
+      if (match && match.score !== undefined) {
+        scoredHits.push({
+          ...hit,
+          score: match.score,
+        });
+      }
+    }
+
+    scoredHits.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+
+    const more = scoredHits.length > offset + limit;
+    return {
+      items: scoredHits.slice(offset, offset + limit),
+      total: more ? null : scoredHits.length,
+      nextCursor: more ? encodeCursor(offset + limit) : null,
+      limit: { name: 'limit', applied: limit, source, reached: more },
+      coverage,
+      conjunction: { semantic: semanticQuery, wql: effectiveWql },
+    };
   }
 
   /**
@@ -502,6 +586,9 @@ export class Retriever {
     const { value: limit, source } = resolveLimit('limit', options.limit);
     const offset = options.cursor === undefined ? 0 : decodeCursor(options.cursor);
     const depth = offset + limit + 1;
+    const split = splitConjunction(query, options.wql);
+    const isConjunction = Boolean(split.semantic && split.wql);
+
     const wanted = options.channels ?? this.registry.channels();
     const laneNames = new Set([...this.registry.channels(), 'structural']);
     for (const [option, names] of [
@@ -524,8 +611,52 @@ export class Retriever {
     const left = (lane: string, configured: number): boolean =>
       !(options.exclude ?? []).includes(lane) && weightOf(lane, configured) > 0;
 
+    let wqlHitsCount = 0;
     const runs: { name: string; weight: number; run: () => Promise<LaneHit[]> }[] = [];
-    if (this.embedder) {
+
+    if (isConjunction) {
+      const semanticQuery = split.semantic as string;
+      const wqlQuery = split.wql as string;
+
+      await this.#structure.refresh();
+      const parsed = parseWql(wqlQuery);
+      const knownTags = this.engine.mappings.knownTags();
+      for (const step of parsed.steps) {
+        if (step.tag !== '*' && !isCallableVirtualTag(step.tag) && !knownTags.has(step.tag)) {
+          throw new WqlUnknownNameError(wqlQuery, 'tag', step.tag, [...knownTags]);
+        }
+        for (const predicate of step.predicates) {
+          checkPredicateAttributes(predicate, wqlQuery);
+        }
+      }
+      const wqlHits = this.#structure.query(parsed, {
+        ...(options.include ? { include: options.include } : {}),
+        ...(options.deadline ? { deadline: options.deadline } : {}),
+      }).items;
+      wqlHitsCount = wqlHits.length;
+
+      if (wqlHits.length === 0) {
+        return {
+          items: [],
+          total: 0,
+          nextCursor: null,
+          limit: { name: 'limit', applied: limit, source, reached: false },
+          lanes: [{ name: 'structural', hits: 0 }],
+          degraded: [],
+          depth,
+          conjunction: { semantic: semanticQuery, wql: wqlQuery },
+        };
+      }
+
+      if (!this.embedder) {
+        throw new EmbedderUnavailableError(
+          'conjunction search requires an embedder for semantic retrieval',
+        );
+      }
+
+      const matcher = buildWqlMatcher(wqlHits);
+      const fetchLimit = Math.max(depth * 10, 500);
+
       for (const channel of wanted) {
         if (!this.registry.has(channel)) continue;
         const configured = this.config.channels[channel]?.weight ?? 1;
@@ -533,35 +664,59 @@ export class Retriever {
         runs.push({
           name: channel,
           weight: weightOf(channel, configured),
-          run: async () =>
-            (
-              await retrieveDense({
-                channel,
-                query,
-                embedder: this.embedder as Embedder,
-                store: this.vectors,
+          run: async () => {
+            const res = await retrieveDense({
+              channel,
+              query: semanticQuery,
+              embedder: this.embedder as Embedder,
+              store: this.vectors,
+              limit: fetchLimit,
+              ...(options.deadline ? { deadline: options.deadline } : {}),
+            });
+            return res.items.filter((hit) => matcher(hit.card) !== undefined).map(cardHit);
+          },
+        });
+      }
+    } else {
+      if (this.embedder) {
+        for (const channel of wanted) {
+          if (!this.registry.has(channel)) continue;
+          const configured = this.config.channels[channel]?.weight ?? 1;
+          if (!left(channel, configured)) continue;
+          runs.push({
+            name: channel,
+            weight: weightOf(channel, configured),
+            run: async () =>
+              (
+                await retrieveDense({
+                  channel,
+                  query,
+                  embedder: this.embedder as Embedder,
+                  store: this.vectors,
+                  limit: depth,
+                  ...(options.deadline ? { deadline: options.deadline } : {}),
+                })
+              ).items.map(cardHit),
+          });
+        }
+      }
+      if (looksLikeWql(query) && left('structural', 1)) {
+        runs.push({
+          name: 'structural',
+          weight: weightOf('structural', 1),
+          run: async () => {
+            await this.#structure.refresh();
+            return this.#structure
+              .query(query, {
                 limit: depth,
                 ...(options.deadline ? { deadline: options.deadline } : {}),
               })
-            ).items.map(cardHit),
+              .items.map(wqlHit);
+          },
         });
       }
     }
-    if (looksLikeWql(query) && left('structural', 1)) {
-      runs.push({
-        name: 'structural',
-        weight: weightOf('structural', 1),
-        run: async () => {
-          await this.#structure.refresh();
-          return this.#structure
-            .query(query, {
-              limit: depth,
-              ...(options.deadline ? { deadline: options.deadline } : {}),
-            })
-            .items.map(wqlHit);
-        },
-      });
-    }
+
     if (runs.length === 0 && (options.exclude?.length || options.weights)) {
       throw new InvalidArgumentError(
         'exclude/weights',
@@ -618,14 +773,28 @@ export class Retriever {
       }),
     );
     const more = items.length > offset + limit;
+    const pageLanes = isConjunction
+      ? [
+          ...lanes.map((lane) => ({ name: lane.name, hits: lane.hits.length })),
+          { name: 'structural', hits: wqlHitsCount },
+        ]
+      : lanes.map((lane) => ({ name: lane.name, hits: lane.hits.length }));
     return {
       items: items.slice(offset, offset + limit),
       total: more ? null : items.length,
       nextCursor: more ? encodeCursor(offset + limit) : null,
       limit: { name: 'limit', applied: limit, source, reached: more },
-      lanes: lanes.map((lane) => ({ name: lane.name, hits: lane.hits.length })),
+      lanes: pageLanes,
       degraded,
       depth,
+      ...(isConjunction
+        ? {
+            conjunction: {
+              semantic: split.semantic as string,
+              wql: split.wql as string,
+            },
+          }
+        : {}),
     };
   }
 

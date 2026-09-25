@@ -277,6 +277,45 @@ describe('command line', () => {
     expect((await cli(root, 'search', question, '--exclude', 'nope')).code).toBe(2);
   });
 
+  test('conjunction queries combine semantic intent and WQL constraints via CLI', async () => {
+    const root = makeProject();
+    await cli(root, 'index');
+
+    // 1. search with --wql flag
+    const searchFlag = json(
+      await cli(root, 'search', 'listen requests', '--wql', '//function', '--json'),
+    );
+    expect(searchFlag.conjunction).toEqual({ semantic: 'listen requests', wql: '//function' });
+    expect(searchFlag.items[0].title).toBe('startServer');
+
+    // 2. search with inline &&
+    const searchInline = json(await cli(root, 'search', 'listen requests && //function', '--json'));
+    expect(searchInline.conjunction).toEqual({ semantic: 'listen requests', wql: '//function' });
+    expect(searchInline.items[0].title).toBe('startServer');
+
+    // 3. search text output displays conjunction header
+    const searchText = (await cli(root, 'search', 'listen requests && //function')).out;
+    expect(searchText).toContain('conjunction: semantic "listen requests" && wql "//function"');
+
+    // 4. query with --semantic flag
+    const queryFlag = json(
+      await cli(root, 'query', '//function', '--semantic', 'listen requests', '--json'),
+    );
+    expect(queryFlag.conjunction).toEqual({ semantic: 'listen requests', wql: '//function' });
+    expect(queryFlag.items[0].name).toBe('startServer');
+    expect(queryFlag.items[0].score).toBeGreaterThan(0);
+
+    // 5. query with inline &&
+    const queryInline = json(await cli(root, 'query', '//function && listen requests', '--json'));
+    expect(queryInline.conjunction).toEqual({ semantic: 'listen requests', wql: '//function' });
+    expect(queryInline.items[0].name).toBe('startServer');
+
+    // 6. query text output displays conjunction header and score
+    const queryText = (await cli(root, 'query', '//function && listen requests')).out;
+    expect(queryText).toContain('conjunction: semantic "listen requests" && wql "//function"');
+    expect(queryText).toMatch(/score \d\.\d{3}/);
+  });
+
   test('a limit is applied, reported and continued with a cursor', async () => {
     const root = makeProject();
     await cli(root, 'index');
@@ -980,6 +1019,29 @@ describe('mcp server', () => {
       const paged = await call(client, 'query', { wql: '//function', limit: 1 });
       expect(paged.body.items).toHaveLength(1);
       expect(paged.body.limit.applied).toBe(1);
+
+      const mcpConjSearch = await call(client, 'search', {
+        query: 'parse configuration',
+        wql: '//function',
+      });
+      expect(mcpConjSearch.isError).toBe(false);
+      expect(mcpConjSearch.body.conjunction).toEqual({
+        semantic: 'parse configuration',
+        wql: '//function',
+      });
+      expect(mcpConjSearch.body.items[0].path).toBe('src/config.ts');
+
+      const mcpConjQuery = await call(client, 'query', {
+        wql: '//function',
+        semantic: 'parse configuration',
+      });
+      expect(mcpConjQuery.isError).toBe(false);
+      expect(mcpConjQuery.body.conjunction).toEqual({
+        semantic: 'parse configuration',
+        wql: '//function',
+      });
+      expect(mcpConjQuery.body.items[0].name).toBe('parseConfig');
+      expect(mcpConjQuery.body.items[0].score).toBeGreaterThan(0);
 
       expect((await call(client, 'explain', {})).body.index.files).toBeGreaterThan(0);
       const diagnosed = await call(client, 'diagnose', {

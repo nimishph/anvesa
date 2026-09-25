@@ -55,15 +55,22 @@ export function createMcpServer(retriever: Retriever): McpServer {
           .describe(
             'How much each lane counts for this search, e.g. {"docs": 0.25}. 0 leaves it out.',
           ),
+        wql: z
+          .string()
+          .optional()
+          .describe(
+            'Structural AST query in WQL to filter semantic search results in conjunction, e.g. //class//method or //function[@name^="handle"].',
+          ),
         ...page,
       },
     },
-    ({ query, channels, exclude, weights, limit, cursor }) =>
+    ({ query, channels, exclude, weights, wql, limit, cursor }) =>
       respond(() =>
         retriever.search(query, {
           ...(channels ? { channels } : {}),
           ...(exclude ? { exclude } : {}),
           ...(weights ? { weights } : {}),
+          ...(wql ? { wql } : {}),
           ...(limit ? { limit } : {}),
           ...(cursor ? { cursor } : {}),
         }),
@@ -91,12 +98,23 @@ export function createMcpServer(retriever: Retriever): McpServer {
     'query',
     {
       description:
-        'Structural query in WQL over the outlines of every file, e.g. //class//method[@name^="parse"]. Also the exact lookup for a symbol by name: //function[@name="parse"].',
-      inputSchema: { wql: z.string(), ...page },
+        'Structural query in WQL over the outlines of every file, e.g. //class//method[@name^="parse"]. Also the exact lookup for a symbol by name: //function[@name="parse"]. Can be combined with a semantic query to rank structural hits by meaning.',
+      inputSchema: {
+        wql: z.string(),
+        semantic: z
+          .string()
+          .optional()
+          .describe('Natural language semantic query to rank structural WQL hits in conjunction.'),
+        ...page,
+      },
     },
-    ({ wql, limit, cursor }) =>
+    ({ wql, semantic, limit, cursor }) =>
       respond(() =>
-        retriever.query(wql, { ...(limit ? { limit } : {}), ...(cursor ? { cursor } : {}) }),
+        retriever.query(wql, {
+          ...(semantic ? { semantic } : {}),
+          ...(limit ? { limit } : {}),
+          ...(cursor ? { cursor } : {}),
+        }),
       ),
   );
 

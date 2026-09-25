@@ -22,6 +22,7 @@ import {
   PROJECT_CONFIG_PATH,
   Retriever,
   refineMapping,
+  splitConjunction,
   trainLanguage,
   verifyMappings,
   verifyModel,
@@ -324,6 +325,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         ...(channels ? { channels } : {}),
         ...(exclude ? { exclude } : {}),
         ...(weights ? { weights } : {}),
+        ...(ctx.parsed.values.wql ? { wql: ctx.parsed.values.wql } : {}),
       });
       emit(ctx, page, () => show.renderSearch(page));
     }),
@@ -339,11 +341,19 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       emit(ctx, page, () => show.renderRetrieved(page));
     }),
 
-  query: (ctx) =>
-    withProject(ctx, { embed: false }, async ({ retriever }) => {
-      const page = await retriever.query(need(ctx, 0, 'wql'), pageRequest(ctx));
+  query: (ctx) => {
+    const rawWql = rest(ctx, 0) || need(ctx, 0, 'wql');
+    const semantic = ctx.parsed.values.semantic;
+    const split = splitConjunction(rawWql, undefined, semantic);
+    const needsEmbed = Boolean(split.semantic);
+    return withProject(ctx, { embed: needsEmbed }, async ({ retriever }) => {
+      const page = await retriever.query(rawWql, {
+        ...pageRequest(ctx),
+        ...(semantic ? { semantic } : {}),
+      });
       emit(ctx, page, () => show.renderStructural(page));
-    }),
+    });
+  },
 
   callers: (ctx) =>
     withProject(ctx, { embed: false }, async ({ retriever }) => {
