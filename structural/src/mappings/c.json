@@ -1,0 +1,50 @@
+{
+  "name": "c",
+  "version": "1.0.0",
+  "extensions": [".c", ".h"],
+  "nodeTypeMap": {
+    "function_definition": "function",
+    "declaration": "declaration",
+    "struct_specifier": "struct",
+    "union_specifier": "union",
+    "enum_specifier": "enum",
+    "type_definition": "type",
+    "call_expression": "call",
+    "if_statement": "if",
+    "for_statement": "for",
+    "while_statement": "while",
+    "do_statement": "do",
+    "switch_statement": "switch",
+    "case_statement": "case",
+    "return_statement": "return",
+    "preproc_include": "import",
+    "preproc_def": "macro",
+    "preproc_function_def": "macro"
+  },
+  "structuralTags": [
+    "function",
+    "declaration",
+    "struct",
+    "union",
+    "enum",
+    "type",
+    "if",
+    "for",
+    "while",
+    "do",
+    "switch",
+    "return",
+    "import",
+    "macro"
+  ],
+  "nameExtractors": {
+    "function_definition": "declarator",
+    "struct_specifier": "type_identifier",
+    "union_specifier": "type_identifier",
+    "enum_specifier": "type_identifier",
+    "type_definition": "type_identifier",
+    "preproc_def": "identifier",
+    "preproc_function_def": "identifier"
+  },
+  "callableTags": ["function", "macro"]
+}

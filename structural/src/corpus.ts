@@ -231,7 +231,7 @@ function push(map: Map<string, Entry[]>, key: string, entry: Entry): void {
 function candidates(index: FileIndex, last: WqlStep): readonly Entry[] {
   let best: readonly Entry[] | undefined;
   const exactName = last.predicates.find((p) => p.attr === ATTR.name && p.op === 'eq');
-  if (exactName) best = index.byName.get(exactName.value) ?? [];
+  if (exactName && exactName.value !== undefined) best = index.byName.get(exactName.value) ?? [];
   if (last.tag !== '*') {
     const tagged = index.byTag.get(last.tag) ?? [];
     if (!best || tagged.length < best.length) best = tagged;

@@ -24,7 +24,7 @@ const grammar = (id: string, npmPackage: string, file = `${npmPackage}.wasm`): G
 
 const tsx = grammar('tsx', 'tree-sitter-typescript', 'tree-sitter-tsx.wasm');
 
-/** Languages code-lens knows out of the box. Whether their grammar is installed is separate. */
+/** Languages medha knows out of the box. Whether their grammar is installed is separate. */
 export function builtinLanguages(): readonly LanguageDef[] {
   return [
     {

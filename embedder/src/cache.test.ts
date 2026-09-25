@@ -15,7 +15,7 @@ import type { ModelSpec } from './models.ts';
 
 const dirs: string[] = [];
 const scratch = (): string => {
-  const dir = mkdtempSync(join(tmpdir(), 'code-lens-models-'));
+  const dir = mkdtempSync(join(tmpdir(), 'medha-models-'));
   dirs.push(dir);
   return dir;
 };

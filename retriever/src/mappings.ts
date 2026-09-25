@@ -4,11 +4,15 @@ import { isAbsolute, join, relative, resolve } from 'node:path';
 import { type Deadline, InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import {
   checkGolden,
+  deduceMapping,
   type Golden,
   type GoldenDifference,
+  inspectTopology,
+  type LanguageMapping,
   type MappingCheck,
   MappingStore,
   type StoredMapping,
+  synthesizeGolden,
   type TrainingReport,
   type TrainingSample,
   trainMapping,
@@ -199,4 +203,234 @@ export async function checkMapping(
   } finally {
     await runtime.dispose();
   }
+}
+
+export interface AuditCandidate {
+  readonly type: string;
+  readonly occurrences: number;
+  readonly deducedTag: string;
+  readonly role: 'declaration' | 'anonymous-callable' | 'call' | 'import' | 'control-flow';
+  readonly nameChild?: string;
+  readonly nameShare?: number;
+}
+
+export interface AuditReport {
+  readonly language: string;
+  readonly samplesCount: number;
+  readonly totalNodes: number;
+  readonly mappedCount: number;
+  readonly unmappedCount: number;
+  readonly candidates: readonly AuditCandidate[];
+  readonly unmappedTypes: readonly string[];
+}
+
+export interface AuditOptions {
+  readonly language: string;
+  readonly samples?: readonly string[];
+  readonly deadline?: Deadline;
+}
+
+export interface RefineOptions {
+  readonly language: string;
+  readonly samples?: readonly string[];
+  readonly name?: string;
+  readonly user?: boolean;
+  readonly dryRun?: boolean;
+  readonly deadline?: Deadline;
+}
+
+export interface RefineResult {
+  readonly language: string;
+  readonly addedRules: readonly {
+    readonly type: string;
+    readonly tag: string;
+    readonly nameChild?: string;
+  }[];
+  readonly stored: StoredMapping | undefined;
+}
+
+/**
+ * Inspect code in a language against the active mapping and report unmapped syntax nodes
+ * and high-confidence candidates that could be refined into the mapping.
+ */
+export async function auditMapping(
+  root: string,
+  options: AuditOptions,
+  host: MappingHost = {},
+): Promise<AuditReport> {
+  const runtime = await createRuntime(root, { npmFrom: import.meta.filename, ...host });
+  try {
+    const langDef = runtime.registry.require(options.language);
+    const samplePaths = options.samples && options.samples.length > 0 ? options.samples : ['.'];
+    const samples = await gatherSamples(root, langDef.extensions, samplePaths, {
+      ...(options.deadline ? { deadline: options.deadline } : {}),
+    });
+    if (samples.length === 0) {
+      throw new InvalidArgumentError(
+        '--samples',
+        `files with one of ${langDef.extensions.join(', ')}`,
+        samplePaths.join(', '),
+      );
+    }
+    const topology = await inspectTopology(runtime, options.language, samples, {
+      ...(options.deadline ? { deadline: options.deadline } : {}),
+    });
+    const store = mappingStoreFor(root, host);
+    const storedMappings = await store.list();
+    const active = storedMappings
+      .filter((m) => m.languages.includes(options.language))
+      .at(-1)?.mapping;
+    const currentMap = active?.nodeTypeMap ?? {};
+
+    const trained = deduceMapping(topology, {
+      extensions: langDef.extensions,
+      minOccurrences: 1,
+      minShare: 0.3,
+    });
+
+    const mappedTypes: string[] = [];
+    const unmappedTypes: string[] = [];
+    const candidates: AuditCandidate[] = [];
+
+    for (const [type, stats] of topology.types) {
+      if (type.startsWith('_') || type === 'ERROR') continue;
+      if (currentMap[type]) {
+        mappedTypes.push(type);
+      } else {
+        unmappedTypes.push(type);
+        const deduction = trained.deductions.find((d) => d.type === type);
+        if (deduction) {
+          candidates.push({
+            type,
+            occurrences: stats.count,
+            deducedTag: deduction.tag,
+            role: deduction.role,
+            ...(deduction.nameChild ? { nameChild: deduction.nameChild } : {}),
+            ...(deduction.nameShare !== undefined ? { nameShare: deduction.nameShare } : {}),
+          });
+        }
+      }
+    }
+
+    candidates.sort((a, b) => b.occurrences - a.occurrences);
+    unmappedTypes.sort();
+
+    return {
+      language: options.language,
+      samplesCount: samples.length,
+      totalNodes: topology.nodes,
+      mappedCount: mappedTypes.length,
+      unmappedCount: unmappedTypes.length,
+      candidates,
+      unmappedTypes,
+    };
+  } finally {
+    await runtime.dispose();
+  }
+}
+
+/**
+ * Automatically refine an existing or bundled mapping with unmapped syntax nodes discovered from
+ * real codebase usage, synthesize a golden record, and install it into the project (or user tier).
+ */
+export async function refineMapping(
+  root: string,
+  options: RefineOptions,
+  host: MappingHost = {},
+): Promise<RefineResult> {
+  const audit = await auditMapping(
+    root,
+    {
+      language: options.language,
+      ...(options.samples ? { samples: options.samples } : {}),
+      ...(options.deadline ? { deadline: options.deadline } : {}),
+    },
+    host,
+  );
+
+  if (audit.candidates.length === 0) {
+    return {
+      language: options.language,
+      addedRules: [],
+      stored: undefined,
+    };
+  }
+
+  const store = mappingStoreFor(root, host);
+  const storedMappings = await store.list();
+  const current = storedMappings
+    .filter((m) => m.languages.includes(options.language))
+    .at(-1)?.mapping;
+
+  const baseMapping: LanguageMapping = current ?? {
+    name: options.name ?? options.language,
+    extensions: [],
+    nodeTypeMap: {},
+    structuralTags: [],
+    nameExtractors: {},
+  };
+
+  const updatedNodeMap: Record<string, string> = { ...baseMapping.nodeTypeMap };
+  const updatedStructuralTags = new Set(baseMapping.structuralTags);
+  const updatedNameExtractors: Record<string, string> = { ...baseMapping.nameExtractors };
+  const updatedCallable = new Set(baseMapping.callableTags ?? []);
+  const addedRules: { type: string; tag: string; nameChild?: string }[] = [];
+
+  for (const candidate of audit.candidates) {
+    updatedNodeMap[candidate.type] = candidate.deducedTag;
+    updatedStructuralTags.add(candidate.deducedTag);
+    if (candidate.nameChild) {
+      updatedNameExtractors[candidate.type] = candidate.nameChild;
+    }
+    if (
+      candidate.role === 'declaration' &&
+      (candidate.deducedTag === 'function' || candidate.deducedTag === 'method')
+    ) {
+      updatedCallable.add(candidate.deducedTag);
+    }
+    addedRules.push({
+      type: candidate.type,
+      tag: candidate.deducedTag,
+      ...(candidate.nameChild ? { nameChild: candidate.nameChild } : {}),
+    });
+  }
+
+  const refined: LanguageMapping = {
+    ...baseMapping,
+    name: options.name ?? baseMapping.name,
+    nodeTypeMap: updatedNodeMap,
+    structuralTags: [...updatedStructuralTags],
+    nameExtractors: updatedNameExtractors,
+    callableTags: [...updatedCallable],
+  };
+
+  const runtime = await createRuntime(root, { npmFrom: import.meta.filename, ...host });
+  let stored: StoredMapping | undefined;
+  try {
+    const langDef = runtime.registry.require(options.language);
+    const samplePaths = options.samples && options.samples.length > 0 ? options.samples : ['.'];
+    const samples = await gatherSamples(root, langDef.extensions, samplePaths, {
+      ...(options.deadline ? { deadline: options.deadline } : {}),
+    });
+    const golden = await synthesizeGolden(runtime, options.language, refined, samples, {
+      ...(options.deadline ? { deadline: options.deadline } : {}),
+    });
+
+    if (!options.dryRun) {
+      stored = await store.install(refined, {
+        tier: options.user ? 'user' : 'project',
+        languages: [options.language],
+        golden,
+        force: true,
+      });
+    }
+  } finally {
+    await runtime.dispose();
+  }
+
+  return {
+    language: options.language,
+    addedRules,
+    stored,
+  };
 }

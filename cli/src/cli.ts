@@ -30,6 +30,8 @@ usage: anvesa <command> [arguments] [options]
   callers|callees|neighbors <symbol>   symbol id, name, or path:line
   dependents <path>         files that import it (--depth N, --limit N, --types)
   explain                   what the project is made of
+  map [dir]                 graph-weighted architectural repomap (--depth N, --budget N)
+  routes [method] [path]    discover HTTP routes across Laravel, Express, Next.js, FastAPI
   diagnose <question> --expect <path>   why a file did not come up
   channel add|list|show|test|index|remove   custom dense channels (make/create = add)
   grammar list|install <language>        parsers (--from <file|dir|tarball>, --user, --force, --download)
@@ -37,11 +39,13 @@ usage: anvesa <command> [arguments] [options]
                             changes what each trust level does (scan: would this project's own text be quarantined?)
   fragments status|propose|enable|disable|settle   keep the index in one database per fragment
                             propose [--tier path|clusters] [--write]; the manifest is committed
-  mapping list|show|train|fork|lock|remove|verify|check   how a language's syntax becomes an outline;
+  mapping list|show|train|audit|refine|fork|lock|remove|verify|check   how a language's syntax becomes an outline;
+                            audit/refine <language> finds and adds unmapped syntax nodes from code;
                             train <language> --samples <dir|file> learns one from code
   model list|install|verify|doctor       local embedding models; install <new-name> --from <dir|file.onnx>
                                          brings your own (--pooling, --max-tokens, --force)
   pattern list|run <name> [param=val...]  declarative structural patterns
+  issue [title]             raise an issue on GitHub with sanitized diagnostics
   mcp serve                 run as an MCP server on stdio
   --version                 print the version
 

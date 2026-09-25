@@ -35,6 +35,10 @@ const OPTIONS = {
   'dry-run': { type: 'boolean' },
   'min-share': { type: 'string' },
   'max-tokens': { type: 'string' },
+  budget: { type: 'string' },
+  method: { type: 'string' },
+  framework: { type: 'string' },
+  path: { type: 'string' },
 } as const;
 
 export interface Parsed {
@@ -72,6 +76,10 @@ export interface Parsed {
     readonly 'dry-run'?: boolean;
     readonly 'min-share'?: string;
     readonly 'max-tokens'?: string;
+    readonly budget?: string;
+    readonly method?: string;
+    readonly framework?: string;
+    readonly path?: string;
   };
 }
 

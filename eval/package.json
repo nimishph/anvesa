@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Measures code-lens against ground truth from an independent implementation (the TypeScript compiler).",
+  "description": "Measures medha against ground truth from an independent implementation (the TypeScript compiler).",
   "exports": {
     ".": "./src/index.ts"
   },

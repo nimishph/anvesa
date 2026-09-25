@@ -41,6 +41,7 @@ import {
   type FactExtractor as FactExtractorType,
   type FragmentManifest,
   GraphQueries,
+  generateRepoMap,
   IMPORT_EDGE_KINDS,
   Indexer,
   type IndexReport,
@@ -49,6 +50,8 @@ import {
   loadManifest,
   proposeClustered,
   proposePathPrior,
+  type RepoMapOptions,
+  type RepoMapResult,
   type RunOptions,
   ShardSet,
   SqliteIndexStore,
@@ -65,8 +68,19 @@ import {
   parseWql,
   StructuralEngine,
   type WqlHit,
+  type WqlPredicate,
   WqlUnknownNameError,
 } from '@cntxt-labs/anvesa-structural';
+
+function checkPredicateAttributes(predicate: WqlPredicate, wql: string): void {
+  if (predicate.attr && !KNOWN_ATTRIBUTES.has(predicate.attr)) {
+    throw new WqlUnknownNameError(wql, 'attribute', predicate.attr, [...KNOWN_ATTRIBUTES]);
+  }
+  if (predicate.left) checkPredicateAttributes(predicate.left, wql);
+  if (predicate.right) checkPredicateAttributes(predicate.right, wql);
+  if (predicate.inner) checkPredicateAttributes(predicate.inner, wql);
+}
+
 import type { SyntaxRuntime } from '@cntxt-labs/anvesa-syntax';
 import { loadChannelModule } from './channel-module.ts';
 import {
@@ -131,6 +145,22 @@ export interface FragmentStatus {
   readonly enabled: boolean;
   readonly algorithm: { readonly id: string; readonly version: number } | undefined;
   readonly drift: DriftReport | undefined;
+}
+
+export interface RouteInfo {
+  readonly id: string;
+  readonly path: string;
+  readonly method: string;
+  readonly route: string;
+  readonly handler: string;
+  readonly line: number;
+  readonly framework: string;
+}
+
+export interface RouteQuery {
+  readonly method?: string;
+  readonly path?: string;
+  readonly framework?: string;
 }
 
 export interface RetrieverOptions {
@@ -450,9 +480,7 @@ export class Retriever {
         throw new WqlUnknownNameError(wql, 'tag', step.tag, [...knownTags]);
       }
       for (const predicate of step.predicates) {
-        if (!KNOWN_ATTRIBUTES.has(predicate.attr)) {
-          throw new WqlUnknownNameError(wql, 'attribute', predicate.attr, [...KNOWN_ATTRIBUTES]);
-        }
+        checkPredicateAttributes(predicate, wql);
       }
     }
     const result = this.#structure.query(parsed, {
@@ -671,6 +699,40 @@ export class Retriever {
   async dependencies(path: string, request: PageRequest = {}) {
     await this.#requireIndexed();
     return this.#graph.dependencies(path, request);
+  }
+
+  async repoMap(options: RepoMapOptions = {}): Promise<RepoMapResult> {
+    await this.#requireIndexed();
+    return generateRepoMap(this.store, options);
+  }
+
+  async routes(query: RouteQuery = {}): Promise<readonly RouteInfo[]> {
+    await this.#requireIndexed();
+    const recordsPage = await this.store.findCorpusRecords({ corpus: 'endpoints', limit: 10_000 });
+    let routes: RouteInfo[] = recordsPage.items.map((r) => ({
+      id: r.id,
+      path: r.path,
+      method: (r.attrs.method as string) ?? 'GET',
+      route: (r.attrs.route as string) ?? '/',
+      handler: (r.attrs.handler as string) ?? '',
+      line: Number(r.attrs.line ?? 1),
+      framework: (r.attrs.framework as string) ?? 'generic',
+    }));
+
+    if (query.method) {
+      const m = query.method.toUpperCase();
+      routes = routes.filter((r) => r.method === m || r.method === 'ANY');
+    }
+    if (query.path) {
+      const targetPath = query.path;
+      routes = routes.filter((r) => r.route.includes(targetPath) || r.path.includes(targetPath));
+    }
+    if (query.framework) {
+      routes = routes.filter((r) => r.framework === query.framework);
+    }
+
+    routes.sort((a, b) => a.route.localeCompare(b.route) || a.method.localeCompare(b.method));
+    return routes;
   }
 
   get graph(): GraphQueries {

@@ -46,7 +46,7 @@ export function scaffoldChannel(channel: string, template: ScaffoldTemplate = 'f
       `Edit transformer.ts: decide which files it claims and what one card holds.`,
       `Try it on a file:  anvesa channel test ${channel} <file>`,
       `Index it:          anvesa channel index ${channel}`,
-      `Search it:         code-lens retrieve ${channel} "<question>"`,
+      `Search it:         medha retrieve ${channel} "<question>"`,
     ],
   };
 }

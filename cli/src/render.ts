@@ -1,5 +1,6 @@
 import { CodeLensError, type Page } from '@cntxt-labs/anvesa-core';
 import {
+  type AuditReport,
   type ChannelInfo,
   type Diagnosis,
   type Explanation,
@@ -17,6 +18,10 @@ import {
   type PatternSpec,
   type RedTeamRuleInfo,
   type RedTeamScan,
+  type RefineResult,
+  type RepoMapResult,
+  type RepoMapTreeNode,
+  type RouteInfo,
   type SearchPage,
   type SearchResult,
   type Status,
@@ -281,6 +286,67 @@ export function renderIndex(result: {
   );
 }
 
+export function renderRepoMap(result: RepoMapResult): string {
+  const outputLines: string[] = [
+    `repomap: ${result.totalFiles} files, ${result.totalSymbols} symbols (ranked by graph centrality)`,
+    '',
+  ];
+
+  function printNode(node: RepoMapTreeNode, prefix: string, isLast: boolean) {
+    if (node.path !== '') {
+      const connector = isLast ? '└── ' : '├── ';
+      const line = `${prefix}${connector}${node.name}${node.isDir ? '/' : ''}${
+        node.importers !== undefined && node.importers > 0 ? ` (${node.importers} importers)` : ''
+      }`;
+      outputLines.push(line);
+
+      if (!node.isDir && node.symbols && node.symbols.length > 0) {
+        const symPrefix = `${prefix}${isLast ? '    ' : '│   '}`;
+        const symbols = node.symbols;
+        for (let i = 0; i < symbols.length; i += 1) {
+          const sym = symbols[i];
+          if (!sym) continue;
+          const symLast = i === symbols.length - 1;
+          const sig = sym.signature ? ` ${sym.signature}` : '';
+          const callers = sym.callers > 0 ? ` (${sym.callers} callers)` : '';
+          outputLines.push(
+            `${symPrefix}${symLast ? '└── ' : '├── '}${sym.kind} ${sym.name}${sig}${callers}`,
+          );
+        }
+      }
+    }
+
+    if (node.children && node.children.length > 0) {
+      const nextPrefix = node.path === '' ? '' : `${prefix}${isLast ? '    ' : '│   '}`;
+      const children = node.children;
+      for (let i = 0; i < children.length; i += 1) {
+        const child = children[i];
+        if (!child) continue;
+        printNode(child, nextPrefix, i === children.length - 1);
+      }
+    }
+  }
+
+  printNode(result.tree, '', true);
+  return lines(...outputLines);
+}
+
+export function renderRoutes(routes: readonly RouteInfo[]): string {
+  if (routes.length === 0) {
+    return 'no HTTP routes discovered in indexed files\n';
+  }
+
+  const rows = routes.map((r) => {
+    const method = r.method.padEnd(7, ' ');
+    const handler = r.handler ? ` -> ${r.handler}` : '';
+    const loc = `(${r.path}:${r.line})`;
+    const framework = `[${r.framework}]`;
+    return `${method} ${r.route.padEnd(30, ' ')}${handler.padEnd(35, ' ')} ${loc} ${framework}`;
+  });
+
+  return lines(`routes (${routes.length} discovered):`, ...rows);
+}
+
 export function renderExplain(explained: Explanation): string {
   return lines(
     `files ${explained.index.files}, symbols ${explained.index.symbols}, edges ${explained.index.edges}`,
@@ -395,6 +461,55 @@ export function renderGoldenCheck(checked: {
     checked.differences.length === 0
       ? 'every sample comes out as recorded'
       : `${checked.differences.length} differ`,
+  );
+}
+
+export function renderAudit(audit: AuditReport): string {
+  const candidateRows = audit.candidates.map((c) => {
+    const details = [
+      c.occurrences === 1 ? '1 occurrence' : `${c.occurrences} occurrences`,
+      `role: ${c.role}`,
+      c.nameChild ? `name: ${c.nameChild}` : undefined,
+    ]
+      .filter(Boolean)
+      .join(', ');
+    return `    ${c.type.padEnd(30)} -> tag: ${c.deducedTag.padEnd(12)} (${details})`;
+  });
+
+  return lines(
+    `mapping audit for ${audit.language} (${audit.samplesCount} files, ${audit.totalNodes} syntax nodes)`,
+    `  mapped node types:   ${audit.mappedCount}`,
+    `  unmapped node types: ${audit.unmappedCount}`,
+    audit.candidates.length > 0
+      ? [
+          '',
+          `  candidate node types to refine (${audit.candidates.length}):`,
+          ...candidateRows,
+          '',
+          `  Run \`anvesa mapping refine ${audit.language}\` to apply these rules to your project.`,
+        ].join('\n')
+      : '  all syntax nodes are mapped or transparent.',
+  );
+}
+
+export function renderRefine(result: RefineResult): string {
+  if (result.addedRules.length === 0) {
+    return lines(
+      `no new syntax node rules discovered to refine for ${result.language}.`,
+      'mapping is already aligned with sampled code.',
+    );
+  }
+  const rules = result.addedRules.map(
+    (r) =>
+      `    ${r.type.padEnd(30)} -> tag: ${r.tag}${r.nameChild ? ` (name: ${r.nameChild})` : ''}`,
+  );
+  return lines(
+    `refined mapping for ${result.language}:`,
+    `  added ${result.addedRules.length} syntax node rules:`,
+    ...rules,
+    result.stored
+      ? `  recorded in ${result.stored.tier}: ${result.stored.path}\n  Next, run: anvesa index --force`
+      : '  (dry run, mapping not saved)',
   );
 }
 

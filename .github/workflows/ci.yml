@@ -35,7 +35,7 @@ jobs:
         run: bun run smoke
       - uses: actions/upload-artifact@v4
         with:
-          name: code-lens-${{ matrix.platform }}
+          name: medha-${{ matrix.platform }}
           path: |
             dist/*.zip
             dist/*.tar.gz

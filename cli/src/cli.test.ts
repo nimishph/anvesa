@@ -1109,4 +1109,60 @@ describe('declarative patterns', () => {
       "advice: 2 files quarantined because 'php' grammar is missing. Run: anvesa grammar install php --download",
     );
   });
+
+  test('repomap, routes, issue, and mapping audit work end to end', async () => {
+    const root = makeProject();
+    writeFileSync(
+      join(root, 'src', 'router.ts'),
+      `import { parseConfig } from './config';
+app.get('/api/users', (req, res) => res.json([]));
+app.post('/api/checkout', (req, res) => res.json({ ok: true }));
+`,
+    );
+
+    const indexed = await cli(root, 'index');
+    expect(indexed.code).toBe(0);
+
+    // 1. repomap
+    const mapText = await cli(root, 'map');
+    expect(mapText.code).toBe(0);
+    expect(mapText.out).toContain('repomap');
+    expect(mapText.out).toContain('src/');
+
+    const mapJson = await cli(root, 'map', '--json');
+    expect(mapJson.code).toBe(0);
+    const parsedMap = json(mapJson);
+    expect(parsedMap.totalFiles).toBeGreaterThanOrEqual(3);
+    expect(parsedMap.tree).toBeDefined();
+
+    // 2. routes
+    const routesText = await cli(root, 'routes');
+    expect(routesText.code).toBe(0);
+    expect(routesText.out).toContain('/api/users');
+    expect(routesText.out).toContain('/api/checkout');
+
+    const routesFiltered = await cli(root, 'routes', 'POST', '--json');
+    expect(routesFiltered.code).toBe(0);
+    const postRoutes = json(routesFiltered);
+    expect(postRoutes).toHaveLength(1);
+    expect(postRoutes[0].route).toBe('/api/checkout');
+    expect(postRoutes[0].method).toBe('POST');
+
+    // 3. issue
+    const issueRan = await cli(root, 'issue', 'Fix bug in router', '--json');
+    expect(issueRan.code).toBe(0);
+    const issueData = json(issueRan);
+    expect(issueData.title).toBe('Fix bug in router');
+    expect(issueData.url).toContain('github.com/nimishph/anvesa/issues/new');
+    expect(issueData.body).toContain('Diagnostics (Sanitized)');
+    expect(issueData.body).toContain('Anvesa Version');
+    expect(issueData.body).not.toContain(root);
+
+    // 4. mapping audit
+    const auditRan = await cli(root, 'mapping', 'audit', 'typescript', '--json');
+    expect(auditRan.code).toBe(0);
+    const auditData = json(auditRan);
+    expect(auditData.language).toBe('typescript');
+    expect(auditData.mappedCount).toBeGreaterThan(0);
+  });
 });

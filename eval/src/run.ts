@@ -47,7 +47,7 @@ async function main(): Promise<void> {
     ...(values.exclude ? { exclude: values.exclude } : {}),
   });
   try {
-    // What code-lens holds, read back from its store the way a query would.
+    // What medha holds, read back from its store the way a query would.
     const symbols = new Map<string, readonly SymbolFact[]>();
     const imports = new Map<string, readonly OursImport[]>();
     const paths: string[] = [];

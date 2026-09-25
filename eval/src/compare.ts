@@ -35,11 +35,11 @@ export interface SymbolScore {
   readonly precision: Ratio;
   readonly recall: Ratio;
   readonly byGroup: Readonly<Record<string, { precision: Ratio; recall: Ratio }>>;
-  /** Symbols the compiler sees and code-lens does not. */
+  /** Symbols the compiler sees and medha does not. */
   readonly missed: readonly string[];
-  /** Symbols code-lens reports that the compiler does not see as declarations of that kind. */
+  /** Symbols medha reports that the compiler does not see as declarations of that kind. */
   readonly extra: readonly string[];
-  /** Kinds code-lens reports that have no counterpart to compare against, by count. */
+  /** Kinds medha reports that have no counterpart to compare against, by count. */
   readonly notComparable: ReadonlyMap<string, number>;
 }
 
@@ -133,7 +133,7 @@ export interface OursImport {
 }
 
 export interface ImportScore {
-  /** Import sites the compiler sees that code-lens also extracted. */
+  /** Import sites the compiler sees that medha also extracted. */
   readonly extracted: Ratio;
   /** Of the extracted sites, how many landed in the same place as the compiler's answer. */
   readonly agreement: Ratio;
@@ -189,7 +189,7 @@ export function scoreImports(
       const wanted = site.target.kind === 'file' ? site.target.path : site.target.kind;
       const got = match.resolution.kind === 'file' ? match.resolution.path : match.resolution.kind;
       disagreements.push(
-        `${site.path}:${site.line}  ${site.specifier}  compiler: ${wanted}  code-lens: ${got}`,
+        `${site.path}:${site.line}  ${site.specifier}  compiler: ${wanted}  medha: ${got}`,
       );
     }
   }
@@ -211,7 +211,7 @@ export interface ObservedCall {
 
 export interface CallScore {
   readonly truthCalls: number;
-  /** Call sites the compiler sees that code-lens also extracted. */
+  /** Call sites the compiler sees that medha also extracted. */
   readonly extracted: Ratio;
   readonly truthKinds: ReadonlyMap<string, number>;
   /** Calls the compiler resolved to a symbol anvesa extracted: what resolution is judged on. */
@@ -226,7 +226,7 @@ export interface CallScore {
   /** Of the guesses, how many contain the right symbol. */
   readonly guessPrecision: Ratio;
   readonly meanGuessCandidates: number | undefined;
-  /** External calls (the compiler says declared outside the repo) that code-lens also called external. */
+  /** External calls (the compiler says declared outside the repo) that medha also called external. */
   readonly externalAgreement: Ratio;
   readonly byForm: Readonly<
     Record<'bare' | 'member', { recallResolved: Ratio; precisionResolved: Ratio }>

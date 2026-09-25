@@ -1,4 +1,4 @@
-// Boundaries for the code-lens packages. The graph is one-way:
+// Boundaries for the medha packages. The graph is one-way:
 // cli -> retriever -> indexer -> dense -> structural -> syntax -> core. Cross-package imports must go through a
 // package's public entry point (src/index.ts), never into its internals.
 

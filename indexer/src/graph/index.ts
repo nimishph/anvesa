@@ -14,5 +14,13 @@ export type {
   FileChange,
 } from './queries.ts';
 export { GraphQueries } from './queries.ts';
+export type {
+  RepoMapFile,
+  RepoMapOptions,
+  RepoMapResult,
+  RepoMapSymbol,
+  RepoMapTreeNode,
+} from './repomap.ts';
+export { computeGraphPageRank, generateRepoMap } from './repomap.ts';
 export type { Resolution, ResolvedImport, ResolvedVia, ResolverEnvironment } from './resolver.ts';
 export { ImportResolver, scriptCandidates, splitPackage } from './resolver.ts';

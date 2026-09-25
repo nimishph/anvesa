@@ -165,6 +165,54 @@ export function createMcpServer(retriever: Retriever): McpServer {
     ({ limit }) => respond(() => retriever.explain(limit ? { limit } : {})),
   );
   server.registerTool(
+    'repomap',
+    {
+      description:
+        'A graph-weighted architectural map of the repository, ranking files and key symbols by graph centrality (PageRank over calls and imports).',
+      inputSchema: {
+        depth: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe('Maximum directory depth to traverse.'),
+        budget: z.number().int().positive().optional().describe('Token budget for the outline.'),
+        scope: z.string().optional().describe('Filter to a directory or path prefix.'),
+      },
+    },
+    ({ depth, budget, scope }) =>
+      respond(() =>
+        retriever.repoMap({
+          ...(depth ? { depth } : {}),
+          ...(budget ? { budget } : {}),
+          ...(scope ? { scope } : {}),
+        }),
+      ),
+  );
+  server.registerTool(
+    'routes',
+    {
+      description:
+        'Discover HTTP endpoints and API routes across the repository (supports Laravel, Express, Next.js route handlers, and FastAPI/Flask).',
+      inputSchema: {
+        method: z.string().optional().describe('Filter by HTTP method, e.g. GET, POST, or ANY.'),
+        path: z.string().optional().describe('Filter by route URL path or file path substring.'),
+        framework: z
+          .string()
+          .optional()
+          .describe('Filter by framework (e.g. laravel, express, nextjs, fastapi).'),
+      },
+    },
+    ({ method, path, framework }) =>
+      respond(() =>
+        retriever.routes({
+          ...(method ? { method } : {}),
+          ...(path ? { path } : {}),
+          ...(framework ? { framework } : {}),
+        }),
+      ),
+  );
+  server.registerTool(
     'diagnose',
     {
       description:

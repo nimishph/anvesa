@@ -51,7 +51,7 @@ function main() {
   });
   if (child.error) {
     process.stderr.write(
-      `code-lens: could not start ${path.basename(found.program)}: ${child.error.message}\n`,
+      `medha: could not start ${path.basename(found.program)}: ${child.error.message}\n`,
     );
     process.exitCode = 1;
     return;

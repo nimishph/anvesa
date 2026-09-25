@@ -1,5 +1,5 @@
 /**
- * The encoders code-lens knows how to fetch and run, and how much machine each one needs.
+ * The encoders medha knows how to fetch and run, and how much machine each one needs.
  *
  * Tiers order by compute cost, not by retrieval quality: a bigger model is not automatically a
  * better one for code, and nothing here has been measured on code retrieval yet. That is what the

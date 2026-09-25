@@ -83,7 +83,7 @@ const describe = (status: LanguageStatus): GrammarRow => {
   };
 };
 
-/** Every language code-lens knows and whether its grammar can be loaded right now. */
+/** Every language medha knows and whether its grammar can be loaded right now. */
 export async function listGrammars(
   root: string,
   host: GrammarHost = {},
