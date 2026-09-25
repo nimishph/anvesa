@@ -78,7 +78,26 @@ anvesa query '//function[(@export=true or @async=true) and not(@deprecated)]'
 - `[not(expr)]` or `[!expr]`: Logical NOT.
 - `[(expr1 or expr2) and expr3]`: Parenthesized precedence.
 
-### 4. Graph Navigation & Graph-Weighted RepoMap
+### 4. Semantic & Structural Conjunction (WQL + Dense)
+
+Conjunction combines semantic intent (what code does) with structural AST constraints (where it is defined in the AST):
+
+```bash
+# Via flags
+anvesa search "save user" --wql '//class//method'           # semantic search constrained to class methods
+anvesa query '//function' --semantic "parse config file"    # structural query ranked by semantic similarity
+
+# Via inline conjunction syntax (&&, where, AND)
+anvesa search "save user && //class//method"
+anvesa search "save user where //class//method"
+anvesa search "//class//method && save user"
+anvesa query "//function && authenticate credentials"
+```
+
+- **Intersection Semantics**: Results MUST satisfy both the semantic intent and the AST outline structure. Hits failing the WQL AST structure are filtered out.
+- **Semantic Ranking**: Surviving hits are ranked by semantic relevance score.
+
+### 5. Graph Navigation & Graph-Weighted RepoMap
 
 ```bash
 anvesa callers <symbol-name-or-path:line>    # who calls this symbol
@@ -90,7 +109,7 @@ anvesa map --budget 500 --depth 2            # budget-constrained dense ASCII tr
 anvesa map [directory]                       # repo map scoped to subdirectory
 ```
 
-### 5. HTTP Route & Endpoint Extraction
+### 6. HTTP Route & Endpoint Extraction
 
 ```bash
 anvesa routes                                # list all HTTP endpoints discovered across the project
@@ -99,7 +118,7 @@ anvesa routes /api/users                     # filter by route path template
 anvesa routes --framework express            # filter by framework (laravel, express, nextjs, etc.)
 ```
 
-### 6. Architectural Explanation, Diagnostics & Issue Reporting
+### 7. Architectural Explanation, Diagnostics & Issue Reporting
 
 ```bash
 anvesa explain                                           # summary of languages, packages, top symbols
@@ -107,7 +126,7 @@ anvesa diagnose "parse config" --expect src/config.ts    # why an expected file 
 anvesa issue "Describe bug or request"                   # open pre-filled GitHub issue with sanitized diagnostics
 ```
 
-### 7. Language Mappings (Bundled, Auditing & Refinement)
+### 8. Language Mappings (Bundled, Auditing & Refinement)
 
 Bundled mappings: TypeScript/JS/Vue, Python, PHP, Go, Rust, Java, Ruby, C, C++.
 
@@ -118,7 +137,7 @@ anvesa mapping refine <language>             # automatically learn and install u
 anvesa mapping train <language> --samples <dir> # learn a complete mapping from scratch
 ```
 
-### 8. Channels & Patterns
+### 9. Channels & Patterns
 
 ```bash
 anvesa channel list                          # list registered channels
@@ -142,8 +161,8 @@ When results exceed `--limit`:
 ## MCP Server Usage
 
 If `anvesa` is running as an MCP server:
-- `search`: parameters `{ "query": string, "exclude"?: string[], "limit"?: number, "cursor"?: string }`
-- `query`: parameters `{ "wql": string, "limit"?: number, "cursor"?: string }`
+- `search`: parameters `{ "query": string, "wql"?: string, "exclude"?: string[], "limit"?: number, "cursor"?: string }`
+- `query`: parameters `{ "wql": string, "semantic"?: string, "limit"?: number, "cursor"?: string }`
 - `callers`: parameters `{ "target": string }`
 - `callees`: parameters `{ "target": string }`
 - `neighbors`: parameters `{ "target": string }`

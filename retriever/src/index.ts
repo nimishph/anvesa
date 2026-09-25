@@ -24,6 +24,7 @@ export type {
 export { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/anvesa-syntax';
 export { type LoadedChannel, loadChannelModule } from './channel-module.ts';
 export * from './config.ts';
+export * from './conjunction.ts';
 export * from './errors.ts';
 export type { Contribution, Fused, Lane } from './fuse.ts';
 export { DEFAULT_RRF_K, fuse } from './fuse.ts';

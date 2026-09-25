@@ -24,9 +24,11 @@ usage: anvesa <command> [arguments] [options]
   index                     bring the index up to date (--force, --retry-quarantined, --scope <path>)
   status                    what is indexed, and by which channels and model
   search <question>         fused search over every channel and, for WQL, the structure
-                            (--channel, --exclude <lane>, --weight <lane>=<n>, e.g. --weight docs=0.25)
+                            (--wql <wql>, --channel, --exclude <lane>, --weight <lane>=<n>)
+                            (supports conjunction: 'save user && //function', 'save user where //class')
   retrieve <channel> <q>    one channel on its own
   query '<wql>'             structural query, e.g. '//function[@name="parse"]'
+                            (--semantic <q>, or conjunction: '//function && save user')
   callers|callees|neighbors <symbol>   symbol id, name, or path:line
   dependents <path>         files that import it (--depth N, --limit N, --types)
   explain                   what the project is made of
@@ -50,7 +52,7 @@ usage: anvesa <command> [arguments] [options]
   --version                 print the version
 
 options: --root <dir>  --json  --limit N  --cursor <token>  --channel <name>  --no-embed
-         --models <dir>  --model <id>  --from <dir>  --download  --depth N  --help
+         --wql <wql>  --semantic <q>  --models <dir>  --model <id>  --from <dir>  --help
 `;
 
 /**

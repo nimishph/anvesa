@@ -14,6 +14,7 @@ export interface WqlHit {
   readonly hash: string | undefined;
   readonly shape: string | undefined;
   readonly node: WNode;
+  readonly score?: number | undefined;
 }
 
 export function toHit(path: string | undefined, node: WNode): WqlHit {

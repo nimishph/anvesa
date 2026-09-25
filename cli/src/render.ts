@@ -83,7 +83,11 @@ function renderResult(result: SearchResult, index: number): string {
 }
 
 export function renderSearch(page: SearchPage): string {
+  const conjunctionHead = page.conjunction
+    ? `conjunction: semantic "${page.conjunction.semantic}" && wql "${page.conjunction.wql}"`
+    : undefined;
   return lines(
+    conjunctionHead,
     ...page.items.map(renderResult),
     pageFooter(page),
     `lanes: ${page.lanes.map((l) => `${l.name} ${l.hits}`).join(', ')}`,
@@ -120,19 +124,26 @@ export function renderStructural(
     startLine: number | undefined;
     endLine: number | undefined;
     signature: string | undefined;
+    score?: number | undefined;
   }> & {
     coverage: { files: number; missing: readonly string[] };
+    conjunction?: { semantic: string; wql: string } | undefined;
   },
 ): string {
   const rows = page.items.map((hit) => {
     const at = place({ path: hit.path ?? '', line: hit.startLine, endLine: hit.endLine });
-    return `${hit.tag} ${hit.name ?? ''}  ${at}${hit.signature ? `  ${hit.signature}` : ''}`;
+    const scoreStr = hit.score !== undefined ? `  score ${hit.score.toFixed(3)}` : '';
+    return `${hit.tag} ${hit.name ?? ''}  ${at}${hit.signature ? `  ${hit.signature}` : ''}${scoreStr}`;
   });
+  const conjunctionHead = page.conjunction
+    ? `conjunction: semantic "${page.conjunction.semantic}" && wql "${page.conjunction.wql}"`
+    : undefined;
   const missing =
     page.coverage.missing.length > 0
       ? `${page.coverage.missing.length} indexed files have no cached outline and were not searched (run: anvesa index --force)`
       : undefined;
   return lines(
+    conjunctionHead,
     ...rows,
     pageFooter(page, 'matches'),
     `searched ${page.coverage.files} files`,

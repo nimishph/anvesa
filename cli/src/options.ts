@@ -39,6 +39,8 @@ const OPTIONS = {
   method: { type: 'string' },
   framework: { type: 'string' },
   path: { type: 'string' },
+  wql: { type: 'string' },
+  semantic: { type: 'string' },
 } as const;
 
 export interface Parsed {
@@ -80,6 +82,8 @@ export interface Parsed {
     readonly method?: string;
     readonly framework?: string;
     readonly path?: string;
+    readonly wql?: string;
+    readonly semantic?: string;
   };
 }
 
