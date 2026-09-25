@@ -149,9 +149,10 @@ const EXTERNAL_TEMPLATE = (
   channel: string,
 ) => `${HEADER(channel, 'cards from records that are not files, supplied as virtual files.')}
 /**
- * An adapter feeds this transformer virtual files: \`{ path, content, hash }\`. Here a virtual file
- * is one JSON record at a path like \`${channel}/<id>.json\`. The content of \`hash\` should change
- * whenever the record does, so unchanged records are not re-embedded.
+ * The source contract: \`source.files()\` yields virtual files \`{ path, content, hash?, language? }\`.
+ * \`path\` and \`content\` are strings. \`hash\` is optional: when absent it is the SHA-256 of
+ * \`content\`, so unchanged records are not re-embedded. Here a virtual file is one JSON record at
+ * a path like \`${channel}/<id>.json\`.
  */
 interface Record${capitalise(channel)} {
   readonly title: string;

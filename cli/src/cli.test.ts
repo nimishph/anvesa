@@ -1105,8 +1105,9 @@ describe('declarative patterns', () => {
       const { client } = session;
       const mcpList = await call(client, 'pattern_list', {});
       expect(mcpList.isError).toBe(false);
-      expect(mcpList.body).toHaveLength(1);
-      expect(mcpList.body[0].name).toBe('functions-by-name');
+      expect(mcpList.body.patterns).toHaveLength(1);
+      expect(mcpList.body.patterns[0].name).toBe('functions-by-name');
+      expect(mcpList.body.invalid).toHaveLength(0);
 
       const mcpRun = await call(client, 'pattern_run', {
         name: 'functions-by-name',
@@ -1120,6 +1121,23 @@ describe('declarative patterns', () => {
       await session.close();
     }
   });
+  test('pattern list reports invalid files with a reason and a typed code', async () => {
+    const root = makeProject();
+    const patternsDir = join(root, '.anvesa', 'patterns');
+    mkdirSync(patternsDir, { recursive: true });
+    writeFileSync(join(patternsDir, 'broken.json'), '{ not json');
+    writeFileSync(
+      join(patternsDir, 'bad-kind.json'),
+      JSON.stringify({ name: 'bad-kind', target: { kind: 'no-such-kind' } }),
+    );
+    const listed = await cli(root, 'pattern', 'list');
+    expect(listed.code).toBe(0);
+    expect(listed.out).toContain('invalid broken.json');
+    expect(listed.out).toContain('CORE_INVALID_ARGUMENT');
+    expect(listed.out).toContain('invalid bad-kind.json');
+    expect(listed.out).toContain('STRUCTURAL_INVALID_ARGUMENT');
+  });
+
   test('status on an unindexed directory does not create .anvesa/ directory', async () => {
     const emptyRoot = mkdtempSync(join(tmpdir(), 'anvesa-unindexed-'));
     roots.push(emptyRoot);

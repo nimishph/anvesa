@@ -1,7 +1,7 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
+import { InvalidArgumentError, toCodeLensError } from '@cntxt-labs/anvesa-core';
 import {
   compilePattern,
   type Diagnostic,
@@ -18,6 +18,18 @@ export interface PatternRunResult {
   readonly total: number | null;
   readonly nextCursor: string | null;
   readonly diagnostic?: Diagnostic | undefined;
+}
+
+/** A pattern file that could not be used, and why. Never dropped silently. */
+export interface InvalidPatternFile {
+  readonly file: string;
+  readonly code: string;
+  readonly message: string;
+}
+
+export interface PatternInventory {
+  readonly patterns: readonly PatternSpec[];
+  readonly invalid: readonly InvalidPatternFile[];
 }
 
 export interface PatternRetrieverHost {
@@ -47,22 +59,41 @@ export class PatternRunner {
     return join(this.retriever.workspace.root, '.anvesa', 'patterns');
   }
 
+  /** The usable patterns. Use `inspect` to also learn which files were rejected. */
   async list(): Promise<readonly PatternSpec[]> {
+    return (await this.inspect()).patterns;
+  }
+
+  /** Every file in the patterns directory: the ones that compile, and the ones that do not. */
+  async inspect(): Promise<PatternInventory> {
     const dir = this.patternsDirectory();
-    if (!existsSync(dir)) return [];
-    const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
-    const specs: PatternSpec[] = [];
+    if (!existsSync(dir)) return { patterns: [], invalid: [] };
+    const files = readdirSync(dir)
+      .filter((f) => f.endsWith('.json'))
+      .sort();
+    const patterns: PatternSpec[] = [];
+    const invalid: InvalidPatternFile[] = [];
     for (const f of files) {
       try {
         const text = await readFile(join(dir, f), 'utf8');
-        const parsed = JSON.parse(text) as PatternSpec;
-        if (parsed.name && parsed.target) specs.push(parsed);
-      } catch (_failure) {
-        // Skip unparseable pattern files during discovery
-        void _failure;
+        let parsed: PatternSpec;
+        try {
+          parsed = JSON.parse(text) as PatternSpec;
+        } catch (failure) {
+          throw new InvalidArgumentError('pattern file', 'valid JSON', f, { cause: failure });
+        }
+        if (!parsed || typeof parsed.name !== 'string' || !parsed.name || !parsed.target) {
+          throw new InvalidArgumentError('pattern', 'an object with "name" and "target"', f);
+        }
+        compilePattern(parsed);
+        patterns.push(parsed);
+      } catch (failure) {
+        const typed = toCodeLensError(failure, `load pattern ${f}`);
+        invalid.push({ file: f, code: typed.code, message: typed.message });
       }
     }
-    return specs.sort((a, b) => a.name.localeCompare(b.name));
+    patterns.sort((a, b) => a.name.localeCompare(b.name));
+    return { patterns, invalid };
   }
 
   async get(name: string): Promise<PatternSpec> {

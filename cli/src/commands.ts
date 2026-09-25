@@ -601,7 +601,14 @@ export async function channelCommand(ctx: Context): Promise<void> {
           inner,
           report,
           () =>
-            `${report.channel}: ${report.reports.length} records (${report.reports.filter((r) => r.outcome === 'indexed').length} indexed), ${report.removed.length} removed\n${
+            `${report.channel}: ${report.reports.length} records (${report.reports.filter((r) => r.outcome === 'indexed').length} indexed), ${report.removed.length} removed${
+              report.reports.some((r) => r.outcome === 'failed')
+                ? `, ${report.reports.filter((r) => r.outcome === 'failed').length} FAILED`
+                : ''
+            }\n${report.reports
+              .filter((r) => r.outcome === 'failed')
+              .map((r) => `failed ${r.path}: ${r.failure?.message ?? 'unknown error'}\n`)
+              .join('')}${
               report.reports.length === 0
                 ? "note: this indexes records from the channel's source. Cards from files the channel claims are built by: anvesa index\n"
                 : ''
@@ -1020,8 +1027,8 @@ export async function patternCommand(ctx: Context): Promise<void> {
   }
   return withProject(ctx, { embed: false }, async ({ retriever }) => {
     if (sub === 'list') {
-      const patterns = await retriever.patterns.list();
-      emit(ctx, patterns, () => show.renderPatterns(patterns));
+      const inventory = await retriever.patterns.inspect();
+      emit(ctx, inventory, () => show.renderPatterns(inventory));
       return;
     }
     if (!name) {

@@ -166,6 +166,32 @@ A channel module default-exports a transformer (which files it claims and what o
 may export a `source` for records that are not files. See the scaffold for the shape. Channels are
 listed in `.anvesa/config.json`, where each can be given a fusion weight.
 
+### Declarative patterns
+
+A pattern is a reusable structural query saved as a JSON file in `.anvesa/patterns/`. `anvesa
+pattern list` shows the usable ones and, for every file it cannot use, the file, the reason and a
+typed error code. `anvesa pattern run <name> key=value ...` runs one.
+
+```json
+{
+  "name": "methods-by-prefix",
+  "description": "Methods of one class whose name starts with a prefix",
+  "target": { "kind": "method", "nameStartsWith": "$prefix" },
+  "scope": { "within": "class", "withinName": "$owner", "directChild": true },
+  "params": [
+    { "name": "prefix", "required": true },
+    { "name": "owner", "default": "Controller" }
+  ],
+  "limit": 50
+}
+```
+
+`name`, `description` and `target.kind` (`function`, `method`, `callable`, `class`, `interface`,
+`struct`, `type` or `custom`) are required; the rest is optional. The target matches by one of
+`name`, `nameStartsWith`, `nameEndsWith`, `nameContains` or `nameRegex`, and `filters` add
+`{ attr, op, value }` conditions. `$param` slots are filled from `params` at run time. `corpus`
+restricts the run to a named set of files.
+
 ### The red-team screen
 
 Every card is screened before it is embedded; what a card says can come from a comment, a doc or a

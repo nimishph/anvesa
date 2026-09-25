@@ -1,4 +1,5 @@
 import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
+import { StructuralSubsystemError } from '../errors.ts';
 import { KNOWN_ATTRIBUTES } from '../node.ts';
 import { parseWql, type WqlQuery } from '../wql.ts';
 import type { PatternSpec } from './schema.ts';
@@ -23,12 +24,18 @@ export interface CompiledPattern {
   diagnoseResults(resultCount: number, repoLanguages?: readonly string[]): Diagnostic | undefined;
 }
 
-export class PatternCompileError extends Error {
+/** A pattern spec that does not compile. Bad input, so it carries the invalid-argument code. */
+export class PatternCompileError extends StructuralSubsystemError {
+  readonly code = 'STRUCTURAL_INVALID_ARGUMENT';
+
   constructor(
     message: string,
     readonly diagnostics: readonly Diagnostic[],
   ) {
-    super(message);
+    super(message, {
+      hint: 'Fix the pattern file under .anvesa/patterns/ (see the pattern file format in the README).',
+      context: { diagnostics: diagnostics.map((d) => d.message) },
+    });
     this.name = 'PatternCompileError';
   }
 }
