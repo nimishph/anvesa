@@ -220,6 +220,37 @@ fails its own fixtures, or whose pattern can take exponential time on a near mis
 rule and the fixture named. `sources` are modules that return more rules (for example patterns another
 system has learned); they are held to the same fixtures.
 
+The screen runs a second time when cards come back from the index. The index may have been built under
+an older policy, or edited since, so a card the screen would not admit now is withheld, one it would
+clean is returned cleaned, and the output says how many of each (`red-team screen at retrieval: ...`).
+
+### Trusting what runs
+
+A channel module is code that runs in the same process as the index. Hold it to the bytes you
+reviewed:
+
+```sh
+anvesa channel pin runbooks        # records its SHA-256 in .anvesa/config.json
+```
+
+A pinned module loads only while its file still hashes to that value, and a change fails with
+`RETRIEVER_CHANNEL_MODULE` until you review it and pin it again. `channel list` marks custom channels
+that are not pinned. Setting `"security": { "requireChecksums": true }` in `.anvesa/config.json`
+refuses any module that is not pinned. The checksum covers the module file itself, not the files it
+imports, so keep a module self-contained if you rely on it.
+
+To show that a run stays on the machine, add `--no-network` (or set `ANVESA_NO_NETWORK=1`):
+
+```sh
+anvesa index --no-network          # ... network audit: no outbound connection was attempted
+```
+
+Every outbound `fetch`, socket, DNS lookup and WebSocket in the process is blocked and recorded, so a
+channel module or a rule source that tries to phone home fails the run with `CLI_NETWORK_BLOCKED`,
+naming the destination, even if it caught the error itself. `--download` cannot be combined with it.
+Loopback and local sockets are allowed. The guard covers this process; it does not police programs the
+CLI starts (a browser for `issue`, `git`).
+
 ### MCP
 
 ```json

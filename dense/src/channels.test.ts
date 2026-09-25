@@ -9,7 +9,7 @@ import { budgetSourceOf } from './embedder.ts';
 import { TransformerFailedError } from './errors.ts';
 import { Ingester } from './pipeline.ts';
 import { previewCards } from './preview.ts';
-import { RedTeamGate } from './redteam/index.ts';
+import { defaultRules, RedTeamGate, type Rule } from './redteam/index.ts';
 import { retrieve } from './retrieve.ts';
 import { type ScaffoldTemplate, scaffoldChannel } from './scaffold.ts';
 import { createTransformServices } from './services.ts';
@@ -222,6 +222,41 @@ function pipeline(
 
 const search = (p: ReturnType<typeof pipeline>, channel: string, query: string, limit = 5) =>
   retrieve({ embedder: p.counting, store: p.store, channel, query, limit });
+
+describe('screening at retrieval', () => {
+  const banned: Rule = {
+    id: 'test-banned-word',
+    category: 'injection',
+    severity: 'high',
+    description: 'a word this policy does not allow',
+    find: (text) => {
+      const at = text.indexOf('Loads');
+      return at < 0 ? [] : [{ span: { start: at, end: at + 5 }, message: 'banned word' }];
+    },
+  };
+
+  test('a card the gate would not admit now is withheld, though it was indexed', async () => {
+    const p = pipeline();
+    await p.ingester.ingest(inputFile('src/config.ts', codeSource));
+    const open = await search(p, 'symbols', 'parse the configuration file');
+    expect(open.items.length).toBeGreaterThan(0);
+    expect(open.screen).toBeUndefined();
+
+    const gate = new RedTeamGate({ rules: [...defaultRules(), banned] });
+    const screened = await retrieve({
+      embedder: p.counting,
+      store: p.store,
+      channel: 'symbols',
+      query: 'parse the configuration file',
+      limit: 5,
+      gate,
+    });
+    expect(open.items.some((hit) => hit.card.text.includes('Loads'))).toBe(true);
+    expect(screened.screen?.withheld ?? 0).toBeGreaterThan(0);
+    expect(screened.items.length).toBeGreaterThan(0);
+    expect(screened.items.every((hit) => !hit.card.text.includes('Loads'))).toBe(true);
+  });
+});
 
 describe('ingest and retrieve', () => {
   test('a code file becomes searchable by what its symbols do', async () => {

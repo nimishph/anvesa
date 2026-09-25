@@ -22,7 +22,13 @@ export type {
   TrainingReport,
 } from '@cntxt-labs/anvesa-structural';
 export { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/anvesa-syntax';
-export { type LoadedChannel, loadChannelModule } from './channel-module.ts';
+export {
+  type LoadedChannel,
+  loadChannelModule,
+  type ModulePin,
+  moduleChecksum,
+  pinChannelModule,
+} from './channel-module.ts';
 export * from './config.ts';
 export * from './conjunction.ts';
 export * from './errors.ts';

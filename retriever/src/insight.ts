@@ -26,6 +26,8 @@ export interface ChannelInfo {
   readonly trust: string;
   readonly categoryId: string;
   readonly hasSource: boolean;
+  /** The module is held to a checksum in the project config. */
+  readonly pinned: boolean;
   readonly cards: number;
   readonly sources: number;
   readonly quarantined: number;

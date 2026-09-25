@@ -37,7 +37,7 @@ export { Ingester } from './pipeline.ts';
 export type { Preview, PreviewOptions } from './preview.ts';
 export { previewCards } from './preview.ts';
 export * from './redteam/index.ts';
-export type { RetrieveOptions } from './retrieve.ts';
+export type { RetrievalScreen, RetrievedPage, RetrieveOptions } from './retrieve.ts';
 export { retrieve } from './retrieve.ts';
 export type { Scaffold, ScaffoldFile, ScaffoldTemplate } from './scaffold.ts';
 export { scaffoldChannel } from './scaffold.ts';
