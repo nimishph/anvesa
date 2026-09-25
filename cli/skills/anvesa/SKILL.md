@@ -49,6 +49,8 @@ anvesa diagnose "parse the config" --expect src/config.ts # why an expected file
 `callers`/`callees`/`neighbors`/`dependents` accept a symbol name, a symbol id, or `path:line`
 (e.g. `src/config.ts:42`). Each result says whether a call-graph link is *resolved* or a guess by
 name — trust resolved links; treat name-guess links as a lead to verify by reading the code.
+Every link also carries a `confidence`: `exact` (scope or imports), `inferred` (through a declared type,
+as in PHP), or `guess` (by name alone).
 
 ### Semantic search (`search`)
 

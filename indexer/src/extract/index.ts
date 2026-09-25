@@ -13,4 +13,5 @@ export type {
   ImportKind,
   Receiver,
   SymbolFact,
+  TypeFact,
 } from './facts.ts';

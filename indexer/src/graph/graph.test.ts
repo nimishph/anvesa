@@ -128,7 +128,7 @@ describe('linking a pnpm monorepo', () => {
       `${EDGE.importsDangling} ./missing`,
     ]);
     expect((await queries.danglingImports()).items).toEqual([
-      { from: main, to: './missing', kind: EDGE.importsDangling },
+      { from: main, to: './missing', kind: EDGE.importsDangling, confidence: 'exact' },
     ]);
   });
 

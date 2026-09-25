@@ -83,6 +83,8 @@ export class CallCollector {
  * text taken apart.
  */
 function calleeOf(node: SyntaxNode, shape: CallShape): Callee | undefined {
+  const chained = calleeOfChained(node, shape);
+  if (chained !== undefined) return chained;
   if (shape.callee !== undefined && shape.receiver === undefined) {
     const field = node.childForFieldName(shape.callee);
     if (field) {
@@ -92,6 +94,24 @@ function calleeOf(node: SyntaxNode, shape: CallShape): Callee | undefined {
   }
   const text = calleeText(node, shape);
   return text === undefined ? undefined : parseCallee(text);
+}
+
+/**
+ * `A::get($id)->run()`: a call made on what another call returns. The receiver is that inner call,
+ * so a linker that knows the inner call's declared return type can follow it.
+ */
+function calleeOfChained(node: SyntaxNode, shape: CallShape): Callee | undefined {
+  if (shape.receiver === undefined || shape.name === undefined) return undefined;
+  const owner = node.childForFieldName(shape.receiver);
+  const name = node.childForFieldName(shape.name);
+  const inner = owner ? CALL_SHAPES[owner.type] : undefined;
+  if (!owner || !name || inner === undefined || inner.kind !== 'call') return undefined;
+  const called = calleeOf(owner, inner);
+  if (called?.name === undefined) return undefined;
+  return {
+    name: name.text,
+    receiver: { kind: 'result', name: called.name, receiver: called.receiver },
+  };
 }
 
 function calleeText(node: SyntaxNode, shape: CallShape): string | undefined {

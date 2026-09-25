@@ -176,6 +176,7 @@ export function renderCallers(
     from: string;
     path: string;
     evidence: string;
+    confidence?: string;
     package: string | undefined;
     crossPackage: boolean;
     symbol: Brief | undefined;
@@ -183,7 +184,7 @@ export function renderCallers(
   }>,
 ): string {
   const rows = page.items.map((c) =>
-    `${describeSymbol(c.path, c.symbol, c.from)}${callSites(c.callLines)}${c.evidence === 'name' ? '  (guess by name)' : ''}${c.crossPackage ? `  (from ${c.package ?? 'another package'})` : ''}`.trimEnd(),
+    `${describeSymbol(c.path, c.symbol, c.from)}${callSites(c.callLines)}${c.evidence === 'name' ? '  (guess by name)' : c.confidence === 'inferred' ? '  (inferred from declared type)' : ''}${c.crossPackage ? `  (from ${c.package ?? 'another package'})` : ''}`.trimEnd(),
   );
   return lines(`callers of ${symbolHeading(symbol)}`, ...rows, pageFooter(page, 'callers'));
 }
