@@ -1,6 +1,6 @@
 {
   "name": "anvesa-workspace",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "anvesa: dense + structural code retrieval, as a set of subsystems. Self-contained so the whole directory can be extracted to its own repo.",

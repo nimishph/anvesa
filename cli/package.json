@@ -1,6 +1,6 @@
 {
   "name": "@cntxt-labs/anvesa",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Find code by meaning and by structure, from the command line or over MCP. Works offline.",
   "keywords": [
     "code-search",
@@ -40,10 +40,10 @@
     "node": ">=18"
   },
   "optionalDependencies": {
-    "@cntxt-labs/anvesa-linux-x64": "0.2.0",
-    "@cntxt-labs/anvesa-linux-arm64": "0.2.0",
-    "@cntxt-labs/anvesa-darwin-arm64": "0.2.0",
-    "@cntxt-labs/anvesa-win32-x64": "0.2.0"
+    "@cntxt-labs/anvesa-linux-x64": "0.3.0",
+    "@cntxt-labs/anvesa-linux-arm64": "0.3.0",
+    "@cntxt-labs/anvesa-darwin-arm64": "0.3.0",
+    "@cntxt-labs/anvesa-win32-x64": "0.3.0"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
