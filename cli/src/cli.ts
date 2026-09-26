@@ -21,7 +21,11 @@ export const HELP = `anvesa — dense and structural code retrieval
 usage: anvesa <command> [arguments] [options]
 
   init                      scaffold .anvesaignore, .anvesa/workspace.json, .anvesa/config.json
-                            (--force to overwrite files that already exist)
+                            (--force to overwrite files that already exist), then looks at this machine and
+                            project: proposes an encoder that suits the hardware and offers a parser for each
+                            language that lacks one, with a progress bar per download. Asks on a terminal;
+                            --yes accepts the proposals; --model <id> picks the encoder; --no-download only
+                            reports what it would fetch. Nothing downloads without a yes.
   index                     bring the index up to date (--force, --retry-quarantined, --scope <path>)
   status                    what is indexed, and by which channels and model
   search <question>         fused search over every channel and, for WQL, the structure

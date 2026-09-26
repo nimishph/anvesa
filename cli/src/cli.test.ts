@@ -142,11 +142,166 @@ describe('command line', () => {
     expect(ran.out).toMatch(/^anvesa \d+\.\d+\.\d+/);
   });
 
+  describe('init offers what this machine and project need', () => {
+    /** A parser the fake registry serves: the smallest thing that is a WebAssembly module. */
+    const WASM = new Uint8Array([0, 0x61, 0x73, 0x6d, 1, 0, 0, 0]);
+    const served: string[] = [];
+    const fakeFetch = (async (url: string | URL | Request) => {
+      const address = String(url);
+      served.push(address);
+      const response = new Response(WASM, { headers: { 'content-length': String(WASM.length) } });
+      Object.defineProperty(response, 'url', {
+        value: address.replace('@latest', '@0.25.0'),
+      });
+      return response;
+    }) as typeof fetch;
+
+    /** A project with one Python file, and a home with no parsers or models in it. */
+    function pythonProject(): { root: string; home: string; models: string } {
+      const root = makeProject();
+      writeFileSync(join(root, 'tool.py'), 'def run():\n    return 1\n');
+      const home = mkdtempSync(join(tmpdir(), 'anvesa-home-'));
+      const models = mkdtempSync(join(tmpdir(), 'anvesa-models-'));
+      roots.push(home, models);
+      return { root, home, models };
+    }
+
+    /** Answers to prompts, in order; the questions asked are kept. */
+    function scripted(answers: string[]) {
+      const asked: string[] = [];
+      return {
+        asked,
+        prompt: async (question: string) => {
+          asked.push(question);
+          return answers.shift();
+        },
+      };
+    }
+
+    test('without a terminal or --yes it only says what it would do, and downloads nothing', async () => {
+      const { root, home, models } = pythonProject();
+      served.length = 0;
+      const ran = await cliWith(
+        { grammars: { home }, fetch: fakeFetch },
+        root,
+        'init',
+        '--models',
+        models,
+      );
+      expect(ran.code).toBe(0);
+      expect(served).toEqual([]);
+      expect(ran.out).toContain('encoder: not installed');
+      expect(ran.out).toContain('anvesa model install');
+      expect(ran.out).toContain('parser python: 1 files not indexed');
+      expect(ran.out).toContain('anvesa grammar install python --user --download');
+    });
+
+    test('it asks which encoder, shows the whole list for this machine, and which one it recommends', async () => {
+      const { root, home, models } = pythonProject();
+      const dialogue = scripted(['s', 'n']);
+      const ran = await cliWith(
+        { grammars: { home }, fetch: fakeFetch, prompt: dialogue.prompt },
+        root,
+        'init',
+        '--models',
+        models,
+      );
+      expect(ran.code).toBe(0);
+      expect(ran.err).toContain('This machine:');
+      for (const id of ['all-MiniLM-L6-v2', 'bge-small-en-v1.5', 'jina-embeddings-v2-base-code']) {
+        expect(ran.err).toContain(id);
+      }
+      expect(ran.err).toContain('recommended');
+      expect(dialogue.asked[0]).toContain('Install which?');
+      expect(dialogue.asked[1]).toContain('Download parsers');
+      expect(ran.out).toContain('skipped at your request');
+    });
+
+    test('a parser picked from the list is downloaded with progress, and works afterwards', async () => {
+      const { root, home, models } = pythonProject();
+      served.length = 0;
+      const dialogue = scripted(['s', 'python']);
+      const ran = await cliWith(
+        { grammars: { home }, fetch: fakeFetch, prompt: dialogue.prompt },
+        root,
+        'init',
+        '--models',
+        models,
+      );
+      expect(ran.code).toBe(0);
+      expect(served).toEqual([
+        'https://unpkg.com/tree-sitter-python@latest/tree-sitter-python.wasm',
+      ]);
+      expect(ran.err).toContain('python parser');
+      expect(ran.err).toMatch(/100%/);
+      expect(ran.out).toContain('parser python: installed');
+      expect(existsSync(join(home, 'grammars', 'tree-sitter-python.wasm'))).toBe(true);
+      const listed = json(await cliWith({ grammars: { home } }, root, 'grammar', 'list', '--json'));
+      // biome-ignore lint/suspicious/noExplicitAny: asserting a JSON shape
+      expect(listed.find((row: any) => row.language === 'python').state).toBe('ready');
+    });
+
+    test('a list of languages downloads only those; --no-network downloads nothing and says so', async () => {
+      const { root, home, models } = pythonProject();
+      served.length = 0;
+      const none = await cliWith(
+        { grammars: { home }, fetch: fakeFetch, prompt: scripted(['s', 'y']).prompt },
+        root,
+        'init',
+        '--models',
+        models,
+        '--no-network',
+      );
+      expect(served).toEqual([]);
+      expect(none.out).toContain('network use is off');
+
+      const other = await cliWith(
+        { grammars: { home }, fetch: fakeFetch, prompt: scripted(['s', 'ruby']).prompt },
+        root,
+        'init',
+        '--models',
+        models,
+      );
+      expect(served).toEqual([]);
+      expect(other.out).toContain('parser python: 1 files not indexed');
+    });
+
+    test('a failed download is reported, not hidden, and does not stop init', async () => {
+      const { root, home, models } = pythonProject();
+      const broken = (async () => new Response('nope', { status: 503 })) as unknown as typeof fetch;
+      const ran = await cliWith(
+        { grammars: { home }, fetch: broken, prompt: scripted(['s', 'y']).prompt },
+        root,
+        'init',
+        '--models',
+        models,
+      );
+      expect(ran.code).toBe(0);
+      expect(ran.out).toContain('parser python: download failed');
+      expect(ran.out).toContain('503');
+    });
+
+    test('--model must be a built-in encoder', async () => {
+      const { root, home, models } = pythonProject();
+      const ran = await cliWith(
+        { grammars: { home } },
+        root,
+        'init',
+        '--models',
+        models,
+        '--model',
+        'nope',
+      );
+      expect(ran.code).toBe(2);
+      expect(ran.err).toContain('bge-small-en-v1.5');
+    });
+  });
+
   test('init scaffolds the ignore file and both configs, keeps them on a second run, and --force overwrites', async () => {
     const root = makeProject();
     const first = await cli(root, 'init', '--json');
     expect(first.code).toBe(0);
-    expect(json(first)).toEqual({
+    expect(json(first)).toMatchObject({
       created: ['.anvesaignore', '.anvesa/workspace.json', '.anvesa/config.json'],
       kept: [],
     });
@@ -167,14 +322,14 @@ describe('command line', () => {
 
     writeFileSync(join(root, '.anvesaignore'), '# edited by hand\n');
     const second = await cli(root, 'init', '--json');
-    expect(json(second)).toEqual({
+    expect(json(second)).toMatchObject({
       created: [],
       kept: ['.anvesaignore', '.anvesa/workspace.json', '.anvesa/config.json'],
     });
     expect(readFileSync(join(root, '.anvesaignore'), 'utf8')).toBe('# edited by hand\n');
 
     const forced = await cli(root, 'init', '--force', '--json');
-    expect(json(forced)).toEqual({
+    expect(json(forced)).toMatchObject({
       created: ['.anvesaignore', '.anvesa/workspace.json', '.anvesa/config.json'],
       kept: [],
     });

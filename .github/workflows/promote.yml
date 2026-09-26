@@ -1,0 +1,36 @@
+name: Promote
+
+# Makes a staged version live: moves the `latest` dist-tag of the launcher and every platform
+# package to it. Run it by hand once the staged version has been checked, e.g.
+#   npm install -g @cntxt-labs/anvesa@next
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to make latest, without the v (e.g. 0.4.1)
+        required: true
+        type: string
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Check every package is staged before moving any tag
+        run: |
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then echo "NPM_TOKEN is not set" >&2; exit 1; fi
+          for p in anvesa anvesa-linux-x64 anvesa-linux-arm64 anvesa-darwin-arm64 anvesa-win32-x64; do
+            npm view "@cntxt-labs/${p}@${VERSION}" version >/dev/null \
+              || { echo "@cntxt-labs/${p}@${VERSION} is not on the registry" >&2; exit 1; }
+          done
+      - name: Point latest at it (platform packages first, launcher last)
+        run: |
+          for p in anvesa-linux-x64 anvesa-linux-arm64 anvesa-darwin-arm64 anvesa-win32-x64 anvesa; do
+            npm dist-tag add "@cntxt-labs/${p}@${VERSION}" latest
+          done

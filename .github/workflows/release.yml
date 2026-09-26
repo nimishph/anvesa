@@ -160,17 +160,30 @@ jobs:
           name: benchmark
           path: benchmark
 
-      - name: Publish to npm (if NPM_TOKEN is provided)
-        if: env.NPM_TOKEN != ''
+      # Staged, not live: every package goes to the `next` dist-tag, which `npm install` does not
+      # follow, until the Promote workflow moves `latest` to it. Platform packages go first so the
+      # launcher never depends on a version that is not there yet. A version already on the registry
+      # is skipped, so a re-run is safe; any other failure stops the release.
+      - name: Stage on npm (dist-tag next)
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          for folder in staged/*/; do
-            npm publish "$folder" --access public --provenance --tag latest || true
-          done
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then
+            echo "NPM_TOKEN is not set: refusing to release without staging on npm" >&2
+            exit 1
+          fi
+          stage() {
+            name="$(node -p "require('./$1/package.json').name")"
+            version="$(node -p "require('./$1/package.json').version")"
+            if npm view "${name}@${version}" version >/dev/null 2>&1; then
+              echo "${name}@${version} is already on the registry, skipping"
+            else
+              npm publish "$1" --access public --provenance --tag next
+            fi
+          }
+          for folder in staged/*/; do stage "${folder%/}"; done
           cp README.md LICENSE cli/
-          npm publish ./cli --access public --provenance --tag latest || true
+          stage cli
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

@@ -2,13 +2,13 @@ import type { Deadline } from '@cntxt-labs/anvesa-core';
 import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import type { Embedder } from '@cntxt-labs/anvesa-dense';
 import {
-  BUILTIN_MODELS,
   builtinModel,
   chooseTier,
   estimatePeakRssMb,
   type HardwareProbe,
   type InstalledModel,
   installCustomModel,
+  MODEL_CATALOG,
   ModelCache,
   type ModelSpec,
   ModelUnavailableError,
@@ -16,7 +16,6 @@ import {
   type Pooling,
   probeHardware,
   resolveModel,
-  TIERS,
   type Tier,
   type TierChoice,
 } from '@cntxt-labs/anvesa-embedder';
@@ -24,6 +23,8 @@ import type { ProjectConfig } from './config.ts';
 
 export interface ModelRow {
   readonly id: string;
+  /** Shipped with anvesa (in the catalog), as opposed to brought in by the user. */
+  readonly builtin: boolean;
   readonly tier: Tier | undefined;
   readonly dimensions: number;
   readonly maxTokens: number;
@@ -36,6 +37,7 @@ export interface ModelRow {
 
 const rowOf = async (cache: ModelCache, spec: ModelSpec): Promise<ModelRow> => ({
   id: spec.id,
+  builtin: builtinModel(spec.id) !== undefined,
   tier: spec.tier,
   dimensions: spec.dimensions,
   maxTokens: spec.maxTokens,
@@ -49,7 +51,7 @@ const rowOf = async (cache: ModelCache, spec: ModelSpec): Promise<ModelRow> => (
 /** The built-in models, and the ones the user brought in, with which are installed in this cache. */
 export async function listModels(cache: ModelCache): Promise<readonly ModelRow[]> {
   const rows: ModelRow[] = [];
-  for (const tier of TIERS) rows.push(await rowOf(cache, BUILTIN_MODELS[tier]));
+  for (const spec of MODEL_CATALOG) rows.push(await rowOf(cache, spec));
   for (const spec of await cache.customModels()) rows.push(await rowOf(cache, spec));
   return rows;
 }
@@ -67,6 +69,8 @@ export interface InstallModelOptions {
   readonly replace?: boolean;
   readonly deadline?: Deadline;
   readonly onProgress?: (file: string, received: number, expected: number) => void;
+  /** Fetch to use for the download instead of the global one. */
+  readonly fetch?: typeof fetch;
 }
 
 /**
@@ -84,7 +88,7 @@ export async function installModel(
     if (options.from === undefined) {
       throw new InvalidArgumentError(
         'model',
-        `a built-in model (${TIERS.map((t) => BUILTIN_MODELS[t].id).join(', ')}), or a new name with --from <dir|file.onnx> to bring in your own`,
+        `a built-in model (${MODEL_CATALOG.map((spec) => spec.id).join(', ')}), or a new name with --from <dir|file.onnx> to bring in your own`,
         id,
       );
     }
@@ -109,6 +113,7 @@ export async function installModel(
     allowNetwork: options.download === true,
     ...(options.deadline ? { deadline: options.deadline } : {}),
     ...(options.onProgress ? { onProgress: options.onProgress } : {}),
+    ...(options.fetch ? { fetch: options.fetch as never } : {}),
   });
 }
 
@@ -184,4 +189,10 @@ export async function openProjectEmbedder(
   }
 }
 
-export { ModelCache, modelsDirectory } from '@cntxt-labs/anvesa-embedder';
+export {
+  adviseModels,
+  type ModelAdvice,
+  ModelCache,
+  modelsDirectory,
+  probeHardware,
+} from '@cntxt-labs/anvesa-embedder';

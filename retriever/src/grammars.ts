@@ -1,5 +1,6 @@
 import { stat } from 'node:fs/promises';
 import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
+import { Workspace, walkSources } from '@cntxt-labs/anvesa-indexer';
 import {
   GrammarLock,
   type InstallResult,
@@ -106,6 +107,10 @@ export interface InstallGrammarOptions {
   readonly updateLock?: boolean;
   /** Permit the network. Without `from`, an install needs this. */
   readonly download?: boolean;
+  /** Bytes received and expected (0 when the server does not say) while a download runs. */
+  readonly onProgress?: (received: number, expected: number) => void;
+  /** Fetch to use for the download instead of the global one. */
+  readonly fetch?: typeof fetch;
 }
 
 async function sourceOf(path: string): Promise<InstallSource> {
@@ -141,6 +146,8 @@ export async function installGrammarFor(
     destinationDir,
     lock,
     offline: !options.download,
+    ...(options.onProgress ? { onProgress: options.onProgress } : {}),
+    ...(options.fetch ? { fetch: options.fetch } : {}),
     ...(options.updateLock ? { updateLock: true } : {}),
   });
   await lock.save();
@@ -151,4 +158,30 @@ export async function installGrammarFor(
 function userGrammarDir(lockPaths: readonly string[]): string {
   const userLock = lockPaths[lockPaths.length - 1] as string;
   return userLock.replace(/grammars\.lock\.json$/, 'grammars');
+}
+
+/** A language the project has files in, and whether its parser is ready. */
+export interface ProjectLanguage {
+  readonly language: string;
+  readonly files: number;
+  readonly state: GrammarRow['state'];
+}
+
+/**
+ * The languages of the files the project would index, most files first, each with the state of its
+ * grammar. A language with files and no parser is what `init` offers to download.
+ */
+export async function projectLanguages(
+  root: string,
+  host: GrammarHost = {},
+): Promise<readonly ProjectLanguage[]> {
+  const workspace = await Workspace.open({ root });
+  const counts = new Map<string, number>();
+  for await (const entry of walkSources(workspace)) {
+    counts.set(entry.language, (counts.get(entry.language) ?? 0) + 1);
+  }
+  const states = new Map((await listGrammars(root, host)).map((row) => [row.language, row.state]));
+  return [...counts]
+    .map(([language, files]) => ({ language, files, state: states.get(language) ?? 'missing' }))
+    .sort((a, b) => b.files - a.files || a.language.localeCompare(b.language));
 }

@@ -404,7 +404,7 @@ export function renderModels(models: readonly ModelRow[]): string {
   return lines(
     ...models.map(
       (m) =>
-        `${m.installed ? '*' : ' '} ${m.id}  ${m.tier ?? 'custom'}  ${m.dimensions}d  ${m.maxTokens} tokens  ${m.sizeMb} MB on disk, ~${m.estimatedMemoryMb} MB in memory  ${m.license}`,
+        `${m.installed ? '*' : ' '} ${m.id}  ${m.tier ?? (m.builtin ? 'extra' : 'custom')}  ${m.dimensions}d  ${m.maxTokens} tokens  ${m.sizeMb} MB on disk, ~${m.estimatedMemoryMb} MB in memory  ${m.license}`,
     ),
     '* installed',
   );

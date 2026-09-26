@@ -5,7 +5,7 @@ import { ModelCache } from './cache.ts';
 import { batchTokensFor, LocalEmbedder } from './encoder.ts';
 import { ModelUnavailableError } from './errors.ts';
 import { chooseTier, type HardwareProbe, probeHardware } from './hardware.ts';
-import { BUILTIN_MODELS, builtinModel, type ModelSpec, TIERS } from './models.ts';
+import { BUILTIN_MODELS, builtinModel, MODEL_CATALOG, type ModelSpec, TIERS } from './models.ts';
 import { tokenizerFromJson } from './tokenizer.ts';
 
 export interface OpenOptions {
@@ -95,7 +95,7 @@ export async function resolveModel(
       const custom = (await cache.customModels()).map((model) => model.id);
       throw new InvalidArgumentError(
         'model',
-        `one of ${[...TIERS.map((tier) => BUILTIN_MODELS[tier].id), ...custom].join(', ')}`,
+        `one of ${[...MODEL_CATALOG.map((spec) => spec.id), ...custom].join(', ')}`,
         options.model,
       );
     }

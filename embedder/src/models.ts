@@ -115,8 +115,123 @@ export const BUILTIN_MODELS: Readonly<Record<Tier, ModelSpec>> = {
   },
 };
 
+const MINILM_TOKENIZER: ModelFileSpec = BUILTIN_MODELS.low.tokenizer;
+
+/**
+ * Built-in models beyond the three that automatic choice picks from. They are offered by `init`
+ * and by `--model <id>`, never chosen silently: which of them retrieves code best on a given
+ * repository is for the eval to say. Files come from the same Hugging Face mirrors, pinned by size
+ * and SHA-256 (the model hashes are the ones the hub publishes for each file).
+ */
+export const ADDITIONAL_MODELS: readonly ModelSpec[] = [
+  {
+    id: 'all-MiniLM-L12-v2',
+    tier: undefined,
+    repo: 'Xenova/all-MiniLM-L12-v2',
+    model: {
+      path: 'onnx/model_quantized.onnx',
+      bytes: 34014366,
+      sha256: 'f51725bc66b2bf5335cacb5c005763b57bcd741172372795819741cd945a9dd9',
+    },
+    tokenizer: MINILM_TOKENIZER,
+    dimensions: 384,
+    maxTokens: 256,
+    pooling: 'mean',
+    paramsM: 33,
+    license: 'Apache-2.0',
+    notes:
+      'MiniLM with twice the layers of the low tier, quantised, still CPU-friendly. A modest step up ' +
+      'in accuracy for about 10 MB more memory than all-MiniLM-L6-v2.',
+  },
+  {
+    id: 'bge-small-en-v1.5',
+    tier: undefined,
+    repo: 'Xenova/bge-small-en-v1.5',
+    model: {
+      path: 'onnx/model_quantized.onnx',
+      bytes: 34014426,
+      sha256: '6c9c6101a956d62dfb5e7190c538226c0c5bb9cb27b651234b6df063ee7dbfe4',
+    },
+    tokenizer: BGE_TOKENIZER,
+    dimensions: 384,
+    maxTokens: 512,
+    pooling: 'cls',
+    paramsM: 33,
+    license: 'MIT',
+    notes:
+      'The small BGE retriever, quantised: a 512-token window (whole symbol cards) at low-tier cost. ' +
+      'The best default for a laptop that cannot spare the base model.',
+  },
+  {
+    id: 'gte-small',
+    tier: undefined,
+    repo: 'Xenova/gte-small',
+    model: {
+      path: 'onnx/model_quantized.onnx',
+      bytes: 34014426,
+      sha256: '18dec105109b6004369799ca4761fb8fb413c64172c02147bcfac186b5c5f6cb',
+    },
+    tokenizer: MINILM_TOKENIZER,
+    dimensions: 384,
+    maxTokens: 512,
+    pooling: 'mean',
+    paramsM: 33,
+    license: 'MIT',
+    notes: 'General text embeddings from Alibaba DAMO, small and quantised; a 512-token window.',
+  },
+  {
+    id: 'gte-base',
+    tier: undefined,
+    repo: 'Xenova/gte-base',
+    model: {
+      path: 'onnx/model_quantized.onnx',
+      bytes: 110083337,
+      sha256: '699c5233f2ed9e7230af2d0cb7a50d364fa40d0f72f8312cad74d86a38676637',
+    },
+    tokenizer: MINILM_TOKENIZER,
+    dimensions: 768,
+    maxTokens: 512,
+    pooling: 'mean',
+    paramsM: 109,
+    license: 'MIT',
+    notes:
+      'Base-size GTE, quantised: a quarter of the download of bge-base-en-v1.5 for a similar class ' +
+      'of retrieval.',
+  },
+  {
+    id: 'jina-embeddings-v2-base-code',
+    tier: undefined,
+    repo: 'jinaai/jina-embeddings-v2-base-code',
+    model: {
+      path: 'onnx/model_quantized.onnx',
+      bytes: 161895621,
+      sha256: 'ed45870251c9f0cf656e78aab0d37a23489066df8a222bb1c8caf8a45f2cb16d',
+    },
+    tokenizer: {
+      path: 'tokenizer.json',
+      bytes: 2561316,
+      sha256: 'b01c78a902aa4facb2f47f95449f48e2f7bbfea5d2472ee2f6ce92323c6f86e5',
+    },
+    dimensions: 768,
+    maxTokens: 1024,
+    pooling: 'mean',
+    paramsM: 161,
+    license: 'Apache-2.0',
+    notes:
+      'Trained on code and docstrings in thirty programming languages, so identifiers are not ' +
+      'fragmented the way an English sentence encoder does. Its window is 8192 tokens; 1024 is ' +
+      'used here, which holds whole functions.',
+  },
+];
+
+/** Every built-in model, smallest download first. */
+export const MODEL_CATALOG: readonly ModelSpec[] = [
+  ...TIERS.map((tier) => BUILTIN_MODELS[tier]),
+  ...ADDITIONAL_MODELS,
+].sort((a, b) => a.model.bytes - b.model.bytes);
+
 export function builtinModel(id: string): ModelSpec | undefined {
-  return TIERS.map((tier) => BUILTIN_MODELS[tier]).find((spec) => spec.id === id);
+  return MODEL_CATALOG.find((spec) => spec.id === id);
 }
 
 /**

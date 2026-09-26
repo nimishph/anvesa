@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { chooseTier, type HardwareProbe, probeHardware } from './hardware.ts';
-import { BUILTIN_MODELS, builtinModel, estimatePeakRssMb, TIERS } from './models.ts';
+import { adviseModels, chooseTier, type HardwareProbe, probeHardware } from './hardware.ts';
+import { BUILTIN_MODELS, builtinModel, estimatePeakRssMb, MODEL_CATALOG, TIERS } from './models.ts';
 
 const machine = (availableMemoryMb: number): HardwareProbe => ({
   platform: 'linux',
@@ -90,5 +90,61 @@ describe('the built-in catalogue', () => {
     expect(BUILTIN_MODELS.low.pooling).toBe('mean');
     expect(BUILTIN_MODELS.medium.pooling).toBe('cls');
     expect(BUILTIN_MODELS.high.pooling).toBe('cls');
+  });
+});
+
+describe('the built-in catalog and what init proposes', () => {
+  const probeOf = (cores: number, availableMemoryMb: number): HardwareProbe => ({
+    platform: 'linux',
+    arch: 'x64',
+    cores,
+    totalMemoryMb: availableMemoryMb * 2,
+    availableMemoryMb,
+  });
+
+  test('every model has a unique id, pinned files and a declared window', () => {
+    const ids = MODEL_CATALOG.map((spec) => spec.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids.length).toBeGreaterThanOrEqual(8);
+    for (const spec of MODEL_CATALOG) {
+      expect(spec.model.sha256).toMatch(/^[0-9a-f]{64}$/);
+      expect(spec.tokenizer.sha256).toMatch(/^[0-9a-f]{64}$/);
+      expect(spec.model.bytes).toBeGreaterThan(1_000_000);
+      expect(spec.dimensions).toBeGreaterThan(0);
+      expect(spec.maxTokens).toBeGreaterThanOrEqual(128);
+      expect(builtinModel(spec.id)).toBe(spec);
+    }
+    expect(ids).toContain('jina-embeddings-v2-base-code');
+  });
+
+  test('the catalog is ordered smallest download first', () => {
+    const sizes = MODEL_CATALOG.map((spec) => spec.model.bytes);
+    expect(sizes).toEqual([...sizes].sort((a, b) => a - b));
+  });
+
+  test('a roomy many-core machine is proposed the most capable standard model', () => {
+    const advice = adviseModels(probeOf(16, 32_000));
+    expect(advice.recommended.spec.id).toBe(BUILTIN_MODELS.high.id);
+    expect(advice.models.filter((model) => model.recommended)).toHaveLength(1);
+    expect(advice.models.every((model) => model.fits)).toBe(true);
+  });
+
+  test('little memory steps the proposal down, and says which models do not fit', () => {
+    const advice = adviseModels(probeOf(16, 1_500));
+    expect(advice.recommended.spec.id).toBe(BUILTIN_MODELS.medium.id);
+    const large = advice.models.find((model) => model.spec.id === BUILTIN_MODELS.high.id);
+    expect(large?.fits).toBe(false);
+  });
+
+  test('few cores keep a big model from being proposed however much memory there is', () => {
+    expect(adviseModels(probeOf(2, 64_000)).recommended.spec.id).toBe(BUILTIN_MODELS.low.id);
+    expect(adviseModels(probeOf(4, 64_000)).recommended.spec.id).toBe(BUILTIN_MODELS.medium.id);
+    expect(adviseModels(probeOf(2, 64_000)).reason).toContain('2 cores');
+  });
+
+  test('every model is listed with its download size and expected memory', () => {
+    const [first] = adviseModels(probeOf(8, 16_000)).models;
+    expect(first?.downloadMb).toBeGreaterThan(20);
+    expect(first?.estimatedPeakMb).toBeGreaterThan(100);
   });
 });
