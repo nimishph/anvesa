@@ -42,11 +42,25 @@ The program carries the JavaScript, TypeScript and TSX grammars. Everything else
 demand and works offline:
 
 ```sh
+anvesa init                               # scaffolds, then proposes an encoder and parsers to download
 anvesa model list                         # the built-in models and which are installed
 anvesa model install bge-base-en-v1.5 --from ./models/bge-base   # offline; or --download
 anvesa grammar list
 anvesa grammar install python --from ./tree-sitter-python.wasm   # file, folder or npm tarball
 ```
+
+`anvesa init` does the setup for you. It reads this machine (cores, free memory) and picks the most
+capable standard encoder that fits, without proposing a big one to a machine with few cores; lists every
+built-in encoder with its download size and memory; and finds the languages in the project that have no
+parser installed. On a terminal it asks before each download and shows a progress bar; `--yes` accepts
+what it proposes, `--model <id>` chooses the encoder, `--no-download` (or `--no-network`) only reports
+what it would fetch. Off a terminal it never downloads unless you pass `--yes`. A chosen encoder is
+written to `.anvesa/config.json`; parsers go to your user folder, so every project shares them.
+
+Built-in encoders, smallest first: `all-MiniLM-L6-v2` (23 MB), `all-MiniLM-L12-v2`, `bge-small-en-v1.5`,
+`gte-small`, `gte-base`, `jina-embeddings-v2-base-code` (trained on code, 1024-token window),
+`bge-base-en-v1.5` and `bge-large-en-v1.5`. The three BGE/MiniLM models are what automatic choice
+picks from; the others are yours to choose with `--model`.
 
 Bring your own model: an ONNX file with its Hugging Face `tokenizer.json` (WordPiece, byte-level
 BPE or SentencePiece unigram, each verified against the reference tokenizers):

@@ -5,7 +5,7 @@ import { type Deadline, InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import { openOnnx } from './backend.ts';
 import type { ModelCache } from './cache.ts';
 import { ModelInstallError, ModelShapeError } from './errors.ts';
-import { BUILTIN_MODELS, builtinModel, type ModelSpec, type Pooling, TIERS } from './models.ts';
+import { builtinModel, MODEL_CATALOG, type ModelSpec, type Pooling } from './models.ts';
 import { tokenizerFromJson } from './tokenizer.ts';
 
 /** A model id is a folder name and a key of stored vectors: plain characters only. */
@@ -154,7 +154,7 @@ export async function planCustomModel(options: CustomModelOptions): Promise<Cust
   if (builtinModel(id)) {
     throw new InvalidArgumentError(
       'model',
-      `an id that is not built in (${TIERS.map((tier) => BUILTIN_MODELS[tier].id).join(', ')})`,
+      `an id that is not built in (${MODEL_CATALOG.map((spec) => spec.id).join(', ')})`,
       id,
     );
   }

@@ -1,6 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { arch, cpus, freemem, platform, totalmem } from 'node:os';
-import { BUILTIN_MODELS, estimatePeakRssMb, type ModelSpec, TIERS, type Tier } from './models.ts';
+import {
+  BUILTIN_MODELS,
+  estimatePeakRssMb,
+  MODEL_CATALOG,
+  type ModelSpec,
+  TIERS,
+  type Tier,
+} from './models.ts';
 
 export interface HardwareProbe {
   readonly platform: string;
@@ -59,6 +66,8 @@ export interface ChooseOptions {
    * rest is for the editor, the browser and the indexer itself. Defaults to one half.
    */
   readonly memoryFraction?: number;
+  /** Leave out models above this many million parameters, when the machine has few cores. */
+  readonly maxParamsM?: number;
 }
 
 const DEFAULT_MEMORY_FRACTION = 0.5;
@@ -75,8 +84,13 @@ export function chooseTier(probe: HardwareProbe, options: ChooseOptions = {}): T
     const spec = BUILTIN_MODELS[tier];
     return { tier, spec, estimatedPeakMb: estimatePeakRssMb(spec.model.bytes) };
   });
+  const cap = options.maxParamsM;
+  const allowed =
+    cap === undefined
+      ? candidates
+      : candidates.filter((candidate) => (candidate.spec.paramsM ?? 0) <= cap);
 
-  const fitting = candidates.find((candidate) => candidate.estimatedPeakMb <= budgetMb);
+  const fitting = allowed.find((candidate) => candidate.estimatedPeakMb <= budgetMb);
   const floor = candidates.at(-1) as (typeof candidates)[number];
   const chosen = fitting ?? floor;
   const fits = fitting !== undefined;
@@ -91,4 +105,61 @@ export function chooseTier(probe: HardwareProbe, options: ChooseOptions = {}): T
       ? `${chosen.spec.id} is expected to peak near ${Math.round(chosen.estimatedPeakMb)} MB (${memory})`
       : `even ${chosen.spec.id}, expected near ${Math.round(chosen.estimatedPeakMb)} MB, is over the allowance (${memory}); using it anyway as the smallest available`,
   };
+}
+
+/** One built-in model, as `init` shows it for this machine. */
+export interface ModelAdvice {
+  readonly spec: ModelSpec;
+  /** Expected peak memory while embedding, in megabytes. */
+  readonly estimatedPeakMb: number;
+  readonly downloadMb: number;
+  /** Expected to fit in the share of available memory the encoder may use. */
+  readonly fits: boolean;
+  /** The one to propose. */
+  readonly recommended: boolean;
+}
+
+/** Few cores make embedding slow, so a big model is not proposed however much memory there is. */
+function paramsCapFor(cores: number): number | undefined {
+  if (cores <= 2) return 40;
+  if (cores <= 4) return 120;
+  return undefined;
+}
+
+/**
+ * Every built-in model ranked for this machine, and which one to propose. The proposal is the most
+ * capable of the three standard tiers that fits in memory and is not too heavy for the cores; the
+ * other models are offered as alternatives with the same facts. Only measured things decide: memory
+ * available and cores, never a guessed accelerator.
+ */
+export function adviseModels(
+  probe: HardwareProbe,
+  options: ChooseOptions = {},
+): {
+  readonly recommended: ModelAdvice;
+  readonly models: readonly ModelAdvice[];
+  readonly reason: string;
+} {
+  const cap = options.maxParamsM ?? paramsCapFor(probe.cores);
+  const choice = chooseTier(probe, {
+    ...options,
+    ...(cap === undefined ? {} : { maxParamsM: cap }),
+  });
+  const budgetMb = choice.budgetMb;
+  const models = MODEL_CATALOG.map((spec): ModelAdvice => {
+    const estimatedPeakMb = estimatePeakRssMb(spec.model.bytes);
+    return {
+      spec,
+      estimatedPeakMb,
+      downloadMb: (spec.model.bytes + spec.tokenizer.bytes) / (1024 * 1024),
+      fits: estimatedPeakMb <= budgetMb,
+      recommended: spec.id === choice.spec.id,
+    };
+  });
+  const recommended = models.find((model) => model.recommended) as ModelAdvice;
+  const limited =
+    cap === undefined
+      ? ''
+      : `; ${probe.cores} cores, so models above ${cap}M parameters are not proposed`;
+  return { recommended, models, reason: `${choice.reason}${limited}` };
 }

@@ -30,6 +30,7 @@ import {
 } from '@cntxt-labs/anvesa-retriever';
 import type { Environment } from './environment.ts';
 import { CommandFailedError } from './errors.ts';
+import { renderSetup, setupProject } from './init.ts';
 import { integerOption, type Parsed } from './options.ts';
 import * as show from './render.ts';
 import { VERSION } from './version.ts';
@@ -255,11 +256,12 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       await writeFile(absolute, file.content, 'utf8');
       created.push(file.path);
     }
+    const setup = await setupProject(ctx, projectRoot, modelCache(ctx));
     emit(
       ctx,
-      { created, kept },
+      { created, kept, setup },
       () =>
-        `${created.map((f) => `created ${f}`).join('\n')}${created.length ? '\n' : ''}${kept.map((f) => `kept ${f} (already exists; use --force to overwrite)`).join('\n')}${kept.length ? '\n' : ''}`,
+        `${created.map((f) => `created ${f}`).join('\n')}${created.length ? '\n' : ''}${kept.map((f) => `kept ${f} (already exists; use --force to overwrite)`).join('\n')}${kept.length ? '\n' : ''}${renderSetup(setup)}`,
     );
   },
 

@@ -13,13 +13,15 @@ export { installCustomModel, planCustomModel } from './custom.ts';
 export type { EncoderOptions } from './encoder.ts';
 export { batchTokensFor, LocalEmbedder, THROUGHPUT_BATCH_TOKENS } from './encoder.ts';
 export * from './errors.ts';
-export type { ChooseOptions, HardwareProbe, TierChoice } from './hardware.ts';
-export { chooseTier, probeHardware } from './hardware.ts';
+export type { ChooseOptions, HardwareProbe, ModelAdvice, TierChoice } from './hardware.ts';
+export { adviseModels, chooseTier, probeHardware } from './hardware.ts';
 export type { ModelFileSpec, ModelSpec, Pooling, Tier } from './models.ts';
 export {
+  ADDITIONAL_MODELS,
   BUILTIN_MODELS,
   builtinModel,
   estimatePeakRssMb,
+  MODEL_CATALOG,
   PEAK_RSS_MEASUREMENTS,
   TIERS,
 } from './models.ts';

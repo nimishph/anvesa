@@ -32,6 +32,8 @@ export interface InstallOptions {
   readonly version?: string;
   readonly fetch?: typeof fetch;
   readonly deadline?: Deadline;
+  /** Told how many bytes of a download have arrived, and how many are expected (0 when unknown). */
+  readonly onProgress?: (received: number, expected: number) => void;
 }
 
 export interface InstallResult {
@@ -229,8 +231,47 @@ async function fromRegistry(
       { context: { url, finalUrl: response.url } },
     );
   }
-  const bytes = new Uint8Array(await response.arrayBuffer());
+  const bytes = await readBody(response, grammar.id, options);
   return { bytes, origin: response.url || url, version };
+}
+
+/** The body of a response, reporting progress as it arrives. */
+async function readBody(
+  response: Response,
+  grammarId: string,
+  options: InstallOptions,
+): Promise<Uint8Array> {
+  const expected = Number(response.headers.get('content-length') ?? 0) || 0;
+  if (!response.body || options.onProgress === undefined) {
+    const whole = new Uint8Array(await response.arrayBuffer());
+    options.onProgress?.(whole.length, expected || whole.length);
+    return whole;
+  }
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  const reader = response.body.getReader();
+  try {
+    for (;;) {
+      options.deadline?.throwIfExpired(`fetching grammar ${grammarId}`);
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      options.onProgress(received, expected);
+    }
+  } catch (failure) {
+    options.deadline?.throwIfExpired(`fetching grammar ${grammarId}`);
+    throw new GrammarInstallError(grammarId, 'fetch', 'the download was interrupted', {
+      cause: failure,
+    });
+  }
+  const bytes = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return bytes;
 }
 
 const EXACT_VERSION = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.+-]+)?$/;

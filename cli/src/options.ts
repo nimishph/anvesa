@@ -13,6 +13,8 @@ const OPTIONS = {
   from: { type: 'string' },
   download: { type: 'boolean' },
   'no-network': { type: 'boolean' },
+  yes: { type: 'boolean', short: 'y' },
+  'no-download': { type: 'boolean' },
   force: { type: 'boolean' },
   'retry-quarantined': { type: 'boolean' },
   depth: { type: 'string' },
@@ -57,6 +59,8 @@ export interface Parsed {
     readonly from?: string;
     readonly download?: boolean;
     readonly 'no-network'?: boolean;
+    readonly yes?: boolean;
+    readonly 'no-download'?: boolean;
     readonly force?: boolean;
     readonly 'retry-quarantined'?: boolean;
     readonly depth?: string;
