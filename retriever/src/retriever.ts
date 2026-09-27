@@ -56,6 +56,7 @@ import {
   ShardSet,
   SqliteIndexStore,
   SqliteVectorStore,
+  type StoreBackup,
   type SymbolFact,
   saveManifest,
   Workspace,
@@ -284,6 +285,7 @@ export class Retriever {
   readonly #graph: GraphQueries;
   readonly #only: readonly string[] | undefined;
   readonly #shards: ShardSet | undefined;
+  readonly #backups: readonly StoreBackup[];
   readonly #gate: RedTeamGate;
 
   private constructor(parts: {
@@ -292,6 +294,7 @@ export class Retriever {
     store: IndexStore;
     vectors: VectorStore;
     shards: ShardSet | undefined;
+    backups: readonly StoreBackup[];
     gate: RedTeamGate;
     registry: ChannelRegistry;
     embedder: Embedder | undefined;
@@ -314,6 +317,7 @@ export class Retriever {
     this.#ownsRuntime = parts.ownsRuntime;
     this.#only = parts.only;
     this.#shards = parts.shards;
+    this.#backups = parts.backups;
     this.#gate = parts.gate;
     this.#extractor = new FactExtractor(parts.engine);
     this.#structure = new StructuralLane(parts.store);
@@ -342,6 +346,8 @@ export class Retriever {
     let shards: ShardSet | undefined;
     let store: IndexStore;
     let vectors: VectorStore;
+    // The copies taken before the open upgraded anything: one index, or a shard per fragment.
+    let backups: readonly StoreBackup[];
     if (config.fragments) {
       const manifest = await loadManifest(options.root);
       if (!manifest) {
@@ -355,10 +361,12 @@ export class Retriever {
       shards = await ShardSet.open({ directory: join(dirname(databasePath), 'shards'), manifest });
       store = shards.index;
       vectors = shards.vectors;
+      backups = shards.backups;
     } else {
       const single = SqliteIndexStore.open(databasePath);
       store = single;
       vectors = new SqliteVectorStore(single.database);
+      backups = single.database.backup === undefined ? [] : [single.database.backup];
     }
     const ownsRuntime = options.runtime === undefined;
     const runtime =
@@ -373,6 +381,7 @@ export class Retriever {
       store,
       vectors,
       shards,
+      backups,
       gate,
       registry,
       embedder: options.embedder,
@@ -1125,6 +1134,15 @@ export class Retriever {
       drift: await this.#shards.drift(this.registry.channels()),
       algorithm: this.#shards.assigner.manifest.algorithm,
     };
+  }
+
+  /**
+   * Copies taken before this open upgraded anything, newest last. Empty when the index was already
+   * at this version. Sharded projects open a shard when it is first used, so this is worth reading
+   * after the work is done rather than straight after the open.
+   */
+  get indexBackups(): readonly StoreBackup[] {
+    return this.#shards ? this.#shards.backups : this.#backups;
   }
 
   /** Move what sits in the wrong shard, without indexing. */

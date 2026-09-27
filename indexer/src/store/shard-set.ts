@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type { VectorStore } from '@cntxt-labs/anvesa-dense';
 import { ShardError } from '../errors.ts';
 import { FragmentAssigner, type FragmentManifest, manifestText } from '../fragments/manifest.ts';
+import type { StoreBackup } from './database.ts';
 import { ShardedIndexStore, ShardedVectorStore, type ShardProvider } from './sharded.ts';
 import { SqliteIndexStore } from './sqlite-index-store.ts';
 import { SqliteVectorStore } from './sqlite-vector-store.ts';
@@ -59,12 +60,14 @@ export class ShardSet {
   readonly #manifest: FragmentManifest;
   readonly #open = new Map<string, { index: SqliteIndexStore; vectors: SqliteVectorStore }>();
   readonly #meta: SqliteIndexStore;
+  readonly #backups: StoreBackup[] = [];
 
   private constructor(options: ShardSetOptions, meta: SqliteIndexStore) {
     this.#directory = options.directory;
     this.#manifest = options.manifest;
     this.assigner = new FragmentAssigner(options.manifest);
     this.#meta = meta;
+    this.#recorded(meta.database.backup);
     const ids = () => this.#existing();
     const open = (id: string) => this.#shard(id);
     const indexShards: ShardProvider<IndexStore> = {
@@ -87,6 +90,22 @@ export class ShardSet {
     );
   }
 
+  /**
+   * Copies taken before a shard was upgraded: the meta database first, then each fragment as it is
+   * opened. Shards open on demand, so this grows as the project is worked on, and it is empty when
+   * nothing needed upgrading.
+   */
+  get backups(): readonly StoreBackup[] {
+    return this.#backups;
+  }
+
+  #recorded(backup: StoreBackup | undefined): void {
+    if (backup === undefined) return;
+    const at = this.#backups.findIndex((held) => held.backupPath === backup.backupPath);
+    if (at < 0) this.#backups.push(backup);
+    else this.#backups[at] = backup;
+  }
+
   #path(id: string): string {
     return join(this.#directory, `${id}.db`);
   }
@@ -100,6 +119,7 @@ export class ShardSet {
       });
     }
     const index = SqliteIndexStore.open(this.#path(id));
+    this.#recorded(index.database.backup);
     const shard = { index, vectors: new SqliteVectorStore(index.database) };
     this.#open.set(id, shard);
     return shard;

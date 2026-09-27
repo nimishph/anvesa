@@ -1,3 +1,4 @@
+import { Database } from 'bun:sqlite';
 import { afterAll, describe, expect, test } from 'bun:test';
 import {
   copyFileSync,
@@ -351,6 +352,22 @@ describe('command line', () => {
     expect(tty.err).toContain('\r');
     expect(tty.err).toContain('indexing:');
     expect(tty.err).toContain('— linking\n');
+  });
+
+  test('an index that cannot be upgraded names the copy it took first', async () => {
+    const root = makeProject();
+    expect((await cli(root, 'index')).code).toBe(0);
+    // Wind the version back on a file whose tables are a whole schema ahead: the next open takes
+    // its copy first, then cannot finish, and has to say where the copy is.
+    const path = join(root, '.anvesa', 'index.db');
+    const raw = new Database(path);
+    raw.exec('PRAGMA user_version = 1');
+    raw.close();
+
+    const failed = await cli(root, 'status');
+    expect(failed.code).not.toBe(0);
+    expect(failed.err).toContain(`${path}.backup-v1`);
+    expect(existsSync(`${path}.backup-v1`)).toBe(true);
   });
 
   test('an unknown command or option is a usage error that says what was wrong', async () => {

@@ -1,7 +1,7 @@
 import { Database } from 'bun:sqlite';
 import { afterAll, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { Deadline, InvalidArgumentError, OperationAbortedError } from '@cntxt-labs/anvesa-core';
 import { inputFile, makeCard, vectorStoreContract } from '@cntxt-labs/anvesa-dense';
 import {
@@ -12,7 +12,12 @@ import {
   StoreSchemaError,
 } from '../errors.ts';
 import { cleanupTrees, makeTree } from '../test-support.ts';
-import { MEMORY_DATABASE, StoreDatabase } from './database.ts';
+import {
+  DEFAULT_BUSY_TIMEOUT_MS,
+  MEMORY_DATABASE,
+  StoreDatabase,
+  type StoreOptions,
+} from './database.ts';
 import { indexStoreContract } from './index-store-contract.ts';
 import { MemoryIndexStore } from './memory-index-store.ts';
 import { MIGRATIONS, SCHEMA_VERSION } from './schema.ts';
@@ -43,6 +48,142 @@ vectorStoreContract(kit, 'sqlite on disk', {
 });
 
 const dbPath = () => join(makeTree({}), '.anvesa', 'index.db');
+
+/** These modules as import URLs, so another process can load the same code this one is testing. */
+const STORE_MODULE_URL = new URL('./database.ts', import.meta.url).href;
+const SCHEMA_MODULE_URL = new URL('./schema.ts', import.meta.url).href;
+
+/** Hold the write lock, say so on stdout, and keep it for `holdMs`. */
+const HOLDS_THE_WRITE_LOCK = `
+import { Database } from 'bun:sqlite';
+const [target, holdMs] = process.argv.slice(2);
+const db = new Database(target);
+db.exec('PRAGMA busy_timeout = 0');
+db.exec('BEGIN IMMEDIATE');
+console.log('locked');
+await Bun.sleep(Number(holdMs));
+db.exec('ROLLBACK');
+db.close();
+`;
+
+/** Bring the index up to date under the write lock, and only then let go of it. */
+const UPGRADES_THE_INDEX = `
+import { Database } from 'bun:sqlite';
+const [schemaUrl, target, holdMs] = process.argv.slice(2);
+const { MIGRATIONS } = await import(schemaUrl);
+const db = new Database(target);
+db.exec('PRAGMA busy_timeout = 0');
+db.exec('BEGIN IMMEDIATE');
+const from = db.query('PRAGMA user_version').get().user_version;
+for (const migration of MIGRATIONS.filter((one) => one.version > from)) {
+  db.exec(migration.sql);
+  db.exec(\`PRAGMA user_version = \${migration.version}\`);
+}
+console.log('upgraded');
+await Bun.sleep(Number(holdMs));
+db.exec('COMMIT');
+db.close();
+`;
+
+/** Open the store the way a real process does, and report what happened as one line of JSON. */
+const OPENS_AND_REPORTS = `
+import { existsSync } from 'node:fs';
+const [gate, moduleUrl, target] = process.argv.slice(2);
+while (!existsSync(gate)) await Bun.sleep(1);
+const { StoreDatabase } = await import(moduleUrl);
+try {
+  const database = StoreDatabase.open(target);
+  console.log(JSON.stringify({ ok: true, version: database.schemaVersion }));
+  database.close();
+} catch (thrown) {
+  console.log(JSON.stringify({ ok: false, name: thrown?.constructor?.name, message: thrown?.message }));
+  process.exitCode = 1;
+}
+`;
+
+/**
+ * Run `body` in one other process and report the first line it prints, which is how a test knows
+ * the other process has got as far as it needs to be. It has to be another process: a second
+ * connection in this one could not hold a lock that this one then waits for, because the busy
+ * handler does not yield to the event loop, so one process only ever hears about locks it took
+ * itself. The lock is let go rather than killed off, so the file closes cleanly and can be
+ * removed with the rest of the tree.
+ */
+function inAnotherProcess(
+  body: string,
+  args: readonly string[],
+): { readonly signalled: Promise<string>; readonly finished: Promise<number> } {
+  const root = makeTree({});
+  const script = join(root, 'other-process.ts');
+  writeFileSync(script, body);
+  const child = Bun.spawn({ cmd: ['bun', script, ...args], stdout: 'pipe', stderr: 'inherit' });
+  return {
+    signalled: child.stdout
+      .getReader()
+      .read()
+      .then(({ value }) => new TextDecoder().decode(value)),
+    finished: child.exited,
+  };
+}
+
+/**
+ * Run `body` in `count` other processes, all released at the same instant, and report what each of
+ * them made of the file. The gate is what lines them up: started one after another they would
+ * arrive at the file seconds apart, which is not a race at all.
+ */
+async function collide(
+  body: string,
+  args: readonly string[],
+  count: number,
+): Promise<readonly { readonly exitCode: number; readonly output: string }[]> {
+  const root = makeTree({});
+  const gate = join(root, 'go');
+  const script = join(root, 'other-process.ts');
+  writeFileSync(script, body);
+  const children = Array.from({ length: count }, () =>
+    Bun.spawn({
+      cmd: ['bun', script, gate, ...args],
+      cwd: root,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    }),
+  );
+  // Long enough for the slowest child to be started and to reach the gate.
+  await Bun.sleep(300);
+  writeFileSync(gate, 'go');
+  return Promise.all(
+    children.map(async (child) => ({
+      exitCode: await child.exited,
+      output: (await child.stderr.text()) + (await child.stdout.text()),
+    })),
+  );
+}
+
+/** An index left at the first release's schema version, so opening it has migrations to apply. */
+function olderSchemaIndex(journal: 'wal' | 'delete' = 'wal'): string {
+  const path = dbPath();
+  mkdirSync(dirname(path), { recursive: true });
+  const raw = new Database(path, { create: true });
+  if (journal === 'wal') raw.exec('PRAGMA journal_mode = WAL');
+  raw.exec(MIGRATIONS[0]?.sql ?? '');
+  raw.exec('PRAGMA user_version = 1');
+  raw.close();
+  return path;
+}
+
+/** The schema version a file on disk is at, read without opening it as an index. */
+function schemaVersionOf(path: string): number {
+  const raw = new Database(path, { readonly: true });
+  const version = (raw.query('PRAGMA user_version').get() as { user_version: number }).user_version;
+  raw.close();
+  return version;
+}
+
+/** The copies this version of anvesa keeps beside an index, by file name. */
+function copiesOf(path: string): readonly string[] {
+  const prefix = `${basename(path)}.backup-v`;
+  return readdirSync(dirname(path)).filter((name) => name.startsWith(prefix));
+}
 
 const sample = (path: string): IndexedFile => ({
   path,
@@ -175,6 +316,70 @@ describe('opening the database', () => {
   });
 });
 
+describe('copying an index before it is upgraded', () => {
+  test('an index with migrations to apply is copied aside, and the copy is the old index', () => {
+    const path = olderSchemaIndex();
+    const database = StoreDatabase.open(path);
+    const backup = database.backup;
+    expect(backup).toBeDefined();
+    expect(backup?.from).toBe(1);
+    expect(backup?.to).toBe(SCHEMA_VERSION);
+    expect(backup?.backupPath).toBe(`${path}.backup-v1`);
+    expect(backup?.restore).toContain(backup?.backupPath ?? '');
+    expect(schemaVersionOf(path)).toBe(SCHEMA_VERSION);
+    // The copy is the index as it was, whole, not a record of what the upgrade did.
+    expect(schemaVersionOf(backup?.backupPath ?? path)).toBe(1);
+    database.close();
+  });
+
+  test('an index with nothing to upgrade is not copied', () => {
+    const path = dbPath();
+    const database = StoreDatabase.open(path);
+    expect(database.backup).toBeUndefined();
+    database.close();
+    expect(copiesOf(path)).toEqual([]);
+  });
+
+  test('a copy left by an earlier attempt is replaced, and only that is touched', () => {
+    const path = olderSchemaIndex();
+    // An upgrade that failed and was run again leaves its copy behind, and VACUUM INTO will not
+    // write over one. Anything else next to the index is none of this code's business.
+    writeFileSync(`${path}.backup-v1`, 'a copy from a failed attempt');
+    writeFileSync(`${path}.backup-v3`, 'a copy from some other upgrade');
+    writeFileSync(`${path}.backup-notes`, 'mine');
+    const database = StoreDatabase.open(path);
+    expect(database.backup?.backupPath).toBe(`${path}.backup-v1`);
+    expect(schemaVersionOf(`${path}.backup-v1`)).toBe(1);
+    expect(existsSync(`${path}.backup-v3`)).toBe(false);
+    expect(readFileSync(`${path}.backup-notes`, 'utf8')).toBe('mine');
+    database.close();
+  });
+
+  test('an upgrade that fails says where the index as it was is', () => {
+    const path = olderSchemaIndex();
+    // A table already sitting where the third migration wants one: the upgrade cannot finish,
+    // which is the case the copy exists for.
+    const raw = new Database(path);
+    raw.exec('CREATE TABLE exports (mine INTEGER)');
+    raw.exec('PRAGMA user_version = 2');
+    raw.close();
+
+    let failure: unknown;
+    try {
+      StoreDatabase.open(path);
+    } catch (thrown) {
+      failure = thrown;
+    }
+    expect(failure).toBeInstanceOf(StoreSchemaError);
+    const error = failure as StoreSchemaError;
+    expect(error.message).toContain('migration 3 failed');
+    expect(error.hint).toContain(`${path}.backup-v2`);
+    expect(schemaVersionOf(`${path}.backup-v2`)).toBe(2);
+    // The failed migration rolled back, so the index and its copy are the same version.
+    expect(schemaVersionOf(path)).toBe(2);
+  });
+});
+
 describe('using the database', () => {
   test('a closed store says so, with the operation that was attempted', async () => {
     const store = SqliteIndexStore.open(MEMORY_DATABASE);
@@ -224,10 +429,10 @@ describe('using the database', () => {
     await store.close();
   });
 
-  test('a locked database fails at once with a hint, unless a timeout was chosen', async () => {
+  test('a locked database fails at once when the store was told not to wait', () => {
     const path = dbPath();
     const holder = StoreDatabase.open(path);
-    const contender = StoreDatabase.open(path);
+    const contender = StoreDatabase.open(path, { busyTimeoutMs: 0 });
     holder.connection('test').exec('BEGIN IMMEDIATE');
     try {
       let failure: unknown;
@@ -273,6 +478,116 @@ describe('using the database', () => {
   });
 });
 
+describe('another process on the same index', () => {
+  test('a store names a busy timeout for itself when the caller does not', () => {
+    const timeoutOf = (options?: StoreOptions) => {
+      const database = StoreDatabase.open(dbPath(), options);
+      try {
+        return (
+          database.connection('test').query('PRAGMA busy_timeout').get() as { timeout: number }
+        ).timeout;
+      } finally {
+        database.close();
+      }
+    };
+    expect(timeoutOf()).toBe(DEFAULT_BUSY_TIMEOUT_MS);
+    expect(timeoutOf({ busyTimeoutMs: 0 })).toBe(0);
+    expect(timeoutOf({ busyTimeoutMs: 250 })).toBe(250);
+  });
+
+  test('a write waits for the lock another process is holding instead of failing at once', async () => {
+    const path = dbPath();
+    await SqliteIndexStore.open(path).close();
+    const holder = inAnotherProcess(HOLDS_THE_WRITE_LOCK, [path, '400']);
+    try {
+      expect(await holder.signalled).toContain('locked');
+
+      const store = SqliteIndexStore.open(path);
+      await store.setMeta('k', 'v');
+      expect(await store.getMeta('k')).toBe('v');
+      await store.close();
+    } finally {
+      await holder.finished;
+    }
+  });
+
+  test('another process writing to the file does not stop the index reaching WAL', async () => {
+    const path = olderSchemaIndex('delete');
+    const holder = inAnotherProcess(HOLDS_THE_WRITE_LOCK, [path, '60']);
+    try {
+      expect(await holder.signalled).toContain('locked');
+
+      // Switching journal mode needs the file to itself, and SQLite reports that clash at once
+      // rather than waiting for it, whatever busy timeout the store was given: only asking again
+      // gets the index into WAL.
+      const store = SqliteIndexStore.open(path);
+      const mode = store.database.connection('test').query('PRAGMA journal_mode').get() as {
+        journal_mode: string;
+      };
+      expect(mode.journal_mode).toBe('wal');
+      await store.close();
+    } finally {
+      await holder.finished;
+    }
+  });
+
+  test('an index another process upgrades while we wait is the one we get, not a failure', async () => {
+    const path = olderSchemaIndex();
+    const upgrader = inAnotherProcess(UPGRADES_THE_INDEX, [SCHEMA_MODULE_URL, path, '300']);
+    try {
+      expect(await upgrader.signalled).toContain('upgraded');
+
+      // Every migration is decided on before the first lock is taken, so the list this process is
+      // holding says there is work left when there is none. The version is read again under the
+      // lock and the work already done is left alone.
+      const store = SqliteIndexStore.open(path);
+      expect(store.database.schemaVersion).toBe(SCHEMA_VERSION);
+      await store.replaceFile(sample('a.ts'));
+      expect((await store.files()).items).toHaveLength(1);
+      await store.close();
+    } finally {
+      await upgrader.finished;
+    }
+  });
+
+  test('a process that holds the lock past the timeout is named, not called a broken index', async () => {
+    const path = olderSchemaIndex();
+    const holder = inAnotherProcess(HOLDS_THE_WRITE_LOCK, [path, '700']);
+    try {
+      expect(await holder.signalled).toContain('locked');
+
+      let failure: unknown;
+      try {
+        SqliteIndexStore.open(path, { busyTimeoutMs: 50 });
+      } catch (thrown) {
+        failure = thrown;
+      }
+      // It is another process holding the file, so it is an open problem and not a schema problem.
+      expect(failure).toBeInstanceOf(StoreOpenError);
+      expect(failure).not.toBeInstanceOf(StoreSchemaError);
+      expect((failure as StoreOpenError).hint).toContain('Another process');
+    } finally {
+      await holder.finished;
+    }
+  });
+
+  test('two processes opening a brand-new index at once all get a whole one', async () => {
+    // Three rounds, because this is a race: a round whose processes happen to miss each other
+    // proves nothing, and each round is a fresh file for a fresh set of processes to collide on.
+    for (let round = 0; round < 3; round += 1) {
+      const path = dbPath();
+      const opened = await collide(OPENS_AND_REPORTS, [STORE_MODULE_URL, path], 3);
+      expect(opened.map((child) => child.output.trim())).toEqual(
+        opened.map(() => JSON.stringify({ ok: true, version: SCHEMA_VERSION })),
+      );
+
+      const store = SqliteIndexStore.open(path);
+      expect(store.database.schemaVersion).toBe(SCHEMA_VERSION);
+      await store.close();
+    }
+  });
+});
+
 describe('vector store specifics', () => {
   const transformer = {
     name: 'demo',
@@ -306,6 +621,26 @@ describe('vector store specifics', () => {
     );
     await store.search(new Float32Array([1, 0, 0]), { channel: 'demo', model: 'm', limit: 5 });
     expect(() => store.database.close()).not.toThrow();
+  });
+
+  test('a model with no record of its vector size is reported unknown, not as zero', async () => {
+    const database = StoreDatabase.open(join(makeTree({}), 'v.db'));
+    const store = new SqliteVectorStore(database);
+    await store.replaceSource(
+      update('a.md', [{ card: cardOf('a.md', 'one'), vector: new Float32Array([1, 0, 0]) }]),
+    );
+    expect((await store.stats('demo')).models).toEqual([{ model: 'm', dimensions: 3, cards: 1 }]);
+
+    // Break the invariant the store keeps by writing both rows in one transaction: the cards are
+    // there and the record of their size is not, which no code path is supposed to produce.
+    database
+      .connection('test')
+      .query("DELETE FROM vector_dims WHERE channel = 'demo' AND model = 'm'")
+      .run();
+    const broken = await store.stats('demo');
+    expect(broken.models).toEqual([{ model: 'm', cards: 1 }]);
+    expect(broken.models[0]).not.toHaveProperty('dimensions');
+    database.close();
   });
 
   test('cards and dimensions survive reopening', async () => {

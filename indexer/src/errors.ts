@@ -126,7 +126,7 @@ function storeHint(sqliteCode: string | undefined): string | undefined {
   switch (sqliteCode) {
     case 'SQLITE_BUSY':
     case 'SQLITE_LOCKED':
-      return 'Another process is using the index. Wait for it to finish, or open the store with a busy timeout.';
+      return 'Another process is using the index. It was waited for: give the store a longer busy timeout, or let the other process finish.';
     case 'SQLITE_FULL':
       return 'The disk holding the index is full.';
     case 'SQLITE_READONLY':

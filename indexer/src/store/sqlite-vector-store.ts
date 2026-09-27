@@ -36,10 +36,16 @@ interface Scored extends ScoredId {
 
 /**
  * Card vectors on SQLite. Search is exact: every stored vector of the channel and model is
- * compared, one row at a time, so memory use stays flat however many cards there are. Only the
- * winners' cards are read back.
+ * compared, one row at a time, and only the winners' cards are read back.
  *
  * Vectors are stored already normalised, so a cosine similarity is one dot product.
+ *
+ * Memory is flat in the number of cards only when results are collected as they are found, which
+ * is a fixed-size top-k. Collapsing to the best card of each group cannot be done that way: the
+ * scan has to remember the best it has seen for every group it has not passed yet, so that path
+ * holds one entry per distinct group in the channel for the length of the scan. Inherent to
+ * best-per-group, not a defect, but it is the difference between a scan that cannot run out of
+ * memory and one that grows with the number of groups.
  */
 export class SqliteVectorStore implements VectorStore {
   readonly #database: StoreDatabase;
@@ -280,11 +286,16 @@ export class SqliteVectorStore implements VectorStore {
         sources: counted.sources,
         quarantined: counted.quarantined,
         medianCardsPerSource: medianCardsPerSource(db, channel, counted.sources),
-        models: totals.map((row) => ({
-          model: row.model,
-          dimensions: dims.get(row.model) ?? 0,
-          cards: row.cards,
-        })),
+        models: totals.map((row) => {
+          const dimensions = dims.get(row.model);
+          return {
+            model: row.model,
+            // Absent when no record of the size survives, rather than zero: a source whose cards
+            // were all quarantined has vectors to measure in no row at all.
+            ...(dimensions === undefined ? {} : { dimensions }),
+            cards: row.cards,
+          };
+        }),
       };
     });
   }
