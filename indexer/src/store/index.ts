@@ -1,4 +1,4 @@
-export { MEMORY_DATABASE, StoreDatabase, type StoreOptions } from './database.ts';
+export { MEMORY_DATABASE, type StoreBackup, StoreDatabase, type StoreOptions } from './database.ts';
 export { MemoryIndexStore } from './memory-index-store.ts';
 export { MIGRATIONS, SCHEMA_VERSION } from './schema.ts';
 export type { DriftReport, Misplaced, ShardSetOptions, ShardSummary } from './shard-set.ts';

@@ -54,7 +54,12 @@ export interface ChannelStats {
   readonly medianCardsPerSource: number;
   readonly models: readonly {
     readonly model: string;
-    readonly dimensions: number;
+    /**
+     * The size of this model's vectors, or absent when the store holds no vector to measure it
+     * from — a source whose cards were all quarantined, or a record that went missing. Zero would
+     * read as a size somebody chose.
+     */
+    readonly dimensions?: number;
     readonly cards: number;
   }[];
 }
@@ -170,13 +175,17 @@ export class MemoryVectorStore implements VectorStore {
 
   async stats(channel: string): Promise<ChannelStats> {
     const sources = [...(this.#channels.get(channel)?.values() ?? [])];
-    const perModel = new Map<string, { dimensions: number; cards: number }>();
+    const perModel = new Map<string, { cards: number; dimensions: number | undefined }>();
     for (const source of sources) {
+      // A source that stored no card has nothing to measure, so the size is only what another
+      // source of the same model recorded.
       const dimensions =
-        source.cards[0]?.unit.length ?? this.#dimensions.get(channel)?.get(source.state.model) ?? 0;
-      const entry = perModel.get(source.state.model) ?? { dimensions, cards: 0 };
-      entry.cards += source.cards.length;
-      perModel.set(source.state.model, entry);
+        source.cards[0]?.unit.length ?? this.#dimensions.get(channel)?.get(source.state.model);
+      const held = perModel.get(source.state.model);
+      perModel.set(source.state.model, {
+        cards: (held?.cards ?? 0) + source.cards.length,
+        dimensions: held?.dimensions ?? dimensions,
+      });
     }
     const counts = sources.map((source) => source.cards.length).sort((a, b) => a - b);
     const middle = Math.floor(counts.length / 2);
@@ -192,7 +201,12 @@ export class MemoryVectorStore implements VectorStore {
       sources: sources.length,
       quarantined: sources.reduce((a, s) => a + s.quarantined.length, 0),
       medianCardsPerSource: median,
-      models: [...perModel.entries()].map(([model, value]) => ({ model, ...value })),
+      models: [...perModel.entries()].map(([model, held]) => ({
+        model,
+        cards: held.cards,
+        // Absent rather than zero: nothing here has a vector to measure, and zero is a size.
+        ...(held.dimensions === undefined ? {} : { dimensions: held.dimensions }),
+      })),
     };
   }
 

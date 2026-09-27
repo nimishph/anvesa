@@ -1,3 +1,4 @@
+import { Database } from 'bun:sqlite';
 import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import {
   existsSync,
@@ -9,9 +10,10 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import { type Embedder, inputFile } from '@cntxt-labs/anvesa-dense';
+import { MIGRATIONS, SCHEMA_VERSION } from '@cntxt-labs/anvesa-indexer';
 import { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/anvesa-syntax';
 import { loadChannelModule } from './channel-module.ts';
 import { loadProjectConfig, validateProjectConfig } from './config.ts';
@@ -120,6 +122,23 @@ async function indexed(
   const r = await retriever(makeProject(files), options);
   await r.index();
   return r;
+}
+
+/** A database left at the first release's schema, so opening it has migrations to apply. */
+function firstReleaseIndex(path: string): void {
+  mkdirSync(dirname(path), { recursive: true });
+  const raw = new Database(path, { create: true });
+  raw.exec('PRAGMA journal_mode = WAL');
+  raw.exec(MIGRATIONS[0]?.sql ?? '');
+  raw.exec('PRAGMA user_version = 1');
+  raw.close();
+}
+
+function schemaVersionOf(path: string): number {
+  const raw = new Database(path, { readonly: true });
+  const version = (raw.query('PRAGMA user_version').get() as { user_version: number }).user_version;
+  raw.close();
+  return version;
 }
 
 describe('fusion', () => {
@@ -713,6 +732,47 @@ describe('an index kept in shards', () => {
     expect(found.items[0]?.path).toBe('src/render.ts');
     // Nothing is left over in the shard it came from.
     expect((await second.query('//function[@name="renderWidget"]')).items).toHaveLength(1);
+  });
+
+  test('an index upgraded on open reports the copy taken before it was changed', async () => {
+    const root = makeProject();
+    const path = join(root, '.anvesa', 'index.db');
+    firstReleaseIndex(path);
+    const r = await retriever(root);
+    expect(r.indexBackups).toEqual([
+      expect.objectContaining({
+        path,
+        backupPath: `${path}.backup-v1`,
+        from: 1,
+        to: SCHEMA_VERSION,
+      }),
+    ]);
+    expect(existsSync(`${path}.backup-v1`)).toBe(true);
+    // The copy is the index as it was, and the live one is now at this version.
+    expect(schemaVersionOf(`${path}.backup-v1`)).toBe(1);
+    expect(schemaVersionOf(path)).toBe(SCHEMA_VERSION);
+    // A project already at this version has nothing to report.
+    await r.close();
+    open.pop();
+    const again = await retriever(root);
+    expect(again.indexBackups).toEqual([]);
+  });
+
+  test('a sharded project copies each shard aside as it is opened, not just the meta one', async () => {
+    const root = await shardedProject();
+    const shards = join(root, '.anvesa', 'shards');
+    firstReleaseIndex(join(shards, '_meta.db'));
+    firstReleaseIndex(join(shards, 'src.db'));
+    firstReleaseIndex(join(shards, 'docs.db'));
+    const r = await retriever(root, { config: sharded });
+    // Shards are opened as they are used, so the copies arrive with the work rather than all at once.
+    expect(r.indexBackups.map((b) => basename(b.backupPath))).toEqual(['_meta.db.backup-v1']);
+    await r.index();
+    expect(r.indexBackups.map((b) => basename(b.backupPath)).sort()).toEqual([
+      '_meta.db.backup-v1',
+      'docs.db.backup-v1',
+      'src.db.backup-v1',
+    ]);
   });
 
   test('turning it on without saying what the fragments are is refused, with what to do', async () => {

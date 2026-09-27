@@ -474,7 +474,7 @@ export class ShardedVectorStore implements VectorStore {
     if (known !== undefined) return known;
     for (const { store } of this.#each()) {
       const held = (await store.stats(channel)).models.find((entry) => entry.model === model);
-      if (held && held.dimensions > 0) {
+      if (held?.dimensions !== undefined) {
         this.#dimensions.set(key, held.dimensions);
         return held.dimensions;
       }
@@ -547,16 +547,18 @@ export class ShardedVectorStore implements VectorStore {
         : counts.length % 2 === 1
           ? (counts[middle] as number)
           : ((counts[middle - 1] as number) + (counts[middle] as number)) / 2;
-    const models = new Map<string, { dimensions: number; cards: number }>();
+    const models = new Map<string, { cards: number; dimensions: number | undefined }>();
     let quarantined = 0;
     for (const { store } of this.#each()) {
       const stats = await store.stats(channel);
       quarantined += stats.quarantined;
       for (const model of stats.models) {
-        const held = models.get(model.model) ?? { dimensions: model.dimensions, cards: 0 };
-        held.cards += model.cards;
-        if (held.dimensions === 0) held.dimensions = model.dimensions;
-        models.set(model.model, held);
+        const held = models.get(model.model);
+        models.set(model.model, {
+          cards: (held?.cards ?? 0) + model.cards,
+          // Whichever shard knows the size settles it for the model; the rest contribute counts.
+          dimensions: held?.dimensions ?? model.dimensions,
+        });
       }
     }
     return {
@@ -567,7 +569,12 @@ export class ShardedVectorStore implements VectorStore {
       medianCardsPerSource: median,
       models: [...models]
         .sort(([a], [b]) => (a < b ? -1 : 1))
-        .map(([model, held]) => ({ model, ...held })),
+        .map(([model, held]) => ({
+          model,
+          cards: held.cards,
+          // Left out when no shard had a vector to measure, rather than reported as zero.
+          ...(held.dimensions === undefined ? {} : { dimensions: held.dimensions }),
+        })),
     };
   }
 

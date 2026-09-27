@@ -84,6 +84,13 @@ export async function openSession(
       ...(ctx.environment.runtime ? { runtime: ctx.environment.runtime } : {}),
       ...(ctx.environment.grammars ? { grammars: ctx.environment.grammars } : {}),
     });
+    // An upgrade is worth a line of its own: it says the index changed under the user's feet, and
+    // it names the copy of the old one, which is the way back if this version turns out to be wrong.
+    for (const backup of retriever.indexBackups) {
+      ctx.environment.stderr(
+        `note: ${backup.path} upgraded from schema ${backup.from} to ${backup.to}; the index as it was is at ${backup.backupPath}\n`,
+      );
+    }
     return {
       retriever,
       embedderReason,
