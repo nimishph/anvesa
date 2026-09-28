@@ -1,5 +1,5 @@
 import { Database, type SQLQueryBindings } from 'bun:sqlite';
-import { mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { CodeLensError, InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import {
@@ -33,11 +33,17 @@ export const MEMORY_DATABASE = ':memory:';
  */
 export const DEFAULT_BUSY_TIMEOUT_MS = 5000;
 
-/** How many times to re-ask for WAL before believing the lock is not coming. */
-const WAL_ATTEMPTS = 12;
-
-/** How long to wait between those asks. Long enough for the other process to finish writing. */
+/** How long to wait between asks for WAL. Long enough for the other process to finish writing. */
 const WAL_RETRY_MS = 25;
+
+/**
+ * How many times to re-ask for WAL before believing the lock is not coming: the busy_timeout
+ * pragma does not cover this particular switch (see `enableWal`), so it gets its own retry loop —
+ * but it should still add up to the same "wedged, not just slow" budget as `DEFAULT_BUSY_TIMEOUT_MS`
+ * rather than a shorter one of its own, since it's answering the identical question about a
+ * process racing to be the first to touch a brand-new index file.
+ */
+const WAL_ATTEMPTS = Math.ceil(DEFAULT_BUSY_TIMEOUT_MS / WAL_RETRY_MS);
 
 /** What a copy of an index is called, followed by the version it was taken at. */
 const BACKUP_SUFFIX = '.backup-v';
@@ -89,7 +95,7 @@ export class StoreDatabase {
     const readonly = options.readonly === true;
     let db: Database;
     try {
-      if (path !== MEMORY_DATABASE && !readonly) mkdirSync(dirname(path), { recursive: true });
+      if (path !== MEMORY_DATABASE && !readonly) mkdirRecursiveIdempotent(dirname(path));
       db = new Database(path, readonly ? { readonly: true } : { create: true });
     } catch (failure) {
       throw new StoreOpenError(path, { cause: failure });
@@ -173,6 +179,23 @@ export class StoreDatabase {
     } catch (failure) {
       throw asStoreError('close the database', failure);
     }
+  }
+}
+
+/**
+ * `mkdirSync(dir, { recursive: true })`, but tolerant of another process creating the same
+ * directory in the instant between this one finding it absent and creating it — several anvesa
+ * processes opening a brand-new index at once all race on the same `.anvesa` directory. Node's
+ * `recursive: true` already swallows a plain "it's there" (`EEXIST`) race on most platforms, but
+ * Windows can also surface it as `EPERM` when `CreateDirectory` loses that race by a hair. Either
+ * way, the directory existing when it's checked again is success, not failure.
+ */
+function mkdirRecursiveIdempotent(dir: string): void {
+  try {
+    mkdirSync(dir, { recursive: true });
+  } catch (failure) {
+    if (existsSync(dir) && statSync(dir).isDirectory()) return;
+    throw failure;
   }
 }
 
