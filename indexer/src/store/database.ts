@@ -45,6 +45,16 @@ const WAL_RETRY_MS = 25;
  */
 const WAL_ATTEMPTS = Math.ceil(DEFAULT_BUSY_TIMEOUT_MS / WAL_RETRY_MS);
 
+/**
+ * How many times a migration step retries after losing a duplicate-object race (see `migrate`),
+ * and how long to wait between attempts. A single unsynchronized re-read right after the loss
+ * isn't reliably enough after the loser's own rollback — see the comment on that retry — so this
+ * re-enters a fresh, properly locked transaction instead, the same way `enableWal` doesn't trust
+ * a single re-check either.
+ */
+const DUPLICATE_OBJECT_ATTEMPTS = 8;
+const DUPLICATE_OBJECT_RETRY_MS = 20;
+
 /** What a copy of an index is called, followed by the version it was taken at. */
 const BACKUP_SUFFIX = '.backup-v';
 
@@ -361,47 +371,54 @@ function migrate(db: Database, path: string, readonly: boolean): StoreBackup | u
   const backup =
     path === MEMORY_DATABASE || current === 0 ? undefined : takeBackup(db, path, current);
   for (const migration of pending) {
-    try {
-      db.transaction(() => {
-        // Re-read under the write lock, which is where the version is settled. Two processes
-        // opening a brand-new index at the same instant both read an empty file and both find
-        // work to do; the one that waited for the lock must see the other's tables and take the
-        // next step, not try to create what is already there. Every step before this one either
-        // applied its version or found it already applied, so the file is at `version - 1` here
-        // unless another process has moved it further along.
-        const now = userVersion(db);
-        checkUsable(db, path, now);
-        if (now >= migration.version) return;
-        db.exec(migration.sql);
-        db.exec(`PRAGMA user_version = ${migration.version}`);
-      }).immediate();
-    } catch (failure) {
-      if (failure instanceof CodeLensError) throw failure;
-      // Another process holding the write lock past the busy timeout is not a broken migration.
-      if (isLocked(failure)) {
-        throw new StoreOpenError(path, {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        db.transaction(() => {
+          // Re-read under the write lock, which is where the version is settled. Two processes
+          // opening a brand-new index at the same instant both read an empty file and both find
+          // work to do; the one that waited for the lock must see the other's tables and take the
+          // next step, not try to create what is already there. Every step before this one either
+          // applied its version or found it already applied, so the file is at `version - 1` here
+          // unless another process has moved it further along.
+          const now = userVersion(db);
+          checkUsable(db, path, now);
+          if (now >= migration.version) return;
+          db.exec(migration.sql);
+          db.exec(`PRAGMA user_version = ${migration.version}`);
+        }).immediate();
+        break;
+      } catch (failure) {
+        if (failure instanceof CodeLensError) throw failure;
+        // Another process holding the write lock past the busy timeout is not a broken migration.
+        if (isLocked(failure)) {
+          throw new StoreOpenError(path, {
+            cause: failure,
+            hint: 'Another process is upgrading this index. Wait for it to finish, then run this again.',
+            context: { version: migration.version, description: migration.description },
+          });
+        }
+        // Two processes racing this same step can both find nothing pending and both start
+        // creating it: SQLite serializes their transactions (that's what the write lock is for),
+        // so exactly one succeeds and the other's DDL fails against what the winner just
+        // committed. A single unsynchronized re-read of the version right here, outside any
+        // transaction, isn't trustworthy enough — it can still run before the winner's commit is
+        // visible on this connection. So this retries the whole step through a fresh, properly
+        // locked transaction instead: that re-read of `now` above is the one that counts, and a
+        // few short retries give the winner's commit time to land before this gives up.
+        if (isDuplicateObject(failure) && attempt < DUPLICATE_OBJECT_ATTEMPTS) {
+          Bun.sleepSync(DUPLICATE_OBJECT_RETRY_MS);
+          continue;
+        }
+        throw new StoreSchemaError(path, `migration ${migration.version} failed`, {
           cause: failure,
-          hint: 'Another process is upgrading this index. Wait for it to finish, then run this again.',
-          context: { version: migration.version, description: migration.description },
+          ...(backup === undefined
+            ? {}
+            : {
+                hint: `The index as it was before this upgrade is at ${backup.backupPath}. ${backup.restore}`,
+              }),
+          context: { version: migration.version, description: migration.description, ...backup },
         });
       }
-      // Two processes racing this same step can both find nothing pending and both start
-      // creating it: SQLite serializes their transactions (that's what the write lock is for), so
-      // exactly one succeeds and the other's DDL fails against what the winner just committed.
-      // That failure lands here, outside the transaction it happened in (which has already been
-      // rolled back), so this re-read is an ordinary uncontended read of the winner's committed
-      // state — if it now covers this migration, the step is done and this was never a broken
-      // schema, just the loser of a race that already has its answer.
-      if (isDuplicateObject(failure) && userVersion(db) >= migration.version) continue;
-      throw new StoreSchemaError(path, `migration ${migration.version} failed`, {
-        cause: failure,
-        ...(backup === undefined
-          ? {}
-          : {
-              hint: `The index as it was before this upgrade is at ${backup.backupPath}. ${backup.restore}`,
-            }),
-        context: { version: migration.version, description: migration.description, ...backup },
-      });
     }
   }
   return backup;
