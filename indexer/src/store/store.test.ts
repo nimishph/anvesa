@@ -85,18 +85,32 @@ db.exec('COMMIT');
 db.close();
 `;
 
-/** Open the store the way a real process does, and report what happened as one line of JSON. */
+/**
+ * Open the store the way a real process does, and report what happened as one line of JSON. On
+ * failure this includes the cause chain (name/message/code of the top error and whatever it
+ * wraps), not just the outer StoreOpenError's generic "Cannot open index database <path>" —
+ * otherwise a failure here is undiagnosable from a CI log alone.
+ */
 const OPENS_AND_REPORTS = `
 import { existsSync } from 'node:fs';
 const [gate, moduleUrl, target] = process.argv.slice(2);
 while (!existsSync(gate)) await Bun.sleep(1);
 const { StoreDatabase } = await import(moduleUrl);
+function describe(err) {
+  if (err === null || err === undefined) return err;
+  return {
+    name: err?.constructor?.name,
+    message: err?.message,
+    code: err?.code,
+    cause: 'cause' in Object(err) ? describe(err.cause) : undefined,
+  };
+}
 try {
   const database = StoreDatabase.open(target);
   console.log(JSON.stringify({ ok: true, version: database.schemaVersion }));
   database.close();
 } catch (thrown) {
-  console.log(JSON.stringify({ ok: false, name: thrown?.constructor?.name, message: thrown?.message }));
+  console.log(JSON.stringify({ ok: false, error: describe(thrown) }));
   process.exitCode = 1;
 }
 `;
