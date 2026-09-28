@@ -166,7 +166,14 @@ jobs:
       # follow, until the Promote workflow moves `latest` to it. Platform packages go first so the
       # launcher never depends on a version that is not there yet. A version already on the registry
       # is skipped, so a re-run is safe; any other failure stops the release.
+      #
+      # Disabled for now: these package names were unpublished on 2026-09-28 and npm enforces a
+      # 24h lockout before the same name can be published again, so this step would just fail the
+      # release job (and, since it runs before Create GitHub Release, block that step too). Publish
+      # manually from dist/npm/ once the lockout clears, then re-enable (drop the `if: false` on
+      # this step and the one below) once trusted publishing is set up.
       - name: Stage on npm (dist-tag next)
+        if: false
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
@@ -191,6 +198,7 @@ jobs:
           stage cli
 
       - name: List what needs approval
+        if: false
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
