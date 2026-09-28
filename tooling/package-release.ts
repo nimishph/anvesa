@@ -9,7 +9,15 @@
  * is a folder rather than part of the program because the native addon must sit next to its shared
  * library, and a compiled program cannot carry both in a place the loader will look.
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -30,6 +38,22 @@ const folder = join(out, name);
 const packageDirectory = (specifier: string, from: string): string =>
   // The package's manifest is always resolvable, whatever its `exports` say.
   dirname(createRequire(join(from, 'package.json')).resolve(`${specifier}/package.json`));
+
+/**
+ * Copy a vendored package's compiled output, skipping sourcemaps and type declarations: neither
+ * is read at runtime, and both add dead weight (and, for the .d.ts files, an unnecessary look at
+ * the API surface) to a published binary that never re-exposes this as a library.
+ */
+function copyRuntimeFiles(source: string, destination: string): void {
+  mkdirSync(destination, { recursive: true });
+  for (const entry of readdirSync(source, { withFileTypes: true })) {
+    if (entry.name.endsWith('.map') || entry.name.endsWith('.d.ts')) continue;
+    const from = join(source, entry.name);
+    const to = join(destination, entry.name);
+    if (entry.isDirectory()) copyRuntimeFiles(from, to);
+    else cpSync(from, to);
+  }
+}
 
 async function run(command: readonly string[], cwd: string): Promise<void> {
   const child = Bun.spawn({ cmd: [...command], cwd, stdout: 'inherit', stderr: 'inherit' });
@@ -67,10 +91,17 @@ for (const specifier of ['onnxruntime-node', 'onnxruntime-common']) {
   const destination = join(modules, specifier);
   mkdirSync(destination, { recursive: true });
   cpSync(join(source, 'package.json'), join(destination, 'package.json'));
-  for (const part of ['dist', 'lib']) {
-    if (existsSync(join(source, part)))
-      cpSync(join(source, part), join(destination, part), { recursive: true });
-  }
+  // Only 'dist' (compiled output) is ever required at runtime — 'lib' (onnxruntime-node's own
+  // TypeScript source) is not. onnxruntime-common ships both a cjs and an esm build of 'dist';
+  // only the cjs one is ever required (see the relative-path rewrite below), so that's the only
+  // one copied.
+  const distSource =
+    specifier === 'onnxruntime-common' ? join(source, 'dist', 'cjs') : join(source, 'dist');
+  const distDestination =
+    specifier === 'onnxruntime-common'
+      ? join(destination, 'dist', 'cjs')
+      : join(destination, 'dist');
+  if (existsSync(distSource)) copyRuntimeFiles(distSource, distDestination);
   if (specifier === 'onnxruntime-node') {
     // A compiled program does not look up bare package names at run time, so the two packages
     // are joined by relative paths.
