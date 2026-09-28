@@ -48,6 +48,8 @@ await run(
     'bun',
     'build',
     '--compile',
+    '--minify',
+    '--sourcemap=none',
     './src/binary.ts',
     '--external',
     'onnxruntime-node',
