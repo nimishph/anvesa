@@ -588,7 +588,7 @@ describe('another process on the same index', () => {
   // Flaky on win32 CI specifically: three distinct file-locking races have surfaced here one after
   // another under real 3-way process contention (WAL-mode-switch timeout, a migration racing its
   // own duplicate-table-creation retry, and takeBackup()'s stale-backup cleanup hitting EBUSY) —
-  // see the tracker bead for the full history. Skipped here rather than chasing one interleaving
+  // see anv-0gj for the full history. Skipped here rather than chasing one interleaving
   // at a time; the underlying scenario still needs a structural fix (e.g. a lockfile serializing
   // first-creation entirely) rather than more per-step retries.
   test.skipIf(process.platform === 'win32')(
