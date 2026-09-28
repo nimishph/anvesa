@@ -28,7 +28,7 @@ jobs:
           bun-version: 1.3.14
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
       - run: bun install --frozen-lockfile
       - run: bun run check
       - run: bun run package
@@ -64,7 +64,7 @@ jobs:
           bun-version: 1.3.14
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
       - run: bun install --frozen-lockfile
       - run: bun run package
 
@@ -124,7 +124,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
 
       - name: Verify Tag Matches Manifest Version
@@ -160,7 +160,9 @@ jobs:
           name: benchmark
           path: benchmark
 
-      # Staged, not live: every package goes to the `next` dist-tag, which `npm install` does not
+      # Staged twice over: `npm stage publish` (npm 11+, hence node-version 24 above) defers 2FA to
+      # a separate approval you run yourself, so CI needs only an ordinary automation token, not a
+      # bypass-2FA one. Once approved it lands on the `next` dist-tag, which `npm install` does not
       # follow, until the Promote workflow moves `latest` to it. Platform packages go first so the
       # launcher never depends on a version that is not there yet. A version already on the registry
       # is skipped, so a re-run is safe; any other failure stops the release.
@@ -181,12 +183,23 @@ jobs:
             if npm view "${name}@${version}" version >/dev/null 2>&1; then
               echo "${name}@${version} is already on the registry, skipping"
             else
-              npm publish "${dir}" --access public --provenance --tag next
+              npm stage publish "${dir}" --access public --provenance --tag next
             fi
           }
           for folder in staged/*/; do stage "${folder%/}"; done
           cp README.md LICENSE cli/
           stage cli
+
+      - name: List what needs approval
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          echo "::notice::Each package above is staged, not live yet. Run 'npm stage approve <id>' (with your own 2FA) for each, then run the Promote workflow to move dist-tag latest."
+          npm stage list "@cntxt-labs/anvesa" || true
+          npm stage list "@cntxt-labs/anvesa-linux-x64" || true
+          npm stage list "@cntxt-labs/anvesa-linux-arm64" || true
+          npm stage list "@cntxt-labs/anvesa-darwin-arm64" || true
+          npm stage list "@cntxt-labs/anvesa-win32-x64" || true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
