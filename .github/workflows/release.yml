@@ -173,12 +173,15 @@ jobs:
             exit 1
           fi
           stage() {
-            name="$(node -p "require('./$1/package.json').name")"
-            version="$(node -p "require('./$1/package.json').version")"
+            # npm treats a bare "owner/repo"-shaped path as GitHub shorthand, not a local folder,
+            # unless it starts with "./" — so this normalizes to that regardless of what $1 arrives as.
+            dir="./${1#./}"
+            name="$(node -p "require('${dir}/package.json').name")"
+            version="$(node -p "require('${dir}/package.json').version")"
             if npm view "${name}@${version}" version >/dev/null 2>&1; then
               echo "${name}@${version} is already on the registry, skipping"
             else
-              npm publish "$1" --access public --provenance --tag next
+              npm publish "${dir}" --access public --provenance --tag next
             fi
           }
           for folder in staged/*/; do stage "${folder%/}"; done
