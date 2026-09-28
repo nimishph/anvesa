@@ -125,7 +125,8 @@ export class PatternRunner {
     }
 
     const queryResult = await this.retriever.query(bound.wql, {
-      ...(bound.limit || options.limit ? { limit: bound.limit ?? options.limit } : {}),
+      // The caller's limit wins; the pattern's own is its default.
+      ...(options.limit || bound.limit ? { limit: options.limit ?? bound.limit } : {}),
       ...(options.cursor ? { cursor: options.cursor } : {}),
       ...(include ? { include } : {}),
     });

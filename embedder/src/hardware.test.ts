@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'bun:test';
-import { adviseModels, chooseTier, type HardwareProbe, probeHardware } from './hardware.ts';
+import {
+  adviseModels,
+  chooseTier,
+  type HardwareProbe,
+  parseVmStat,
+  probeHardware,
+} from './hardware.ts';
 import { BUILTIN_MODELS, builtinModel, estimatePeakRssMb, MODEL_CATALOG, TIERS } from './models.ts';
 
 const machine = (availableMemoryMb: number): HardwareProbe => ({
@@ -71,6 +77,30 @@ describe('the probe', () => {
     expect(probe.totalMemoryMb).toBeGreaterThan(0);
     expect(probe.availableMemoryMb).toBeGreaterThan(0);
     expect(probe.availableMemoryMb).toBeLessThanOrEqual(probe.totalMemoryMb);
+  });
+});
+
+describe('available memory on macOS', () => {
+  // A 16 GB Apple Silicon machine with about half its memory reclaimable: `freemem` said 135 MB.
+  const vmStat = [
+    'Mach Virtual Memory Statistics: (page size of 16384 bytes)',
+    'Pages free:                                8640.',
+    'Pages active:                            401264.',
+    'Pages inactive:                          389120.',
+    'Pages speculative:                         4816.',
+    'Pages throttled:                              0.',
+    'Pages wired down:                        152390.',
+    'Pages purgeable:                          21077.',
+  ].join('\n');
+
+  test('counts free, speculative and inactive pages, which the system hands out on demand', () => {
+    expect(parseVmStat(vmStat)).toBe((8640 + 389120 + 4816) * 16384);
+    expect((parseVmStat(vmStat) as number) / (1024 * 1024)).toBeGreaterThan(6000);
+  });
+
+  test('output it cannot read is no measurement, not zero', () => {
+    expect(parseVmStat('')).toBeUndefined();
+    expect(parseVmStat('Pages free: 10.')).toBeUndefined();
   });
 });
 

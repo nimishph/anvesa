@@ -2,6 +2,7 @@ import type { Database } from 'bun:sqlite';
 import {
   type Card,
   type ChannelStats,
+  collapseKey,
   DimensionMismatchError,
   dot,
   normalize,
@@ -107,7 +108,7 @@ export class SqliteVectorStore implements VectorStore {
           card.id,
           update.path,
           update.model,
-          card.attrs.group ?? card.id,
+          collapseKey(card),
           JSON.stringify(card),
           unit.length,
           Buffer.from(unit.buffer, unit.byteOffset, unit.byteLength),

@@ -135,6 +135,16 @@ jobs:
             exit 1
           fi
 
+      # git-cliff --latest lists what changed since the previous tag it can reach. A previous tag
+      # that is not in this tag's history (history rewritten after tagging) makes it list every
+      # commit ever made, so say so instead of publishing notes that look right and are not.
+      - name: Check the previous release is in this one's history
+        run: |
+          previous="$(git tag --list 'v*' --sort=-v:refname | grep -vx "${GITHUB_REF_NAME}" | head -n 1)"
+          if [ -n "${previous}" ] && ! git merge-base --is-ancestor "${previous}" "${GITHUB_REF_NAME}"; then
+            echo "::warning::${previous} is not an ancestor of ${GITHUB_REF_NAME}: the release notes will list the whole history. Re-tag ${previous} on the commit that was released."
+          fi
+
       - name: Generate Changelog
         uses: orhun/git-cliff-action@v4
         with:
@@ -159,6 +169,10 @@ jobs:
         with:
           name: benchmark
           path: benchmark
+
+      - name: Checksums for the archives
+        working-directory: archives
+        run: sha256sum *.zip *.tar.gz > SHA256SUMS && cat SHA256SUMS
 
       # Staged twice over: `npm stage publish` (npm 11+, hence node-version 24 above) defers 2FA to
       # a separate approval you run yourself, so CI needs only an ordinary automation token, not a
@@ -218,6 +232,7 @@ jobs:
           files: |
             archives/*.zip
             archives/*.tar.gz
+            archives/SHA256SUMS
             benchmark/stress-history.tar.gz
             benchmark/stress-report.txt
             benchmark/golden-report.json

@@ -33,10 +33,11 @@ export interface Extracted {
 }
 
 /**
- * Bump when what is extracted from the same outline changes (a new fact, a different rule), so
- * indexes built before it are extracted again instead of quietly lacking it.
+ * Bump when what is extracted from the same outline changes (a new fact, a different rule), or
+ * when the edges linked from the same facts do (4: every call edge keeps its own lines), so
+ * indexes built before it are extracted and linked again instead of quietly lacking it.
  */
-const FACTS_VERSION = 3;
+const FACTS_VERSION = 4;
 
 /** Offsets locate nodes in the source; a cached outline does not need them. */
 const CACHE_OMITS: ReadonlySet<string> = new Set([ATTR.startIndex, ATTR.endIndex]);

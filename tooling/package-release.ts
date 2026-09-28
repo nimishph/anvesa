@@ -82,6 +82,11 @@ await run(
   ],
   join(root, 'cli'),
 );
+// Some Bun releases write a source map beside a compiled program even with --sourcemap=none. Nothing
+// reads it at run time, and it carries every source file, so it never ships.
+for (const entry of readdirSync(folder)) {
+  if (entry.endsWith('.map')) rmSync(join(folder, entry));
+}
 
 const modules = join(folder, 'runtime', 'node_modules');
 const nodePackage = packageDirectory('onnxruntime-node', join(root, 'embedder'));
@@ -185,6 +190,12 @@ writeFileSync(
   )}
 `,
 );
+
+const shipped = readdirSync(folder, { recursive: true, encoding: 'utf8' });
+const maps = shipped.filter((entry) => entry.endsWith('.map'));
+if (maps.length > 0) {
+  throw new InvalidArgumentError('archive', 'no source maps', maps.join(', '));
+}
 
 const archive = process.platform === 'win32' ? `${name}.zip` : `${name}.tar.gz`;
 rmSync(join(out, archive), { force: true });

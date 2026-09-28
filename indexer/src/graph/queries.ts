@@ -28,7 +28,7 @@ export interface CallerRef {
   readonly crossPackage: boolean;
   /** The calling symbol's own lines and signature; absent for a call made outside any symbol. */
   readonly symbol: SymbolBrief | undefined;
-  /** Lines in the caller's file that call the name (several when it is called more than once). */
+  /** Lines in the caller's file of the calls that resolved to this symbol (several when it is called more than once). */
   readonly callLines: readonly number[];
 }
 
@@ -61,6 +61,8 @@ export interface DependentsOptions {
 
 export interface DependentsResult {
   readonly dependents: readonly Dependent[];
+  /** How many dependents were found within the depth; more than `dependents` when `limit` cut it. */
+  readonly total: number;
   /** Importers exist beyond the depth that was asked for. */
   readonly moreBeyondDepth: boolean;
 }
@@ -112,9 +114,11 @@ export class GraphQueries {
         package: pkg?.name,
         crossPackage: target !== undefined && pkg?.root !== targetPackage,
         symbol: caller ? briefOf(caller) : undefined,
-        callLines: target
-          ? await callLines(facts, path, caller ? edge.from : undefined, [target.baseName])
-          : [],
+        callLines:
+          edge.lines ??
+          (target
+            ? await callLines(facts, path, caller ? edge.from : undefined, [target.baseName])
+            : []),
       });
     }
     return { ...page, items };
@@ -140,11 +144,13 @@ export class GraphQueries {
         kind,
         confidence: confidenceOf(edge),
         symbol: callee ? briefOf(callee) : undefined,
-        callLines: await callLines(facts, originPath, origin ? from : undefined, [
-          ...(callee ? [callee.baseName] : []),
-          edge.to,
-          lastSegment(edge.to),
-        ]),
+        callLines:
+          edge.lines ??
+          (await callLines(facts, originPath, origin ? from : undefined, [
+            ...(callee ? [callee.baseName] : []),
+            edge.to,
+            lastSegment(edge.to),
+          ])),
       });
     }
     return { ...page, items };
@@ -196,7 +202,7 @@ export class GraphQueries {
     }
     found.sort((x, y) => x.depth - y.depth || (x.path < y.path ? -1 : x.path > y.path ? 1 : 0));
     const dependents = options.limit !== undefined ? found.slice(0, options.limit) : found;
-    return { dependents, moreBeyondDepth };
+    return { dependents, total: found.length, moreBeyondDepth };
   }
 
   /** The files `path` imports, in the workspace. */
@@ -338,7 +344,10 @@ class FactsCache {
   }
 }
 
-/** The lines in `path` where `from` (or the file itself, when undefined) calls any of `names`. */
+/**
+ * The lines in `path` where `from` (or the file itself, when undefined) calls any of `names`. Only
+ * for an edge stored before edges kept their own lines: it cannot tell two calls of one name apart.
+ */
 async function callLines(
   facts: FactsCache,
   path: string,

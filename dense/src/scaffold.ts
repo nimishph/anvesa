@@ -45,8 +45,10 @@ export function scaffoldChannel(channel: string, template: ScaffoldTemplate = 'f
     nextSteps: [
       `Edit transformer.ts: decide which files it claims and what one card holds.`,
       `Try it on a file:  anvesa channel test ${channel} <file>`,
-      `Index it:          anvesa channel index ${channel}`,
-      `Search it:         medha retrieve ${channel} "<question>"`,
+      template === 'external'
+        ? `Index it:          anvesa channel index ${channel}`
+        : 'Index it:          anvesa index',
+      `Search it:         anvesa retrieve ${channel} "<question>"`,
     ],
   };
 }
@@ -158,6 +160,22 @@ interface Record${capitalise(channel)} {
   readonly title: string;
   readonly body: string;
 }
+
+// Where the records come from. \`anvesa channel index ${channel}\` reads them and removes the cards
+// of records that are gone. \`files()\` may return an array or other iterable, a promise of one
+// (\`async files()\`), or be an \`async *files()\` generator. \`source\` may also be a function of
+// \`{ root }\` (the project root) that returns this object.
+//
+// export const source = {
+//   name: '${channel}-records',
+//   async files() {
+//     const records: (Record${capitalise(channel)} & { id: string })[] = []; // fetch them: an API, a database
+//     return records.map((record) => ({
+//       path: \`${channel}/\${record.id}.json\`,
+//       content: JSON.stringify(record),
+//     }));
+//   },
+// };
 
 export default defineTransformer({
   name: '${channel}',

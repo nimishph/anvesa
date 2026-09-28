@@ -210,6 +210,22 @@ export const MIGRATIONS: readonly Migration[] = [
       ) WITHOUT ROWID;
     `,
   },
+  {
+    version: 7,
+    description: 'call lines per edge, and no confidence claimed for an unresolved call',
+    sql: `
+      ALTER TABLE edges ADD COLUMN lines TEXT;
+      UPDATE edges SET confidence = 'none' WHERE kind = 'calls:unresolved';
+    `,
+  },
+  {
+    version: 8,
+    description:
+      'card groups are scoped to their source, so equal group names in two files stay apart',
+    sql: `
+      UPDATE cards SET group_key = path || '#' || group_key;
+    `,
+  },
 ];
 
 /** The schema version a database has once fully migrated. */

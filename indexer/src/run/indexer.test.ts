@@ -126,7 +126,7 @@ describe('a first run', () => {
     expect(report.link?.imports.resolved).toBe(2);
     expect((await store.stats()).files).toBe(4);
     expect((await store.findEdges({ from: 'src/a.ts#a', kind: EDGE.calls })).items).toEqual([
-      { from: 'src/a.ts#a', to: 'src/b.ts#b', kind: EDGE.calls, confidence: 'exact' },
+      { from: 'src/a.ts#a', to: 'src/b.ts#b', kind: EDGE.calls, confidence: 'exact', lines: [2] },
     ]);
     expect(await store.getMeta('index.dirty')).toBeUndefined();
   });

@@ -707,5 +707,27 @@ describe('keeping a channel equal to an outside source', () => {
     ]);
     expect(report.removed).toEqual([]);
     expect((await p.store.sourceState('flaky', 'a'))?.cards).toBe(1);
+    // The report says why, not only that it failed.
+    expect(report.reports[0]?.failure?.message).toContain('the record is unreadable');
+  });
+
+  test('files() may be an async function that returns an array', async () => {
+    const p = pipeline();
+    const fetched = {
+      name: 'fetched',
+      async files() {
+        await Promise.resolve();
+        return [inputFile('y.md', '# Y\nfetched text')];
+      },
+    };
+    const report = await p.ingester.syncChannel('docs', fetched);
+    expect(report.reports.map((r) => r.outcome)).toEqual(['indexed']);
+    expect(await p.store.sourcePaths('docs')).toEqual(['y.md']);
+  });
+
+  test('files() that hands out something not iterable is refused, naming the contract', async () => {
+    const p = pipeline();
+    const wrong = { name: 'wrong', files: async () => ({ path: 'z.md' }) as never };
+    await expect(p.ingester.syncChannel('docs', wrong)).rejects.toThrow(/async iterable/);
   });
 });

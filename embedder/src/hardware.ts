@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { arch, cpus, freemem, platform, totalmem } from 'node:os';
 import {
@@ -35,16 +36,56 @@ export function probeHardware(): HardwareProbe {
   };
 }
 
-/** `MemAvailable` on Linux, where `freemem` counts reclaimable cache as used. */
+/**
+ * `MemAvailable` on Linux and the reclaimable pages `vm_stat` reports on macOS, where `freemem`
+ * counts only pages nothing holds and so reports a small fraction of what a new process can get.
+ */
 function availableMemoryBytes(): number {
-  if (platform() !== 'linux') return freemem();
+  const measured =
+    platform() === 'linux'
+      ? linuxAvailable()
+      : platform() === 'darwin'
+        ? darwinAvailable()
+        : undefined;
+  return measured === undefined ? freemem() : Math.min(measured, totalmem());
+}
+
+function linuxAvailable(): number | undefined {
   try {
     const match = readFileSync('/proc/meminfo', 'utf8').match(/^MemAvailable:\s+(\d+)\s+kB/m);
-    return match?.[1] ? Number(match[1]) * 1024 : freemem();
+    return match?.[1] ? Number(match[1]) * 1024 : undefined;
   } catch {
     // A restricted container may not expose it: fall back to the portable figure.
-    return freemem();
+    return undefined;
   }
+}
+
+function darwinAvailable(): number | undefined {
+  try {
+    return parseVmStat(execFileSync('vm_stat', { encoding: 'utf8', timeout: 2000 }));
+  } catch {
+    // vm_stat missing or refused (a sandbox): fall back to the portable figure.
+    return undefined;
+  }
+}
+
+/**
+ * Bytes a new process can get on macOS, from `vm_stat` output: free, speculative and inactive
+ * pages, which the system hands out on demand. Purgeable pages are left out because `vm_stat`
+ * already counts them among the others.
+ */
+export function parseVmStat(output: string): number | undefined {
+  const pageSize = Number(output.match(/page size of (\d+) bytes/)?.[1]);
+  const pages = (label: string): number | undefined => {
+    const match = output.match(new RegExp(`^${label}:\\s+(\\d+)\\.?$`, 'm'));
+    return match?.[1] === undefined ? undefined : Number(match[1]);
+  };
+  const free = pages('Pages free');
+  const inactive = pages('Pages inactive');
+  if (!Number.isFinite(pageSize) || pageSize <= 0 || free === undefined || inactive === undefined) {
+    return undefined;
+  }
+  return (free + inactive + (pages('Pages speculative') ?? 0)) * pageSize;
 }
 
 export interface TierChoice {

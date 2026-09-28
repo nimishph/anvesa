@@ -247,6 +247,7 @@ function renderChannelLine(channel: ChannelInfo): string {
     channel.enabled ? undefined : 'disabled',
     channel.hasSource ? 'own source' : undefined,
     !channel.builtin && !channel.pinned ? 'module not pinned' : undefined,
+    channel.problem ? `not loaded: ${channel.problem}` : undefined,
   ]
     .filter(Boolean)
     .join(', ');
@@ -641,11 +642,14 @@ export function renderPatternResult(result: PatternRunResult): string {
       diagRows.push(`hint: ${result.diagnostic.hint}`);
     }
   }
-  const total = result.total === null ? result.items.length : result.total;
+  const count =
+    result.total !== null
+      ? `${result.items.length} of ${result.total} matches`
+      : `${result.items.length} matches, more after these`;
   return lines(
     `pattern: ${result.pattern} -> wql: ${result.wql}`,
     ...rows,
-    `${result.items.length} of ${total} matches${result.nextCursor ? ` (next cursor: ${result.nextCursor})` : ''}`,
+    `${count}${result.nextCursor ? ` (next cursor: ${result.nextCursor})` : ''}`,
     ...diagRows,
   );
 }

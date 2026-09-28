@@ -95,7 +95,8 @@ async function link(files: readonly PhpFile[]) {
     edges.push(...page.items);
     cursor = page.nextCursor ?? undefined;
   } while (cursor !== undefined);
-  return edges;
+  // What a call resolves to is the question here; which line it is on is tested with the linker.
+  return edges.map(({ lines: _lines, ...edge }) => edge);
 }
 
 const show = 'app/Http/OrderController.php#OrderController.show';
@@ -323,7 +324,7 @@ describe('PHP calls through declared types', () => {
       },
     ]);
     expect(edges.filter((edge) => edge.from === show)).toEqual([
-      { from: show, to: 'get', kind: 'calls:unresolved', confidence: 'exact' },
+      { from: show, to: 'get', kind: 'calls:unresolved', confidence: 'none' },
     ]);
   });
 });

@@ -138,7 +138,7 @@ async function chooseModel(
     return {
       id: first,
       state: 'already',
-      note: `encoder ${[...installed].join(', ')} is installed`,
+      note: `${[...installed].join(', ')} is installed`,
     };
   }
 
@@ -176,7 +176,7 @@ async function chooseModel(
     };
   }
   const id = chosen.spec.id;
-  if (installed.has(id)) return { id, state: 'already', note: `encoder ${id} is installed` };
+  if (installed.has(id)) return { id, state: 'already', note: `${id} is installed` };
   if (!permitted) {
     return {
       id,
@@ -220,7 +220,7 @@ async function chooseModel(
   // Record the choice so every teammate and every run uses the same model.
   const config = await loadProjectConfig(projectRoot);
   await writeProjectConfig(projectRoot, { ...config, model: id });
-  return { id, state: 'installed', note: `encoder ${id} installed and set in .anvesa/config.json` };
+  return { id, state: 'installed', note: `${id} installed and set in .anvesa/config.json` };
 }
 
 function skipped(advice: ReturnType<typeof adviseModels>, why: string): SetupResult['model'] {

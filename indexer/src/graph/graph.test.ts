@@ -261,6 +261,9 @@ describe('linking a pnpm monorepo', () => {
 
     const limited = await queries.dependents(greet, { depth: Number.POSITIVE_INFINITY, limit: 1 });
     expect(limited.dependents).toEqual([{ path: 'packages/core/src/index.ts', depth: 1 }]);
+    // The limit, not the depth, left one out, and the result says how many there were.
+    expect(limited.total).toBe(2);
+    expect(limited.moreBeyondDepth).toBe(false);
 
     const index = 'packages/core/src/index.ts';
     const runtimeOnly = await queries.dependents(index);
@@ -407,6 +410,44 @@ it('two', () => { Component(); });
     expect(await edgesOf(fixture.store, 'a.ts#use')).toEqual([`${EDGE.callsUnresolved} next`]);
     const calls = (await fixture.store.findEdges({ from: 'tests.ts', kind: EDGE.calls })).items;
     expect(calls.map((e) => e.to)).toEqual(['tests.ts#Component', 'tests.ts#Component~2']);
+  });
+});
+
+describe('where each call is', () => {
+  const files = {
+    'package.json': '{"name":"r"}',
+    'log.ts': 'export function log(message: string) {}\n',
+    'a.ts': `import { log } from './log';
+export function trace(message: string) {
+  log(message);
+  console.log(message);
+  log(message);
+  nothing();
+}
+`,
+  };
+
+  test('an edge carries the lines of its own calls, not of every call with the same name', async () => {
+    const fixture = await indexFixture(files);
+    await fixture.linker.linkAll();
+    const callees = await fixture.queries.callees('a.ts#trace');
+    const byTarget = new Map(callees.items.map((c) => [c.to, c]));
+    expect(byTarget.get('log.ts#log')?.callLines).toEqual([3, 5]);
+    expect(byTarget.get('global#console.log')?.callLines).toEqual([4]);
+    expect((await fixture.queries.callers('log.ts#log')).items).toMatchObject([
+      { from: 'a.ts#trace', callLines: [3, 5] },
+    ]);
+  });
+
+  test('a call that resolved to nothing claims no confidence', async () => {
+    const fixture = await indexFixture(files);
+    await fixture.linker.linkAll();
+    const callees = await fixture.queries.callees('a.ts#trace');
+    expect(callees.items.find((c) => c.to === 'nothing')).toMatchObject({
+      kind: 'unresolved',
+      confidence: 'none',
+      callLines: [6],
+    });
   });
 });
 

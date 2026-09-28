@@ -22,7 +22,8 @@ export class TransformerFailedError extends DenseSubsystemError {
   readonly code = 'DENSE_TRANSFORMER_FAILED';
 
   constructor(transformer: string, path: string, init: ErrorInit = {}) {
-    super(`Transformer "${transformer}" failed on ${path}`, {
+    const why = init.cause instanceof Error ? `: ${init.cause.message}` : '';
+    super(`Transformer "${transformer}" failed on ${path}${why}`, {
       ...init,
       context: { transformer, path, ...init.context },
     });

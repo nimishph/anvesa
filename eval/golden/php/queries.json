@@ -32,6 +32,10 @@
       "confidence": {
         "app/Services/OrderService.php#OrderService.find": "exact",
         "app/Http/OrderController.php#OrderController.make": "exact"
+      },
+      "lines": {
+        "app/Services/OrderService.php#OrderService.find": [11],
+        "app/Http/OrderController.php#OrderController.make": [25]
       }
     },
     {
@@ -68,7 +72,12 @@
         "app/Services/OrderService.php#OrderService.find",
         "app/Models/Model.php#Model.save",
         "external:Illuminate\\Http\\Request#get"
-      ]
+      ],
+      "lines": {
+        "app/Services/OrderService.php#OrderService.find": [17],
+        "app/Models/Model.php#Model.save": [18],
+        "external:Illuminate\\Http\\Request#get": [20]
+      }
     },
     {
       "id": "dependents-of-a-model",

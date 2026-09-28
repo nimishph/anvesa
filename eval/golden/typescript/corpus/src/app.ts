@@ -10,3 +10,8 @@ export function start(name: string) {
 export function quick(name: string) {
   return parseConfig(name, true);
 }
+
+export function trace(name: string) {
+  log(name);
+  console.log(name);
+}

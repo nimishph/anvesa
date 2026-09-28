@@ -532,7 +532,7 @@ class FileLink {
 
   readonly #linker: GraphLinker;
   readonly #facts: FileFacts;
-  readonly #seen = new Set<string>();
+  readonly #seen = new Map<string, { readonly lines: number[] }>();
   readonly #byId: ReadonlyMap<string, SymbolFact>;
   readonly #byBaseName = new Map<string, SymbolFact[]>();
   readonly #byQualified = new Map<string, SymbolFact[]>();
@@ -568,11 +568,26 @@ class FileLink {
     return { list: this.list };
   }
 
-  #add(from: string, to: string, kind: string, confidence: Confidence = 'exact'): void {
+  /** One edge per (from, to, kind); a call edge gathers the line of every call that produced it. */
+  #add(
+    from: string,
+    to: string,
+    kind: string,
+    confidence: Confidence = 'exact',
+    line?: number,
+  ): void {
     const key = `${from}\u0000${to}\u0000${kind}`;
-    if (this.#seen.has(key)) return;
-    this.#seen.add(key);
-    this.list.push({ from, to, kind, confidence });
+    const seen = this.#seen.get(key);
+    if (seen) {
+      if (line !== undefined && !seen.lines.includes(line)) {
+        seen.lines.push(line);
+        seen.lines.sort((a, b) => a - b);
+      }
+      return;
+    }
+    const lines = line === undefined ? [] : [line];
+    this.#seen.set(key, { lines });
+    this.list.push({ from, to, kind, confidence, ...(line === undefined ? {} : { lines }) });
   }
 
   // --- imports ----------------------------------------------------------------------------------
@@ -635,21 +650,23 @@ class FileLink {
     switch (outcome.kind) {
       case 'symbol': {
         const confidence = outcome.inferred ? 'inferred' : 'exact';
-        for (const id of outcome.ids) this.#add(from, id, EDGE.calls, confidence);
-        if (call.kind === 'new') await this.#linkConstructors(from, outcome.ids, confidence);
+        for (const id of outcome.ids) this.#add(from, id, EDGE.calls, confidence, call.line);
+        if (call.kind === 'new') {
+          await this.#linkConstructors(from, outcome.ids, confidence, call.line);
+        }
         this.calls.resolved += 1;
         return;
       }
       case 'byName':
-        for (const id of outcome.ids) this.#add(from, id, EDGE.callsByName, 'guess');
+        for (const id of outcome.ids) this.#add(from, id, EDGE.callsByName, 'guess', call.line);
         this.calls.byName += 1;
         return;
       case 'external':
-        this.#add(from, outcome.to, EDGE.callsExternal);
+        this.#add(from, outcome.to, EDGE.callsExternal, 'exact', call.line);
         this.calls.external += 1;
         return;
       case 'unresolved':
-        this.#add(from, call.name, EDGE.callsUnresolved);
+        this.#add(from, call.name, EDGE.callsUnresolved, 'none', call.line);
         this.calls.unresolved += 1;
         this.reasons.set(outcome.reason, (this.reasons.get(outcome.reason) ?? 0) + 1);
     }
@@ -660,12 +677,13 @@ class FileLink {
     from: string,
     ids: readonly string[],
     confidence: Confidence,
+    line: number,
   ): Promise<void> {
     for (const id of ids) {
       const symbol = this.#byId.get(id) ?? (await this.#linker.symbolById(id));
       if (!symbol || !CONTAINER_KINDS.has(symbol.kind)) continue;
       const ctor = await this.#member(symbol.path, `${symbol.name}.__construct`);
-      if (ctor) this.#add(from, ctor.id, EDGE.calls, confidence);
+      if (ctor) this.#add(from, ctor.id, EDGE.calls, confidence, line);
     }
   }
 

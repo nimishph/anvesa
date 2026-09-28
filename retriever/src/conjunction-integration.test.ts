@@ -60,10 +60,10 @@ export class UserRepository {
   'docs/architecture.md': '# Architecture\nUser authentication and database storage mechanisms.\n',
 };
 
-function makeProject(): string {
+function makeProject(extra: Record<string, string> = {}): string {
   const root = mkdtempSync(join(tmpdir(), 'anvesa-conjunction-'));
   roots.push(root);
-  for (const [path, text] of Object.entries(sampleProject)) {
+  for (const [path, text] of Object.entries({ ...sampleProject, ...extra })) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), text);
     const past = new Date(Date.now() - 3600_000);
@@ -72,8 +72,8 @@ function makeProject(): string {
   return root;
 }
 
-async function createIndexedRetriever(): Promise<Retriever> {
-  const root = makeProject();
+async function createIndexedRetriever(extra: Record<string, string> = {}): Promise<Retriever> {
+  const root = makeProject(extra);
   const runtime = new SyntaxRuntime({ sources: [npmPackageSource(import.meta.filename)] });
   runtimes.push(runtime);
   const r = await Retriever.open({
@@ -86,7 +86,30 @@ async function createIndexedRetriever(): Promise<Retriever> {
   return r;
 }
 
+/** More functions than one structural page, all sorting before the one a query is after. */
+const pastOnePage = {
+  'src/aaa/filler.ts': Array.from(
+    { length: 1100 },
+    (_, n) => `export function filler${n}() { return ${n}; }`,
+  ).join('\n'),
+  'src/zzz/payment.ts': `/** Get the payment variables for an order. */
+export function getPaymentVars(order: any) { return order; }
+`,
+};
+
 describe('semantic and WQL conjunction', () => {
+  test('the WQL side is not cut at one page: a match past 1000 in file order still ranks first', async () => {
+    const r = await createIndexedRetriever(pastOnePage);
+    const question = 'get the payment variables for an order';
+
+    const searched = await r.search(`${question} && //function`, { limit: 5 });
+    expect(searched.items[0]?.title).toBe('getPaymentVars');
+    expect(searched.lanes.find((lane) => lane.name === 'structural')?.hits).toBe(1103);
+
+    const queried = await r.query(`//function && ${question}`, { limit: 5 });
+    expect(queried.items[0]?.name).toBe('getPaymentVars');
+  });
+
   describe('retriever.search conjunction', () => {
     test('explicit options.wql filters semantic search to matching AST nodes', async () => {
       const r = await createIndexedRetriever();

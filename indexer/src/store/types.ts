@@ -113,7 +113,11 @@ export interface CorpusQuery extends PageRequest {
  * How far an edge can be trusted. `exact`: read from the source (an import, a call through scope or
  * an import). `inferred`: followed through a declared type or return type. `guess`: matched by name.
  */
-export type Confidence = 'exact' | 'inferred' | 'guess';
+/**
+ * How far an edge may be trusted: `exact` from scope or imports, `inferred` through a declared
+ * type, `guess` by name alone, `none` for a call that resolved to nothing.
+ */
+export type Confidence = 'exact' | 'inferred' | 'guess' | 'none';
 
 export interface EdgeRecord {
   readonly from: string;
@@ -121,6 +125,8 @@ export interface EdgeRecord {
   readonly kind: string;
   /** Absent means `exact`. */
   readonly confidence?: Confidence;
+  /** For a call edge, the lines of the calls that produced it. Absent in an index linked before lines were kept. */
+  readonly lines?: readonly number[];
 }
 
 export interface EdgeQuery extends PageRequest {

@@ -31,6 +31,8 @@ export interface ChannelInfo {
   readonly cards: number;
   readonly sources: number;
   readonly quarantined: number;
+  /** Why the channel's module was not loaded (unpinned under `requireChecksums`, a changed file). */
+  readonly problem?: string;
 }
 
 /**

@@ -24,8 +24,14 @@ export interface InputFile {
  */
 export interface InputSource {
   readonly name: string;
-  /** Every file the source holds at this moment. */
-  files(): AsyncIterable<InputFile> | Iterable<InputFile>;
+  /**
+   * Every file the source holds at this moment: an array or other iterable, an async iterable (an
+   * `async *files()` generator), or a promise of an array or iterable (an `async files()`).
+   */
+  files():
+    | AsyncIterable<InputFile>
+    | Iterable<InputFile>
+    | Promise<AsyncIterable<InputFile> | Iterable<InputFile>>;
 }
 
 export function inputFile(
@@ -162,6 +168,14 @@ export function defineTransformer<T extends Transformer>(transformer: T): T {
 export function cardId(path: string, draft: CardDraft): string {
   const base = `${path}#${draft.key}`;
   return draft.part ? `${base}~${draft.part.index}` : base;
+}
+
+/**
+ * What `collapse` groups a card by. A group is named by its transformer within one source (the
+ * parts of one symbol, one paragraph's pieces), so the same group name in two files is two groups.
+ */
+export function collapseKey(card: Card): string {
+  return `${card.source.path}#${card.attrs.group ?? card.id}`;
 }
 
 /** Complete a draft into a card, checking it on the way. */

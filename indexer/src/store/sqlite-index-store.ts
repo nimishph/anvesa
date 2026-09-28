@@ -652,10 +652,18 @@ export class SqliteIndexStore implements IndexStore {
     this.#database.transaction('store edges', (db) => {
       db.query('DELETE FROM edges WHERE source_path = ?').run(sourcePath);
       const insert = db.query(
-        'INSERT INTO edges (source_path, seq, from_ref, to_ref, kind, confidence) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO edges (source_path, seq, from_ref, to_ref, kind, confidence, lines) VALUES (?, ?, ?, ?, ?, ?, ?)',
       );
       edges.forEach((edge, seq) => {
-        insert.run(sourcePath, seq, edge.from, edge.to, edge.kind, edge.confidence ?? 'exact');
+        insert.run(
+          sourcePath,
+          seq,
+          edge.from,
+          edge.to,
+          edge.kind,
+          edge.confidence ?? 'exact',
+          edge.lines ? JSON.stringify(edge.lines) : null,
+        );
       });
     });
   }
@@ -670,12 +678,18 @@ export class SqliteIndexStore implements IndexStore {
         .equals('kind', query.kind)
         .oneOf('kind', query.kinds);
       return pageOf<
-        { from_ref: string; to_ref: string; kind: string; confidence: Confidence },
+        {
+          from_ref: string;
+          to_ref: string;
+          kind: string;
+          confidence: Confidence;
+          lines: string | null;
+        },
         EdgeRecord
       >(
         db,
         {
-          select: 'from_ref, to_ref, kind, confidence',
+          select: 'from_ref, to_ref, kind, confidence, lines',
           from: `edges ${where}`,
           params: where.params,
           order: 'source_path, seq',
@@ -686,6 +700,7 @@ export class SqliteIndexStore implements IndexStore {
           to: row.to_ref,
           kind: row.kind,
           confidence: row.confidence,
+          ...(row.lines === null ? {} : { lines: JSON.parse(row.lines) as number[] }),
         }),
       );
     });

@@ -40,7 +40,9 @@ export interface GoldenQuery {
   /** Exactly these items, in any order. */
   readonly expect: readonly string[];
   /** For `callers`: how far each caller may be trusted, by item. Any item not listed is not checked. */
-  readonly confidence?: Readonly<Record<string, 'exact' | 'inferred' | 'guess'>>;
+  readonly confidence?: Readonly<Record<string, 'exact' | 'inferred' | 'guess' | 'none'>>;
+  /** For `callers` and `callees`: the call lines each item must carry, by item. Any item not listed is not checked. */
+  readonly lines?: Readonly<Record<string, readonly number[]>>;
 }
 
 export interface GoldenSuite {
@@ -55,6 +57,7 @@ export interface GoldenOutcome {
   readonly missing: readonly string[];
   readonly unexpected: readonly string[];
   readonly wrongConfidence: readonly string[];
+  readonly wrongLines: readonly string[];
 }
 
 export type GoldenResult =
@@ -172,36 +175,45 @@ export async function runSuite(
 interface Found {
   readonly items: readonly string[];
   readonly confidence: ReadonlyMap<string, string>;
+  readonly lines: ReadonlyMap<string, readonly number[]>;
 }
 
 async function ask(retriever: Retriever, query: GoldenQuery): Promise<Found> {
   const confidence = new Map<string, string>();
+  const lines = new Map<string, readonly number[]>();
   const all = { limit: 10_000 };
   if (query.wql !== undefined) {
     const page = await retriever.query(query.wql, all);
     return {
       items: page.items.map((hit) => `${hit.path ?? ''}:${hit.name ?? ''}`),
       confidence,
+      lines,
     };
   }
   if (query.callers !== undefined) {
     const { callers } = await retriever.callers(query.callers, all);
-    for (const caller of callers.items) confidence.set(caller.from, caller.confidence);
-    return { items: callers.items.map((caller) => caller.from), confidence };
+    for (const caller of callers.items) {
+      confidence.set(caller.from, caller.confidence);
+      lines.set(caller.from, caller.callLines);
+    }
+    return { items: callers.items.map((caller) => caller.from), confidence, lines };
   }
   if (query.callees !== undefined) {
     const { callees } = await retriever.callees(query.callees, all);
-    return {
-      items: callees.items.map((callee) =>
+    const items: string[] = [];
+    for (const callee of callees.items) {
+      const item =
         callee.kind === 'external' || callee.kind === 'unresolved'
           ? `${callee.kind}:${callee.to}`
-          : callee.to,
-      ),
-      confidence,
-    };
+          : callee.to;
+      items.push(item);
+      confidence.set(item, callee.confidence);
+      lines.set(item, callee.callLines);
+    }
+    return { items, confidence, lines };
   }
   const dependents = await retriever.dependents(query.dependents as string, { depth: 1 });
-  return { items: dependents.dependents.map((dependent) => dependent.path), confidence };
+  return { items: dependents.dependents.map((dependent) => dependent.path), confidence, lines };
 }
 
 async function answer(retriever: Retriever, query: GoldenQuery): Promise<GoldenOutcome> {
@@ -217,13 +229,31 @@ async function answer(retriever: Retriever, query: GoldenQuery): Promise<GoldenO
         `${item}: expected ${expected}, got ${found.confidence.get(item) ?? 'none'}`,
     )
     .sort();
+  const wrongLines = Object.entries(query.lines ?? {})
+    .filter(([item, expected]) => !sameLines(found.lines.get(item), expected))
+    .map(
+      ([item, expected]) =>
+        `${item}: expected [${expected.join(', ')}], got [${found.lines.get(item)?.join(', ') ?? 'none'}]`,
+    )
+    .sort();
   return {
     id: query.id,
-    passed: missing.length === 0 && unexpected.length === 0 && wrongConfidence.length === 0,
+    passed:
+      missing.length === 0 &&
+      unexpected.length === 0 &&
+      wrongConfidence.length === 0 &&
+      wrongLines.length === 0,
     missing,
     unexpected,
     wrongConfidence,
+    wrongLines,
   };
+}
+
+function sameLines(got: readonly number[] | undefined, want: readonly number[]): boolean {
+  if (!got || got.length !== want.length) return false;
+  const sorted = [...got].sort((a, b) => a - b);
+  return [...want].sort((a, b) => a - b).every((line, index) => sorted[index] === line);
 }
 
 export function renderGolden(results: readonly GoldenResult[]): string {
@@ -242,6 +272,7 @@ export function renderGolden(results: readonly GoldenResult[]): string {
       for (const item of outcome.missing) lines.push(`    missing     ${item}`);
       for (const item of outcome.unexpected) lines.push(`    unexpected  ${item}`);
       for (const item of outcome.wrongConfidence) lines.push(`    confidence  ${item}`);
+      for (const item of outcome.wrongLines) lines.push(`    lines       ${item}`);
     }
   }
   return `${lines.join('\n')}\n`;

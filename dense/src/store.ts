@@ -1,5 +1,5 @@
 import type { Deadline } from '@cntxt-labs/anvesa-core';
-import type { Card } from './card.ts';
+import { type Card, collapseKey } from './card.ts';
 import { DimensionMismatchError } from './errors.ts';
 import type { QuarantinedCard } from './redteam/index.ts';
 import { dot, normalize } from './vectors.ts';
@@ -34,7 +34,7 @@ export interface SearchOptions {
   /** How many hits to return. Required: the store applies no limit of its own. */
   readonly limit: number;
   readonly filter?: (card: Card) => boolean;
-  /** Keep only the best-scoring card of each `group`, so the parts of one symbol appear once. */
+  /** Keep only the best-scoring card of each group in a source (see `collapseKey`), so the parts of one symbol appear once. */
   readonly collapse?: boolean;
   readonly deadline?: Deadline;
 }
@@ -165,7 +165,7 @@ export class MemoryVectorStore implements VectorStore {
           options.deadline?.throwIfExpired('search the vector store');
         }
         const hit: SearchHit = { card: held.card, score: dot(unit, held.unit) };
-        const key = options.collapse ? (held.card.attrs.group ?? held.card.id) : held.card.id;
+        const key = options.collapse ? collapseKey(held.card) : held.card.id;
         const current = best.get(key);
         if (!current || hit.score > current.score) best.set(key, hit);
       }

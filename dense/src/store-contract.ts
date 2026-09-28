@@ -207,6 +207,14 @@ export function vectorStoreContract(
         expect(collapsed[0]?.card.id).toBe('a.md#sym~1');
       }));
 
+    test('collapse groups within a source: the same group name in two files is two groups', () =>
+      withStore(async (store) => {
+        await store.replaceSource(update('a.md', [stored('a.md', 'body', 'alpha beta')]));
+        await store.replaceSource(update('b.md', [stored('b.md', 'body', 'alpha beta gamma')]));
+        const collapsed = await search(store, 'alpha beta', { limit: 9, collapse: true });
+        expect(collapsed.map((hit) => hit.card.id).sort()).toEqual(['a.md#body', 'b.md#body']);
+      }));
+
     test('a filter restricts which cards can match', () =>
       withStore(async (store) => {
         await store.replaceSource(

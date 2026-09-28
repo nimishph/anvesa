@@ -16,6 +16,7 @@ export type {
 } from './card.ts';
 export {
   cardId,
+  collapseKey,
   defineTransformer,
   inputFile,
   makeCard,

@@ -30,7 +30,8 @@ Intel build, because the ONNX runtime it embeds no longer ships one.
 
 Or download an archive for your platform from the GitHub release, unpack it, and put the folder on
 your `PATH`. Keep the `runtime/` folder next to the program: it holds the ONNX runtime the embedding
-model needs.
+model needs. The release also carries `SHA256SUMS`: `sha256sum -c SHA256SUMS --ignore-missing`
+(`shasum -a 256 -c SHA256SUMS --ignore-missing` on macOS) checks the archive you downloaded.
 
 ```
 anvesa-<version>-<platform>/
@@ -177,8 +178,23 @@ anvesa retrieve runbooks "who restarts the queue worker"
 ```
 
 A channel module default-exports a transformer (which files it claims and what one card holds) and
-may export a `source` for records that are not files. See the scaffold for the shape. Channels are
-listed in `.anvesa/config.json`, where each can be given a fusion weight.
+may export a `source` for records that are not files:
+
+```ts
+export const source = {
+  name: 'tickets',
+  // An array or iterable, a promise of one (`async files()`), or an `async *files()` generator.
+  async files() {
+    const tickets = await loadTickets();
+    return tickets.map((t) => ({ path: `tickets/${t.id}.json`, content: JSON.stringify(t) }));
+  },
+};
+```
+
+Each record is a virtual file `{ path, content, hash?, language? }`; without a `hash`, the SHA-256
+of `content` decides whether it changed. `channel index` prints each record that failed with its
+reason and exits 1 when any did. `anvesa channel add <name> --template external` scaffolds such a
+module. Channels are listed in `.anvesa/config.json`, where each can be given a fusion weight.
 
 ### Declarative patterns
 
@@ -272,7 +288,8 @@ CLI starts (a browser for `issue`, `git`).
 ```
 
 Tools: `search`, one `retrieve_<channel>` per channel, `query`, `callers`, `callees`, `neighbors`,
-`dependents`, `explain`, `diagnose`, `status`, `index`.
+`dependents`, `explain`, `repomap`, `routes`, `diagnose`, `status`, `index`, `pattern_list`,
+`pattern_run`.
 
 ### Agent skill
 
@@ -325,7 +342,8 @@ Each package may import only the ones to its right, and only through their `src/
 about it with the answers that are right (`queries.json`): WQL queries, callers, callees and
 dependents. `bun run golden` indexes each corpus from nothing, asks every question through the same
 retriever the CLI uses, and fails on any answer that is not exactly the expected set. Call-graph
-answers also pin how far each link may be trusted (`exact`, `inferred` or `guess`), so a link that
+answers also pin how far each link may be trusted (`exact`, `inferred`, `guess`, or `none` for a
+call that resolved to nothing) and the lines of the calls behind it, so a link that
 quietly becomes a guess is as visible as one that disappears. The answers are written by hand from
 the corpus, not copied from the program's output.
 

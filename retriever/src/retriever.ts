@@ -70,6 +70,7 @@ import {
   StructuralEngine,
   type WqlHit,
   type WqlPredicate,
+  type WqlQuery,
   WqlUnknownNameError,
 } from '@cntxt-labs/anvesa-structural';
 
@@ -258,6 +259,9 @@ export type { ChannelInfo };
 
 const BUILTIN_CHANNELS = ['symbols', 'docs'] as const;
 
+/** A structural page size with no practical bound, for a WQL result that is used as a set. */
+const EVERY_MATCH = Number.MAX_SAFE_INTEGER - 1;
+
 /**
  * A project opened for retrieval: its index, its channels, and what can be asked of them.
  *
@@ -281,6 +285,11 @@ export class Retriever {
   readonly #ingester: Ingester | undefined;
   readonly #sources = new Map<string, InputSource>();
   readonly #modules = new Map<string, string>();
+  /**
+   * Channel modules that were refused or failed to load. One bad module fails what needs its
+   * channel, not every command: structural queries and `channel list` do not run channel code.
+   */
+  readonly #unloaded = new Map<string, CodeLensError>();
   readonly #structure: StructuralLane;
   readonly #graph: GraphQueries;
   readonly #only: readonly string[] | undefined;
@@ -410,10 +419,16 @@ export class Retriever {
     }
     for (const [name, channel] of Object.entries(this.config.channels)) {
       if (!channel.enabled || channel.module === undefined) continue;
-      const loaded = await loadChannelModule(name, channel.module, this.root, {
-        sha256: channel.sha256,
-        ...(this.config.requireChecksums ? { required: true } : {}),
-      });
+      let loaded: Awaited<ReturnType<typeof loadChannelModule>>;
+      try {
+        loaded = await loadChannelModule(name, channel.module, this.root, {
+          sha256: channel.sha256,
+          ...(this.config.requireChecksums ? { required: true } : {}),
+        });
+      } catch (failure) {
+        this.#unloaded.set(name, toCodeLensError(failure, `load channel ${name}`));
+        continue;
+      }
       this.registry.register(loaded.transformer);
       this.#modules.set(name, channel.module);
       if (loaded.source) this.#sources.set(name, loaded.source);
@@ -436,6 +451,8 @@ export class Retriever {
     options: RunOptions = {},
   ): Promise<{ readonly report: IndexReport; readonly synced: readonly SyncReport[] }> {
     await this.#settleShards();
+    // Cards are built for every channel at once; one left out would look indexed and be empty.
+    if (this.#ingester) this.#requireLoaded(...this.#unloaded.keys());
     const indexer = new Indexer({
       workspace: this.workspace,
       store: this.store,
@@ -465,6 +482,7 @@ export class Retriever {
     options: { readonly force?: boolean; readonly deadline?: Deadline } = {},
   ): Promise<SyncReport> {
     const ingester = this.#requireIngester();
+    this.#requireLoaded(channel);
     this.registry.require(channel);
     const source =
       this.#sources.get(channel) ??
@@ -486,6 +504,7 @@ export class Retriever {
     query: string,
     options: SearchOptions = {},
   ): Promise<Page<SearchHit>> {
+    this.#requireLoaded(channel);
     this.registry.require(channel);
     return retrieveDense({
       channel,
@@ -535,10 +554,7 @@ export class Retriever {
     const depth = offset + limit + 1;
     const fetchLimit = Math.max(depth * 10, 500);
 
-    const structuralHits = this.#structure.query(parsed, {
-      ...(options.include ? { include: options.include } : {}),
-      ...(options.deadline ? { deadline: options.deadline } : {}),
-    }).items;
+    const structuralHits = this.#everyWqlHit(parsed, options);
 
     if (structuralHits.length === 0) {
       return {
@@ -589,6 +605,22 @@ export class Retriever {
       coverage,
       conjunction: { semantic: semanticQuery, wql: effectiveWql },
     };
+  }
+
+  /**
+   * Every match of the WQL side of a conjunction. The semantic ranking is filtered by membership in
+   * this set, so it must not stop at a page: a cap here drops the best semantic hit whenever it
+   * sits past the cap in file order.
+   */
+  #everyWqlHit(
+    parsed: WqlQuery,
+    options: { readonly include?: (path: string) => boolean; readonly deadline?: Deadline },
+  ): readonly WqlHit[] {
+    return this.#structure.query(parsed, {
+      limit: EVERY_MATCH,
+      ...(options.include ? { include: options.include } : {}),
+      ...(options.deadline ? { deadline: options.deadline } : {}),
+    }).items;
   }
 
   /**
@@ -644,10 +676,7 @@ export class Retriever {
           checkPredicateAttributes(predicate, wqlQuery);
         }
       }
-      const wqlHits = this.#structure.query(parsed, {
-        ...(options.include ? { include: options.include } : {}),
-        ...(options.deadline ? { deadline: options.deadline } : {}),
-      }).items;
+      const wqlHits = this.#everyWqlHit(parsed, options);
       wqlHitsCount = wqlHits.length;
 
       if (wqlHits.length === 0) {
@@ -750,6 +779,11 @@ export class Retriever {
     const settled = await Promise.allSettled(runs.map((lane) => lane.run()));
     const lanes: { name: string; weight: number; hits: LaneHit[] }[] = [];
     const degraded: { lane: string; error: CodeLensError }[] = [];
+    for (const [name, error] of this.#unloaded) {
+      if (options.channels && !options.channels.includes(name)) continue;
+      if ((options.exclude ?? []).includes(name)) continue;
+      degraded.push({ lane: name, error });
+    }
     settled.forEach((outcome, index) => {
       const lane = runs[index] as (typeof runs)[number];
       if (outcome.status === 'fulfilled') {
@@ -953,9 +987,19 @@ export class Retriever {
         cards: stats.cards,
         sources: stats.sources,
         quarantined: stats.quarantined,
+        ...(this.#unloaded.has(name)
+          ? { problem: (this.#unloaded.get(name) as CodeLensError).message }
+          : {}),
       });
     }
     return info;
+  }
+
+  /** Fail with why a channel's module was not loaded, for work that needs that channel. */
+  #requireLoaded(...channels: readonly string[]): void {
+    const failures = channels.flatMap((name) => this.#unloaded.get(name) ?? []);
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) throw new AggregateFailureError('load channel modules', failures);
   }
 
   /**
@@ -963,6 +1007,7 @@ export class Retriever {
    * `channel test` shows before a channel is indexed for real.
    */
   async testChannel(channel: string, file: InputFile, deadline?: Deadline): Promise<Preview[]> {
+    this.#requireLoaded(channel);
     const embedder = this.#requireEmbedder();
     const previews: Preview[] = [];
     for (const transformer of this.registry.require(channel)) {

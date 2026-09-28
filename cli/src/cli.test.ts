@@ -563,6 +563,26 @@ describe('command line', () => {
     expect((await cli(root, 'retrieve', 'ghost', 'x')).code).not.toBe(0);
   });
 
+  test('channel index takes an async source, names why a record failed, and exits 1', async () => {
+    const root = makeProject();
+    const module = ownCopyOfNotesChannel(root);
+    const text = readFileSync(module, 'utf8')
+      .replace(
+        'transform: (file: InputFile) => [',
+        "transform: (file: InputFile) => (file.path === 'note:deploy' ? boom() : [",
+      )
+      .replace('attrs: { title: file.path } },\n  ],', 'attrs: { title: file.path } },\n  ]),')
+      .replace('  files: () => [', '  files: async () => [')
+      .concat("\nfunction boom(): never {\n  throw new Error('boom on deploy');\n}\n");
+    writeFileSync(module, text);
+    await cli(root, 'channel', 'add', 'notes', module);
+    const indexed = await cli(root, 'channel', 'index', 'notes');
+    expect(indexed.out).toContain('1 FAILED');
+    expect(indexed.out).toContain('boom on deploy');
+    expect(indexed.err).toContain('CLI_COMMAND_FAILED');
+    expect(indexed.code).toBe(1);
+  });
+
   test('a pinned channel module loads only while it has the bytes that were pinned', async () => {
     const root = makeProject();
     const module = ownCopyOfNotesChannel(root);
@@ -576,10 +596,17 @@ describe('command line', () => {
     expect(listed.out).not.toContain('module not pinned');
 
     writeFileSync(module, `${readFileSync(module, 'utf8')}\n// changed after review\n`);
-    const refused = await cli(root, 'channel', 'list');
+    // The changed module is not run: what needs the channel fails, and says why.
+    const refused = await cli(root, 'channel', 'index', 'notes');
     expect(refused.code).toBe(1);
     expect(refused.err).toContain('RETRIEVER_CHANNEL_MODULE');
     expect(refused.err).toContain('checksum does not match');
+    // Seeing which module is the problem, and questions that run no channel code, still work.
+    const shown = await cli(root, 'channel', 'list');
+    expect(shown.code).toBe(0);
+    expect(shown.out).toContain('not loaded:');
+    expect(shown.out).toContain('checksum does not match');
+    expect((await cli(root, 'status')).code).toBe(0);
 
     expect((await cli(root, 'channel', 'pin', 'notes')).code).toBe(0);
     expect((await cli(root, 'channel', 'list')).code).toBe(0);
@@ -592,10 +619,13 @@ describe('command line', () => {
     const configPath = join(root, '.anvesa/config.json');
     const config = JSON.parse(readFileSync(configPath, 'utf8'));
     writeFileSync(configPath, JSON.stringify({ ...config, security: { requireChecksums: true } }));
-    const refused = await cli(root, 'channel', 'list');
+    const refused = await cli(root, 'channel', 'index', 'notes');
     expect(refused.code).toBe(1);
     expect(refused.err).toContain('not pinned');
     expect(refused.err).toContain('anvesa channel pin notes');
+    const listed = await cli(root, 'channel', 'list');
+    expect(listed.code).toBe(0);
+    expect(listed.out).toContain('not loaded:');
 
     writeFileSync(configPath, JSON.stringify(config));
     await cli(root, 'channel', 'pin', 'notes');
@@ -1090,6 +1120,34 @@ describe('red-team rules a project brings', () => {
     writeFileSync(policyPath(root), JSON.stringify(policy));
   };
 
+  test('channel test shows the text that would be stored, after sanitizing', async () => {
+    const root = makeProject();
+    writePolicy(root, {
+      rules: [
+        {
+          id: 'internal-hostname',
+          category: 'exfiltration',
+          severity: 'medium',
+          description: 'an internal hostname',
+          pattern: '\\b[a-z0-9-]+\\.corp\\.example\\b',
+          message: 'internal hostname',
+          replacement: '[host]',
+          fixtures: { attack: ['send it to db1.corp.example'], benign: ['see the example docs'] },
+        },
+      ],
+      actions: { 'third-party': { 'internal-hostname': 'sanitize' } },
+    });
+    await cli(root, 'channel', 'add', 'runbooks', '--template', 'file');
+    writeFileSync(
+      join(root, 'ops.txt'),
+      'The nightly job runs on db1.corp.example and nowhere else.\n',
+    );
+    const tested = await cli(root, 'channel', 'test', 'runbooks', 'ops.txt');
+    expect(tested.out).toContain('1 sanitized');
+    expect(tested.out).toContain('[host]');
+    expect(tested.out).not.toContain('db1.corp.example');
+  });
+
   test('a project with no file has the built-in rules; a file adds rules and changes what trust levels do', async () => {
     const root = makeProject();
     const plain = json(await cli(root, 'redteam', 'list', '--json'));
@@ -1338,6 +1396,28 @@ describe('mcp server', () => {
 });
 
 describe('declarative patterns', () => {
+  test('--limit overrides the limit a pattern file sets, and a cut page does not claim a total', async () => {
+    const root = makeProject();
+    await cli(root, 'index');
+    const patternsDir = join(root, '.anvesa', 'patterns');
+    mkdirSync(patternsDir, { recursive: true });
+    writeFileSync(
+      join(patternsDir, 'every-function.json'),
+      JSON.stringify({
+        name: 'every-function',
+        description: 'Every function',
+        target: { kind: 'function', nameRegex: '.' },
+        limit: 1,
+      }),
+    );
+    const byFile = await cli(root, 'pattern', 'run', 'every-function');
+    expect(byFile.out).toContain('1 matches, more after these (next cursor:');
+    const byFlag = json(
+      await cli(root, 'pattern', 'run', 'every-function', '--limit', '2', '--json'),
+    );
+    expect(byFlag.items).toHaveLength(2);
+  });
+
   test('lists patterns, runs parameterized patterns via CLI and MCP', async () => {
     const root = makeProject();
     await cli(root, 'index');

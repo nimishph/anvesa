@@ -404,7 +404,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         ctx,
         result,
         () =>
-          `${result.dependents.map((d) => `${d.depth}  ${d.path}`).join('\n')}${result.dependents.length ? '\n' : ''}${result.moreBeyondDepth ? 'more files depend on these beyond that depth (--depth)\n' : ''}`,
+          `${result.dependents.map((d) => `${d.depth}  ${d.path}`).join('\n')}${result.dependents.length ? '\n' : ''}${result.dependents.length < result.total ? `${result.dependents.length} of ${result.total} shown (--limit)\n` : ''}${result.moreBeyondDepth ? 'more files depend on these beyond that depth (--depth)\n' : ''}`,
       );
     }),
 
@@ -600,7 +600,7 @@ export async function channelCommand(ctx: Context): Promise<void> {
             : previews
                 .map(
                   (p) =>
-                    `${p.cards.length} cards, ${p.screened.accepted.length} accepted, ${p.screened.quarantined.length} quarantined, ${p.screened.sanitized} sanitized\n${p.cards.map((c) => `  ${c.id}  ${c.text.replace(/\s+/g, ' ')}`).join('\n')}\n${p.screened.quarantined.map((q) => `  quarantined ${q.card.id}: ${q.reasons.join('; ')}`).join('\n')}`,
+                    `${p.cards.length} cards, ${p.screened.accepted.length} accepted, ${p.screened.quarantined.length} quarantined, ${p.screened.sanitized} sanitized\n${p.screened.accepted.map((c) => `  ${c.id}  ${c.text.replace(/\s+/g, ' ')}`).join('\n')}\n${p.screened.quarantined.map((q) => `  quarantined ${q.card.id}: ${q.reasons.join('; ')}`).join('\n')}`,
                 )
                 .join('\n'),
         );
@@ -628,6 +628,14 @@ export async function channelCommand(ctx: Context): Promise<void> {
                 : ''
             }`,
         );
+        const failed = report.reports.filter((r) => r.outcome === 'failed');
+        if (failed.length > 0) {
+          throw new CommandFailedError(
+            `channel index ${report.channel}`,
+            `${failed.length} of ${report.reports.length} records failed`,
+            { context: { failed: failed.map((r) => r.path) } },
+          );
+        }
       });
     case 'pin': {
       const name = need(inner, 0, 'name');

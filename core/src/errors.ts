@@ -217,7 +217,7 @@ export class InvariantViolationError extends AnvesaError {
 
   constructor(message: string, init: ErrorInit = {}) {
     super(message, {
-      hint: 'This is a medha defect; please report it with the context below.',
+      hint: 'This is an anvesa defect; please report it with the context below.',
       ...init,
     });
   }

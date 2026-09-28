@@ -50,7 +50,9 @@ anvesa diagnose "parse the config" --expect src/config.ts # why an expected file
 (e.g. `src/config.ts:42`). Each result says whether a call-graph link is *resolved* or a guess by
 name — trust resolved links; treat name-guess links as a lead to verify by reading the code.
 Every link also carries a `confidence`: `exact` (scope or imports), `inferred` (through a declared type,
-as in PHP), or `guess` (by name alone).
+as in PHP), `guess` (by name alone), or `none` (a callee that resolved to nothing). `callLines` are
+the lines of the calls behind that one link, so two same-named calls on different receivers point
+at different lines.
 
 ### Semantic search (`search`)
 
@@ -68,6 +70,19 @@ lane, which has no similarity score.
 - If nothing relevant comes back for a file you expected, run `anvesa diagnose "<query>" --expect <path>`
   before concluding the file doesn't exist — it says whether the file is unindexed, has no
   extracted content, was quarantined by the red-team screen, or simply ranked low.
+
+### Meaning and structure together (conjunction)
+
+Put a semantic question and a WQL query together to get code that does something *and* has a given
+shape. Results must match the WQL; the ones that do are ranked by how well they match the question.
+Every WQL match counts, however many there are.
+
+```bash
+anvesa search "save user" --wql '//class//method'          # search, kept to methods of classes
+anvesa query '//function' --semantic "parse config file"   # a WQL query, ranked by meaning
+anvesa search "save user && //class//method"              # the same inline: &&, where, AND
+anvesa search "save user where //class//method"
+```
 
 ### Structural search (WQL)
 

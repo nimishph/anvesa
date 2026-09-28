@@ -46,7 +46,25 @@
         "src/config.ts#ConfigLoader",
         "src/logger.ts#log",
         "src/config.ts#ConfigLoader.load"
-      ]
+      ],
+      "lines": {
+        "src/config.ts#ConfigLoader": [5],
+        "src/logger.ts#log": [6],
+        "src/config.ts#ConfigLoader.load": [7]
+      }
+    },
+    {
+      "id": "same-named-calls-keep-their-own-lines",
+      "why": "log() and console.log() share a name; each link carries only the line of its own call",
+      "callees": "trace",
+      "expect": ["src/logger.ts#log", "external:global#console.log"],
+      "lines": { "src/logger.ts#log": [15], "external:global#console.log": [16] }
+    },
+    {
+      "id": "callers-carry-the-line-of-each-call",
+      "callers": "log",
+      "expect": ["src/app.ts#start", "src/app.ts#trace"],
+      "lines": { "src/app.ts#start": [6], "src/app.ts#trace": [15] }
     },
     {
       "id": "dependents-of-a-module",

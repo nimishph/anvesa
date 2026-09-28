@@ -132,7 +132,7 @@ export class Ingester {
     const transformers = this.#registry.require(channel);
     const reports: IngestReport[] = [];
     const offered = new Set<string>();
-    for await (const offeredFile of source.files()) {
+    for await (const offeredFile of await offeredBy(source)) {
       options.deadline?.throwIfExpired(`sync ${channel} from ${source.name}`);
       const file = withHash(offeredFile, source.name);
       for (const transformer of transformers) {
@@ -278,4 +278,23 @@ function withHash(file: InputFile, source: string): InputFile {
     );
   }
   return inputFile(file.path, file.content, file.language ? { language: file.language } : {});
+}
+
+/** What `source.files()` hands out, whichever of the shapes `InputSource` allows it took. */
+async function offeredBy(
+  source: InputSource,
+): Promise<AsyncIterable<InputFile> | Iterable<InputFile>> {
+  const offered: unknown = await source.files();
+  const iterable =
+    offered !== null &&
+    typeof offered === 'object' &&
+    (Symbol.asyncIterator in offered || Symbol.iterator in offered);
+  if (!iterable) {
+    throw new InvalidArgumentError(
+      `source "${source.name}" files()`,
+      'an array, an iterable, an async iterable, or a promise of an array or iterable',
+      offered,
+    );
+  }
+  return offered as AsyncIterable<InputFile> | Iterable<InputFile>;
 }
