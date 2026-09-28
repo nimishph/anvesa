@@ -238,6 +238,16 @@ function isLocked(failure: unknown): boolean {
   return code === 'SQLITE_BUSY' || code === 'SQLITE_LOCKED';
 }
 
+/**
+ * Whether `failure` is SQLite refusing to (re)create an object — table, index, column — that is
+ * already there. SQLite reports this as a plain `Error` with no `.code`, so it's matched on
+ * message the way `isLocked` is matched on code.
+ */
+function isDuplicateObject(failure: unknown): boolean {
+  const message = failure instanceof Error ? failure.message : String(failure);
+  return /\balready exists\b/i.test(message);
+}
+
 function userVersion(db: Database): number {
   const row = getRow(db, 'PRAGMA user_version') as { user_version: number } | null;
   return row?.user_version ?? 0;
@@ -375,6 +385,14 @@ function migrate(db: Database, path: string, readonly: boolean): StoreBackup | u
           context: { version: migration.version, description: migration.description },
         });
       }
+      // Two processes racing this same step can both find nothing pending and both start
+      // creating it: SQLite serializes their transactions (that's what the write lock is for), so
+      // exactly one succeeds and the other's DDL fails against what the winner just committed.
+      // That failure lands here, outside the transaction it happened in (which has already been
+      // rolled back), so this re-read is an ordinary uncontended read of the winner's committed
+      // state — if it now covers this migration, the step is done and this was never a broken
+      // schema, just the loser of a race that already has its answer.
+      if (isDuplicateObject(failure) && userVersion(db) >= migration.version) continue;
       throw new StoreSchemaError(path, `migration ${migration.version} failed`, {
         cause: failure,
         ...(backup === undefined
