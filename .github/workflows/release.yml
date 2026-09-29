@@ -195,20 +195,13 @@ jobs:
         working-directory: archives
         run: sha256sum *.zip *.tar.gz > SHA256SUMS && cat SHA256SUMS
 
-      # Staged twice over: `npm stage publish` (npm 11+, hence node-version 24 above) defers 2FA to
-      # a separate approval you run yourself, so CI needs only an ordinary automation token, not a
-      # bypass-2FA one. Once approved it lands on the `next` dist-tag, which `npm install` does not
-      # follow, until the Promote workflow moves `latest` to it. Platform packages go first so the
-      # launcher never depends on a version that is not there yet. A version already on the registry
-      # is skipped, so a re-run is safe; any other failure stops the release.
-      #
-      # Disabled for now: these package names were unpublished on 2026-09-28 and npm enforces a
-      # 24h lockout before the same name can be published again, so this step would just fail the
-      # release job (and, since it runs before Create GitHub Release, block that step too). Publish
-      # manually from dist/npm/ once the lockout clears, then re-enable (drop the `if: false` on
-      # this step and the one below) once trusted publishing is set up.
-      - name: Stage on npm (dist-tag next)
-        if: false
+      # Platform packages go first so the launcher never points at a version that is not there yet.
+      # A version that is already on the registry is skipped (so a re-run is safe); any other
+      # failure stops the release. `npm stage publish` (npm 11+, hence node-version 24 above) defers
+      # 2FA to the approval step you run yourself, so CI needs only an ordinary automation token
+      # here, not a bypass-2FA one. Staged with dist-tag latest: approving a package makes it live.
+      # The Promote workflow can still move latest by hand (to roll back, for one).
+      - name: Stage on npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
@@ -218,26 +211,25 @@ jobs:
           fi
           stage() {
             # npm treats a bare "owner/repo"-shaped path as GitHub shorthand, not a local folder,
-            # unless it starts with "./" — so this normalizes to that regardless of what $1 arrives as.
+            # unless it starts with "./", so this normalizes to that regardless of what $1 arrives as.
             dir="./${1#./}"
             name="$(node -p "require('${dir}/package.json').name")"
             version="$(node -p "require('${dir}/package.json').version")"
             if npm view "${name}@${version}" version >/dev/null 2>&1; then
-              echo "${name}@${version} is already on the registry, skipping"
+              echo "${name}@${version} is already published, skipping"
             else
-              npm stage publish "${dir}" --access public --provenance --tag next
+              npm stage publish "${dir}" --access public --provenance --tag latest
             fi
           }
           for folder in staged/*/; do stage "${folder%/}"; done
           cp README.md LICENSE cli/
-          stage cli
+          stage ./cli
 
       - name: List what needs approval
-        if: false
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          echo "::notice::Each package above is staged, not live yet. Run 'npm stage approve <id>' (with your own 2FA) for each, then run the Promote workflow to move dist-tag latest."
+          echo "::notice::Each package above is staged, not live yet. Run 'npm stage approve <id>' (with your own 2FA) for each, or 'npm stage list' to see them again later."
           npm stage list "@cntxt-labs/anvesa" || true
           npm stage list "@cntxt-labs/anvesa-linux-x64" || true
           npm stage list "@cntxt-labs/anvesa-linux-arm64" || true
