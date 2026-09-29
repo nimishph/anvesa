@@ -1,6 +1,15 @@
-import { describe, expect, test } from 'bun:test';
-import { readdirSync, readFileSync } from 'node:fs';
+import { afterAll, describe, expect, test } from 'bun:test';
+import {
+  chmodSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { MAIN_PACKAGE, PLATFORMS, platformPackage } from './platforms.ts';
 
@@ -27,6 +36,8 @@ const launcher = createRequire(import.meta.url)('../cli/bin/anvesa.cjs') as {
     cpu: string,
     resolve: (specifier: string) => string,
   ): { program?: string; problem?: string };
+  makeExecutable(program: string): boolean;
+  isPermissionFailure(error: unknown): boolean;
 };
 
 /** What Node throws when a package is not installed. */
@@ -94,5 +105,33 @@ describe('the launcher', () => {
     });
     expect(missing.problem).toContain('@cntxt-labs/anvesa-linux-x64 package is not installed');
     expect(missing.problem).toContain('--no-optional');
+  });
+});
+
+describe('recovering a program that lost its executable bit', () => {
+  const sandbox = mkdtempSync(join(tmpdir(), 'anvesa-chmod-'));
+  afterAll(() => rmSync(sandbox, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }));
+
+  test('it sets the bit, and says so', () => {
+    const program = join(sandbox, 'anvesa');
+    writeFileSync(program, '#!/bin/sh\necho hi\n');
+    // Start from "not executable", the state a build artifact or a stripping install leaves.
+    chmodSync(program, 0o644);
+    expect(launcher.makeExecutable(program)).toBe(true);
+    if (process.platform !== 'win32') {
+      expect(statSync(program).mode & 0o111).not.toBe(0);
+    }
+  });
+
+  test('it reports failure instead of throwing when the program cannot be reached', () => {
+    expect(launcher.makeExecutable(join(sandbox, 'not-here'))).toBe(false);
+  });
+
+  test('it only retries on a permission failure, not on any error at all', () => {
+    expect(launcher.isPermissionFailure({ code: 'EACCES' })).toBe(true);
+    expect(launcher.isPermissionFailure({ code: 'ENOENT' })).toBe(false);
+    expect(launcher.isPermissionFailure({ code: 'EPERM' })).toBe(false);
+    expect(launcher.isPermissionFailure(undefined)).toBe(false);
+    expect(launcher.isPermissionFailure(null)).toBe(false);
   });
 });

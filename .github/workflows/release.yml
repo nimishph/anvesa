@@ -159,6 +159,27 @@ jobs:
           path: staged
           merge-multiple: true
 
+      # `actions/upload-artifact` stores files in a zip and does not carry POSIX permission bits
+      # across the job boundary, so every program in `staged/` arrives 0644 whatever the build job
+      # set. Published as-is, `anvesa` fails with EACCES on macOS and Linux. Put the bit back, and
+      # check it stuck. The release archives do not need this: they are tarballs made in the build
+      # job, so their entries keep the mode. The launcher also sets the bit on EACCES, as a fallback.
+      - name: Restore the executable bit
+        run: |
+          set -euo pipefail
+          for dir in staged/*/; do
+            mapfile -t programs < <(find "$dir/bin" -maxdepth 1 -type f)
+            if [ "${#programs[@]}" -ne 1 ]; then
+              echo "expected exactly one program in $dir/bin, found ${#programs[@]}" >&2
+              exit 1
+            fi
+            program="${programs[0]}"
+            chmod 0755 "$program"
+            mode="$(stat -c '%a' "$program")"
+            printf '%s  %s\n' "$mode" "$program"
+            [ "$mode" = "755" ] || { echo "mode is $mode, expected 755" >&2; exit 1; }
+          done
+
       - uses: actions/download-artifact@v4
         with:
           pattern: anvesa-*
