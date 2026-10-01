@@ -13,6 +13,7 @@ export type {
   SyntaxRuntimeOptions,
 } from './runtime.ts';
 export { SyntaxRuntime } from './runtime.ts';
+export * from './rust-bridge.ts';
 export type {
   GrammarSource,
   LocatedGrammar,

@@ -1,6 +1,6 @@
 {
   "name": "anvesa-workspace",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "description": "anvesa: dense + structural code retrieval, as a set of subsystems. Self-contained so the whole directory can be extracted to its own repo.",
@@ -33,7 +33,11 @@
     "stress": "bun run tooling/stress/cli.ts",
     "smoke": "bun run tooling/smoke-package.ts && bun run tooling/smoke-npm.ts",
     "changelog": "git-cliff -o CHANGELOG.md",
-    "changelog:preview": "git-cliff --unreleased"
+    "changelog:preview": "git-cliff --unreleased",
+    "docs:sync": "node site/scripts/sync-content.mjs",
+    "docs:dev": "bun run --cwd site dev",
+    "docs:build": "bun run --cwd site build",
+    "docs:preview": "bun run --cwd site preview"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",

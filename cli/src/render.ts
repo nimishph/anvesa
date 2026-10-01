@@ -46,6 +46,56 @@ export function toJson(value: unknown): string {
   )}\n`;
 }
 
+export type FormatMode = 'compact' | 'pretty' | 'locations' | 'json';
+
+export interface RenderOptions {
+  readonly mode?: FormatMode;
+  readonly full?: boolean;
+  readonly isTTY?: boolean;
+}
+
+export function extractDocSummary(text: string | undefined): string | undefined {
+  if (!text) return undefined;
+  const jsdoc = /\/\*\*?\s*([\s\S]*?)\*\//.exec(text);
+  if (jsdoc?.[1]) {
+    const docLines = jsdoc[1]
+      .split('\n')
+      .map((l) => l.replace(/^\s*\*\s?/, '').trim())
+      .filter((l) => l.length > 0 && !l.startsWith('@'));
+    if (docLines.length > 0) return docLines[0];
+  }
+  const pydoc = /(?:"""|''')([\s\S]*?)(?:"""|''')/.exec(text);
+  if (pydoc?.[1]) {
+    const docLines = pydoc[1]
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+    if (docLines.length > 0) return docLines[0];
+  }
+  const lineComment = /^\s*(?:\/\/|#)\s*(.+)$/m.exec(text);
+  if (lineComment?.[1]) {
+    return lineComment[1].trim();
+  }
+  return undefined;
+}
+
+export function scoreBar(score: number | undefined, width = 10): string {
+  if (score === undefined || !Number.isFinite(score)) return '';
+  const clamped = Math.max(0, Math.min(1, score));
+  const filled = Math.round(clamped * width);
+  const empty = width - filled;
+  return `[${'█'.repeat(filled)}${'░'.repeat(empty)}] ${score.toFixed(3)}`;
+}
+
+export function jumpLink(result: {
+  path: string;
+  line?: number | undefined;
+  endLine?: number | undefined;
+}): string {
+  if (result.line === undefined) return `${result.path}:1:1`;
+  return `${result.path}:${result.line}:1`;
+}
+
 const lines = (...parts: (string | undefined)[]): string =>
   `${parts.filter((part): part is string => part !== undefined).join('\n')}\n`;
 
@@ -68,11 +118,42 @@ function place(result: {
     : `${result.path}:${result.line}`;
 }
 
-function renderResult(result: SearchResult, index: number): string {
+function renderResult(result: SearchResult, index: number, options?: RenderOptions): string {
+  const mode = options?.mode ?? 'pretty';
+  const isTTY = options?.isTTY ?? false;
+  const full = options?.full ?? false;
+
   const found = result.foundBy.map((c) => `${c.lane}#${c.rank}`).join(' ');
-  const signature = result.card?.attrs.signature;
+  const signature = result.card?.attrs.signature ? `  ${result.card.attrs.signature}` : '';
+
+  if (mode === 'locations') {
+    const kind = result.kind ? `${result.kind} ` : '';
+    return `${jumpLink(result)}: ${kind}${result.title} [${found}]`;
+  }
+
+  if (mode === 'compact') {
+    const scoreStr =
+      result.bestScore !== undefined ? `  (score: ${result.bestScore.toFixed(3)})` : '';
+    const head = `${String(index + 1).padStart(2)}. ${result.title}${result.kind ? ` (${result.kind})` : ''}  ${place(result)}${signature}  [${found}]${scoreStr}`;
+    const docSummary = extractDocSummary(result.card?.text);
+    const docLine = docSummary ? `\n      // ${docSummary}` : '';
+    if (full && result.card) {
+      const fenced = fenceUntrusted(result.card.text, {
+        source: result.card.source.path,
+        channel: result.card.channel,
+        trust: result.card.provenance.trust,
+      });
+      return `${head}${docLine}\n${fenced.replace(/^/gm, '      ')}`;
+    }
+    return `${head}${docLine}`;
+  }
+
+  // mode === 'pretty'
   const best = result.bestScore === undefined ? '' : `  best ${result.bestScore.toFixed(3)}`;
-  const head = `${String(index + 1).padStart(2)}. ${result.title}${result.kind ? ` (${result.kind})` : ''}  ${place(result)}${signature ? `  ${signature}` : ''}  [${found}]${best}`;
+  const bar = result.bestScore !== undefined ? `  ${scoreBar(result.bestScore)}` : '';
+  const loc = isTTY ? `\x1b[36m${jumpLink(result)}\x1b[0m` : place(result);
+  const title = isTTY ? `\x1b[1m${result.title}\x1b[0m` : result.title;
+  const head = `${String(index + 1).padStart(2)}. ${title}${result.kind ? ` (${result.kind})` : ''}  ${loc}${signature}  [${found}]${best}${bar}`;
   if (!result.card) return head;
   const fenced = fenceUntrusted(result.card.text, {
     source: result.card.source.path,
@@ -82,13 +163,19 @@ function renderResult(result: SearchResult, index: number): string {
   return `${head}\n${fenced.replace(/^/gm, '      ')}`;
 }
 
-export function renderSearch(page: SearchPage): string {
+export function renderSearch(page: SearchPage, options?: RenderOptions): string {
+  if (options?.mode === 'json') {
+    return toJson(page);
+  }
+  if (options?.mode === 'locations') {
+    return lines(...page.items.map((r, i) => renderResult(r, i, options)));
+  }
   const conjunctionHead = page.conjunction
     ? `conjunction: semantic "${page.conjunction.semantic}" && wql "${page.conjunction.wql}"`
     : undefined;
   return lines(
     conjunctionHead,
-    ...page.items.map(renderResult),
+    ...page.items.map((r, i) => renderResult(r, i, options)),
     pageFooter(page),
     `lanes: ${page.lanes.map((l) => `${l.name} ${l.hits}`).join(', ')}`,
     ...page.degraded.map((d) => `degraded: ${d.lane} — ${d.error.message}`),
@@ -136,11 +223,32 @@ export function renderStructural(
     coverage: { files: number; missing: readonly string[] };
     conjunction?: { semantic: string; wql: string } | undefined;
   },
+  options?: RenderOptions,
 ): string {
-  const rows = page.items.map((hit) => {
-    const at = place({ path: hit.path ?? '', line: hit.startLine, endLine: hit.endLine });
+  if (options?.mode === 'json') {
+    return toJson(page);
+  }
+  if (options?.mode === 'locations') {
+    const locRows = page.items.map((hit) => {
+      const at = hit.path ? `${hit.path}:${hit.startLine ?? 1}:1` : '<unknown>:1:1';
+      return `${at}: ${hit.tag} ${hit.name ?? ''}`;
+    });
+    return lines(...locRows);
+  }
+
+  const rows = page.items.map((hit, index) => {
+    const at =
+      options?.isTTY && hit.path
+        ? `\x1b[36m${hit.path}:${hit.startLine ?? 1}:1\x1b[0m`
+        : place({ path: hit.path ?? '', line: hit.startLine, endLine: hit.endLine });
     const scoreStr = hit.score !== undefined ? `  score ${hit.score.toFixed(3)}` : '';
-    return `${hit.tag} ${hit.name ?? ''}  ${at}${hit.signature ? `  ${hit.signature}` : ''}${scoreStr}`;
+    const bar = hit.score !== undefined ? `  ${scoreBar(hit.score)}` : '';
+    const name = options?.isTTY && hit.name ? `\x1b[1m${hit.name}\x1b[0m` : (hit.name ?? '');
+    const sig = hit.signature ? `  ${hit.signature}` : '';
+    if (options?.mode === 'compact') {
+      return `${String(index + 1).padStart(2)}. ${hit.tag} ${name}  ${at}${sig}${scoreStr}`;
+    }
+    return `${hit.tag} ${name}  ${at}${sig}${scoreStr}${bar}`;
   });
   const conjunctionHead = page.conjunction
     ? `conjunction: semantic "${page.conjunction.semantic}" && wql "${page.conjunction.wql}"`

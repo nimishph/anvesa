@@ -54,6 +54,7 @@ usage: anvesa <command> [arguments] [options]
   model list|install|verify|doctor       local embedding models; install <new-name> --from <dir|file.onnx>
                                          brings your own (--pooling, --max-tokens, --force)
   pattern list|run <name> [param=val...]  declarative structural patterns
+  primer [topic]            token-frugal guidance on Anvesa architecture and concepts (--compact)
   issue [title]             raise an issue on GitHub with sanitized diagnostics
   mcp serve                 run as an MCP server on stdio
   --version                 print the version

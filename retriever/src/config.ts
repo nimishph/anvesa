@@ -4,6 +4,8 @@ import { ProjectConfigError } from './errors.ts';
 
 /** Where a project's configuration lives, relative to its root. */
 export const PROJECT_CONFIG_PATH = '.anvesa/config.json';
+export const CONFIG_SCHEMA_URL =
+  'https://raw.githubusercontent.com/nimishph/anvesa/main/schemas/config.v1.json';
 
 export interface ChannelConfig {
   /** Off, the channel is neither indexed nor searched. Default on. */
@@ -22,7 +24,34 @@ export interface ChannelConfig {
   readonly sha256?: string | undefined;
 }
 
+export interface SearchTuningConfig {
+  readonly defaultLimit?: number;
+  readonly excludeLanes?: readonly string[];
+  readonly minScore?: number;
+  readonly collapse?: boolean;
+}
+
+export interface IndexingTuningConfig {
+  readonly fragments?: 'on' | 'off';
+  readonly ignore?: readonly string[];
+  readonly maxFileSizeBytes?: number;
+  readonly concurrency?: number;
+  readonly embeddingBatchSize?: number;
+}
+
+export interface SyntaxTuningConfig {
+  readonly stripComments?: boolean;
+  readonly maxChunkLines?: number;
+  readonly minChunkLines?: number;
+}
+
+export interface RedTeamTuningConfig {
+  readonly maxCardsPerSource?: number;
+  readonly quarantineOnSuspect?: boolean;
+}
+
 export interface ProjectConfig {
+  readonly $schema?: string;
   /** A built-in model id. Unset means the tier the machine suits, among those installed. */
   readonly model: string | undefined;
   readonly channels: Readonly<Record<string, ChannelConfig>>;
@@ -35,6 +64,10 @@ export interface ProjectConfig {
   readonly fragments: boolean;
   /** Refuse to load a channel module that is not pinned by `sha256`. */
   readonly requireChecksums?: true;
+  readonly search?: SearchTuningConfig;
+  readonly indexing?: IndexingTuningConfig;
+  readonly syntax?: SyntaxTuningConfig;
+  readonly redteam?: RedTeamTuningConfig;
 }
 
 export function defaultProjectConfig(): ProjectConfig {
@@ -72,8 +105,24 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
   };
   if (!isRecord(raw)) return fail('$', 'it must be an object');
   for (const key of Object.keys(raw)) {
-    if (!['model', 'channels', 'fusion', 'indexing', 'security'].includes(key))
+    if (
+      ![
+        '$schema',
+        'model',
+        'channels',
+        'fusion',
+        'indexing',
+        'security',
+        'search',
+        'syntax',
+        'redteam',
+      ].includes(key)
+    )
       fail(key, 'is not a known setting');
+  }
+
+  if (raw.$schema !== undefined && typeof raw.$schema !== 'string') {
+    fail('$schema', 'must be a string URL');
   }
 
   const model = raw.model;
@@ -123,18 +172,30 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
   let fusionK: number | undefined;
   if (raw.fusion !== undefined) {
     if (!isRecord(raw.fusion)) fail('fusion', 'must be an object');
-    const k = (raw.fusion as Record<string, unknown>).k;
+    const fusion = raw.fusion as Record<string, unknown>;
+    for (const key of Object.keys(fusion)) {
+      if (key !== 'k') fail(`fusion.${key}`, 'is not a known setting');
+    }
+    const k = fusion.k;
     if (k !== undefined && (typeof k !== 'number' || !Number.isFinite(k) || k <= 0)) {
       fail('fusion.k', 'must be a positive number');
     }
     fusionK = k as number | undefined;
   }
+
   let fragments = false;
+  let indexingConfig: IndexingTuningConfig | undefined;
   if (raw.indexing !== undefined) {
     if (!isRecord(raw.indexing)) fail('indexing', 'must be an object');
     const indexing = raw.indexing as Record<string, unknown>;
     for (const key of Object.keys(indexing)) {
-      if (key !== 'fragments') fail(`indexing.${key}`, 'is not a known setting');
+      if (
+        !['fragments', 'ignore', 'maxFileSizeBytes', 'concurrency', 'embeddingBatchSize'].includes(
+          key,
+        )
+      ) {
+        fail(`indexing.${key}`, 'is not a known setting');
+      }
     }
     if (
       indexing.fragments !== undefined &&
@@ -144,7 +205,53 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
       fail('indexing.fragments', 'must be "on" or "off"');
     }
     fragments = indexing.fragments === 'on';
+
+    if (indexing.ignore !== undefined) {
+      if (!Array.isArray(indexing.ignore) || !indexing.ignore.every((g) => typeof g === 'string')) {
+        fail('indexing.ignore', 'must be an array of glob strings');
+      }
+    }
+    if (
+      indexing.maxFileSizeBytes !== undefined &&
+      (typeof indexing.maxFileSizeBytes !== 'number' ||
+        !Number.isInteger(indexing.maxFileSizeBytes) ||
+        indexing.maxFileSizeBytes <= 0)
+    ) {
+      fail('indexing.maxFileSizeBytes', 'must be a positive integer');
+    }
+    if (
+      indexing.concurrency !== undefined &&
+      (typeof indexing.concurrency !== 'number' ||
+        !Number.isInteger(indexing.concurrency) ||
+        indexing.concurrency <= 0)
+    ) {
+      fail('indexing.concurrency', 'must be a positive integer');
+    }
+    if (
+      indexing.embeddingBatchSize !== undefined &&
+      (typeof indexing.embeddingBatchSize !== 'number' ||
+        !Number.isInteger(indexing.embeddingBatchSize) ||
+        indexing.embeddingBatchSize <= 0)
+    ) {
+      fail('indexing.embeddingBatchSize', 'must be a positive integer');
+    }
+    indexingConfig = {
+      ...(indexing.fragments !== undefined
+        ? { fragments: indexing.fragments as 'on' | 'off' }
+        : {}),
+      ...(indexing.ignore !== undefined ? { ignore: indexing.ignore as string[] } : {}),
+      ...(indexing.maxFileSizeBytes !== undefined
+        ? { maxFileSizeBytes: indexing.maxFileSizeBytes as number }
+        : {}),
+      ...(indexing.concurrency !== undefined
+        ? { concurrency: indexing.concurrency as number }
+        : {}),
+      ...(indexing.embeddingBatchSize !== undefined
+        ? { embeddingBatchSize: indexing.embeddingBatchSize as number }
+        : {}),
+    };
   }
+
   let requireChecksums = false;
   if (raw.security !== undefined) {
     if (!isRecord(raw.security)) fail('security', 'must be an object');
@@ -157,12 +264,136 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
     }
     requireChecksums = security.requireChecksums === true;
   }
+
+  let search: SearchTuningConfig | undefined;
+  if (raw.search !== undefined) {
+    if (!isRecord(raw.search)) fail('search', 'must be an object');
+    const s = raw.search as Record<string, unknown>;
+    for (const key of Object.keys(s)) {
+      if (!['defaultLimit', 'excludeLanes', 'minScore', 'collapse'].includes(key)) {
+        fail(`search.${key}`, 'is not a known setting');
+      }
+    }
+    if (
+      s.defaultLimit !== undefined &&
+      (typeof s.defaultLimit !== 'number' ||
+        !Number.isInteger(s.defaultLimit) ||
+        s.defaultLimit <= 0)
+    ) {
+      fail('search.defaultLimit', 'must be a positive integer');
+    }
+    if (s.excludeLanes !== undefined) {
+      if (!Array.isArray(s.excludeLanes) || !s.excludeLanes.every((l) => typeof l === 'string')) {
+        fail('search.excludeLanes', 'must be an array of lane names');
+      }
+    }
+    if (
+      s.minScore !== undefined &&
+      (typeof s.minScore !== 'number' ||
+        !Number.isFinite(s.minScore) ||
+        s.minScore < 0 ||
+        s.minScore > 1)
+    ) {
+      fail('search.minScore', 'must be a number between 0 and 1');
+    }
+    if (s.collapse !== undefined && typeof s.collapse !== 'boolean') {
+      fail('search.collapse', 'must be a boolean');
+    }
+    search = {
+      ...(s.defaultLimit !== undefined ? { defaultLimit: s.defaultLimit as number } : {}),
+      ...(s.excludeLanes !== undefined
+        ? { excludeLanes: s.excludeLanes as readonly string[] }
+        : {}),
+      ...(s.minScore !== undefined ? { minScore: s.minScore as number } : {}),
+      ...(s.collapse !== undefined ? { collapse: s.collapse as boolean } : {}),
+    };
+  }
+
+  let syntax: SyntaxTuningConfig | undefined;
+  if (raw.syntax !== undefined) {
+    if (!isRecord(raw.syntax)) fail('syntax', 'must be an object');
+    const syn = raw.syntax as Record<string, unknown>;
+    for (const key of Object.keys(syn)) {
+      if (!['stripComments', 'maxChunkLines', 'minChunkLines'].includes(key)) {
+        fail(`syntax.${key}`, 'is not a known setting');
+      }
+    }
+    if (syn.stripComments !== undefined && typeof syn.stripComments !== 'boolean') {
+      fail('syntax.stripComments', 'must be a boolean');
+    }
+    if (
+      syn.maxChunkLines !== undefined &&
+      (typeof syn.maxChunkLines !== 'number' ||
+        !Number.isInteger(syn.maxChunkLines) ||
+        syn.maxChunkLines <= 0)
+    ) {
+      fail('syntax.maxChunkLines', 'must be a positive integer');
+    }
+    if (
+      syn.minChunkLines !== undefined &&
+      (typeof syn.minChunkLines !== 'number' ||
+        !Number.isInteger(syn.minChunkLines) ||
+        syn.minChunkLines <= 0)
+    ) {
+      fail('syntax.minChunkLines', 'must be a positive integer');
+    }
+    if (
+      syn.maxChunkLines !== undefined &&
+      syn.minChunkLines !== undefined &&
+      (syn.minChunkLines as number) > (syn.maxChunkLines as number)
+    ) {
+      fail('syntax.minChunkLines', 'cannot be greater than maxChunkLines');
+    }
+    syntax = {
+      ...(syn.stripComments !== undefined ? { stripComments: syn.stripComments as boolean } : {}),
+      ...(syn.maxChunkLines !== undefined ? { maxChunkLines: syn.maxChunkLines as number } : {}),
+      ...(syn.minChunkLines !== undefined ? { minChunkLines: syn.minChunkLines as number } : {}),
+    };
+  }
+
+  let redteam: RedTeamTuningConfig | undefined;
+  if (raw.redteam !== undefined) {
+    if (!isRecord(raw.redteam)) fail('redteam', 'must be an object');
+    const rt = raw.redteam as Record<string, unknown>;
+    for (const key of Object.keys(rt)) {
+      if (!['maxCardsPerSource', 'quarantineOnSuspect'].includes(key)) {
+        fail(`redteam.${key}`, 'is not a known setting');
+      }
+    }
+    if (
+      rt.maxCardsPerSource !== undefined &&
+      (typeof rt.maxCardsPerSource !== 'number' ||
+        !Number.isInteger(rt.maxCardsPerSource) ||
+        rt.maxCardsPerSource <= 0)
+    ) {
+      fail('redteam.maxCardsPerSource', 'must be a positive integer');
+    }
+    if (rt.quarantineOnSuspect !== undefined && typeof rt.quarantineOnSuspect !== 'boolean') {
+      fail('redteam.quarantineOnSuspect', 'must be a boolean');
+    }
+    redteam = {
+      ...(rt.maxCardsPerSource !== undefined
+        ? { maxCardsPerSource: rt.maxCardsPerSource as number }
+        : {}),
+      ...(rt.quarantineOnSuspect !== undefined
+        ? { quarantineOnSuspect: rt.quarantineOnSuspect as boolean }
+        : {}),
+    };
+  }
+
   return {
+    ...(raw.$schema !== undefined ? { $schema: raw.$schema as string } : {}),
     model: model as string | undefined,
     channels,
     fusionK,
     fragments,
     ...(requireChecksums ? { requireChecksums: true as const } : {}),
+    ...(search !== undefined && Object.keys(search).length > 0 ? { search } : {}),
+    ...(indexingConfig !== undefined && Object.keys(indexingConfig).length > 0
+      ? { indexing: indexingConfig }
+      : {}),
+    ...(syntax !== undefined && Object.keys(syntax).length > 0 ? { syntax } : {}),
+    ...(redteam !== undefined && Object.keys(redteam).length > 0 ? { redteam } : {}),
   };
 }
 
@@ -170,7 +401,8 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
 export async function writeProjectConfig(root: string, config: ProjectConfig): Promise<void> {
   const path = join(root, PROJECT_CONFIG_PATH);
   await mkdir(dirname(path), { recursive: true });
-  const raw = {
+  const raw: Record<string, unknown> = {
+    ...(config.$schema !== undefined ? { $schema: config.$schema } : {}),
     ...(config.model === undefined ? {} : { model: config.model }),
     channels: Object.fromEntries(
       Object.entries(config.channels).map(([name, channel]) => [
@@ -184,8 +416,22 @@ export async function writeProjectConfig(root: string, config: ProjectConfig): P
       ]),
     ),
     ...(config.fusionK === undefined ? {} : { fusion: { k: config.fusionK } }),
-    ...(config.fragments ? { indexing: { fragments: 'on' } } : {}),
+    ...(() => {
+      const tuning = config.indexing
+        ? Object.fromEntries(Object.entries(config.indexing).filter(([k]) => k !== 'fragments'))
+        : {};
+      const indexing = {
+        ...(config.fragments ? { fragments: 'on' as const } : {}),
+        ...tuning,
+      };
+      return Object.keys(indexing).length > 0 ? { indexing } : {};
+    })(),
     ...(config.requireChecksums ? { security: { requireChecksums: true } } : {}),
+    ...(config.search && Object.keys(config.search).length > 0 ? { search: config.search } : {}),
+    ...(config.syntax && Object.keys(config.syntax).length > 0 ? { syntax: config.syntax } : {}),
+    ...(config.redteam && Object.keys(config.redteam).length > 0
+      ? { redteam: config.redteam }
+      : {}),
   };
   await writeFile(path, `${JSON.stringify(raw, null, 2)}\n`);
 }

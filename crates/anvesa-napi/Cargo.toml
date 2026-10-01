@@ -1,0 +1,22 @@
+[package]
+name = "anvesa-napi"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "NAPI-RS native bindings for Anvesa (SIMD vector math, batch top-k, AST parsing)"
+
+[lib]
+crate-type = ["cdylib"]
+test = false
+doctest = false
+
+[dependencies]
+napi = { version = "2.16", default-features = false, features = ["napi4"] }
+napi-derive = "2.16"
+anvesa-syntax = { path = "../anvesa-syntax" }
+anvesa-core = { path = "../anvesa-core" }
+
+[build-dependencies]
+napi-build = "2.1"

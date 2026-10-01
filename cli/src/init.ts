@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import {
   adviseModels,
+  CONFIG_SCHEMA_URL,
   installGrammarFor,
   installModel,
   listModels,
@@ -219,7 +220,11 @@ async function chooseModel(
 
   // Record the choice so every teammate and every run uses the same model.
   const config = await loadProjectConfig(projectRoot);
-  await writeProjectConfig(projectRoot, { ...config, model: id });
+  await writeProjectConfig(projectRoot, {
+    ...config,
+    $schema: config.$schema ?? CONFIG_SCHEMA_URL,
+    model: id,
+  });
   return { id, state: 'installed', note: `${id} installed and set in .anvesa/config.json` };
 }
 

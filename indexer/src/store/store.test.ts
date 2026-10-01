@@ -2,6 +2,7 @@ import { Database } from 'bun:sqlite';
 import { afterAll, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Deadline, InvalidArgumentError, OperationAbortedError } from '@cntxt-labs/anvesa-core';
 import { inputFile, makeCard, vectorStoreContract } from '@cntxt-labs/anvesa-dense';
 import {
@@ -49,9 +50,9 @@ vectorStoreContract(kit, 'sqlite on disk', {
 
 const dbPath = () => join(makeTree({}), '.anvesa', 'index.db');
 
-/** These modules as import URLs, so another process can load the same code this one is testing. */
-const STORE_MODULE_URL = new URL('./database.ts', import.meta.url).href;
-const SCHEMA_MODULE_URL = new URL('./schema.ts', import.meta.url).href;
+/** These modules as import paths, so another process can load the same code this one is testing. */
+const STORE_MODULE_URL = fileURLToPath(new URL('./database.ts', import.meta.url));
+const SCHEMA_MODULE_URL = fileURLToPath(new URL('./schema.ts', import.meta.url));
 
 /** Hold the write lock, say so on stdout, and keep it for `holdMs`. */
 const HOLDS_THE_WRITE_LOCK = `

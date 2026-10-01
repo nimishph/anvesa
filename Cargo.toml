@@ -1,0 +1,28 @@
+[workspace]
+members = [
+    "crates/anvesa-core",
+    "crates/anvesa-syntax",
+    "crates/anvesa-store",
+    "crates/anvesa",
+    "crates/anvesa-cli",
+    "crates/anvesa-napi",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.6.0"
+edition = "2021"
+authors = ["Nimish Phalnikar <https://github.com/nimishph>"]
+license = "MIT"
+repository = "https://github.com/nimishph/anvesa"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+rusqlite = { version = "0.32", features = ["bundled"] }
+tempfile = "3.17"
+clap = { version = "4.5", features = ["derive", "env"] }
+
+
+

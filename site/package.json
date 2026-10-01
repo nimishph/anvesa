@@ -1,0 +1,16 @@
+{
+  "name": "@cntxt-labs/anvesa-site",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Public documentation site for Anvesa.",
+  "scripts": {
+    "sync": "node scripts/sync-content.mjs",
+    "dev": "npm run sync && vitepress dev",
+    "build": "npm run sync && vitepress build",
+    "preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.3"
+  }
+}

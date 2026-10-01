@@ -32,6 +32,7 @@ import type { Environment } from './environment.ts';
 import { CommandFailedError } from './errors.ts';
 import { renderSetup, setupProject } from './init.ts';
 import { integerOption, type Parsed } from './options.ts';
+import { getPrimer, renderPrimer } from './primer.ts';
 import * as show from './render.ts';
 import { VERSION } from './version.ts';
 
@@ -248,6 +249,19 @@ function indexProgress(ctx: Context): (event: IndexEvent) => void {
 
 export type Handler = (ctx: Context) => Promise<void>;
 
+export function resolveFormat(ctx: Context): show.FormatMode {
+  if (ctx.parsed.values.json) return 'json';
+  if (ctx.parsed.values.compact) return 'compact';
+  const format = ctx.parsed.values.format;
+  if (format !== undefined) {
+    if (!['compact', 'pretty', 'locations', 'json'].includes(format)) {
+      throw new InvalidArgumentError('--format', 'compact, pretty, locations, or json', format);
+    }
+    return format as show.FormatMode;
+  }
+  return 'pretty';
+}
+
 export const COMMANDS: Readonly<Record<string, Handler>> = {
   init: async (ctx) => {
     const projectRoot = root(ctx);
@@ -337,7 +351,18 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         ...(weights ? { weights } : {}),
         ...(ctx.parsed.values.wql ? { wql: ctx.parsed.values.wql } : {}),
       });
-      emit(ctx, page, () => show.renderSearch(page));
+      const format = resolveFormat(ctx);
+      if (format === 'json') {
+        emit(ctx, page, () => show.toJson(page));
+      } else {
+        emit(ctx, page, () =>
+          show.renderSearch(page, {
+            mode: format,
+            full: ctx.parsed.values.full === true,
+            isTTY: ctx.environment.isTTY === true,
+          }),
+        );
+      }
     }),
 
   retrieve: (ctx) =>
@@ -361,7 +386,18 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         ...pageRequest(ctx),
         ...(semantic ? { semantic } : {}),
       });
-      emit(ctx, page, () => show.renderStructural(page));
+      const format = resolveFormat(ctx);
+      if (format === 'json') {
+        emit(ctx, page, () => show.toJson(page));
+      } else {
+        emit(ctx, page, () =>
+          show.renderStructural(page, {
+            mode: format,
+            full: ctx.parsed.values.full === true,
+            isTTY: ctx.environment.isTTY === true,
+          }),
+        );
+      }
     });
   },
 
@@ -532,6 +568,13 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       { title, url: fullUrl, body, openedBrowser },
       () => `Issue URL: ${fullUrl}\n${openedBrowser ? '(Opened in your default browser)\n' : ''}`,
     );
+  },
+
+  primer: async (ctx) => {
+    const topic = ctx.parsed.positionals[0];
+    const compact = ctx.parsed.values.compact === true || ctx.parsed.values.format === 'compact';
+    const result = getPrimer(topic);
+    emit(ctx, result, () => renderPrimer(result, compact));
   },
 };
 

@@ -1,0 +1,19 @@
+[package]
+name = "anvesa"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "High-level code intelligence engine facade for Anvesa."
+
+[dependencies]
+anvesa-core = { path = "../anvesa-core" }
+anvesa-syntax = { path = "../anvesa-syntax" }
+anvesa-store = { path = "../anvesa-store" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

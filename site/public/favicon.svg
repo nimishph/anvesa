@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <defs>
+    <linearGradient id="anvFav" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10B981" />
+      <stop offset="100%" stop-color="#06B6D4" />
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="7" fill="#0f172a" />
+  <path d="M 16 6 L 24 16 L 16 26 L 8 16 Z" fill="none" stroke="url(#anvFav)" stroke-width="2.5" stroke-linejoin="round"/>
+  <circle cx="16" cy="16" r="3" fill="url(#anvFav)" />
+</svg>

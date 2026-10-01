@@ -1,0 +1,122 @@
+/**
+ * NAPI-RS native Rust bridge for @cntxt-labs/anvesa-dense.
+ * Delegates SIMD vector math, normalization, and batch top-k scanning to crates/anvesa-napi.
+ */
+
+import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const require = createRequire(import.meta.url);
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+export interface ScoredIndex {
+  readonly index: number;
+  readonly score: number;
+}
+
+export interface NapiLaneHit {
+  readonly key: string;
+  readonly score?: number;
+}
+
+export interface NapiLane {
+  readonly name: string;
+  readonly weight: number;
+  readonly hits: readonly NapiLaneHit[];
+}
+
+export interface NapiContribution {
+  readonly lane: string;
+  readonly rank: number;
+  readonly weight: number;
+  readonly score?: number;
+}
+
+export interface NapiFusedResult {
+  readonly key: string;
+  readonly score: number;
+  readonly bestScore?: number;
+  readonly foundBy: readonly NapiContribution[];
+}
+
+export interface RustDenseBinding {
+  dotProductSimd(a: Float32Array, b: Float32Array): number;
+  normalizeSimd(vector: Float32Array): Float32Array;
+  batchScanTopK(
+    query: Float32Array,
+    vectorsBuffer: Uint8Array,
+    dims: number,
+    limit: number,
+  ): ScoredIndex[];
+  batchDotProduct(query: Float32Array, vectorsBuffer: Uint8Array, dims: number): Float32Array;
+  fuseRankingsNative(lanes: readonly NapiLane[], k?: number): NapiFusedResult[];
+}
+
+let nativeModule: RustDenseBinding | null = null;
+let attempted = false;
+let forcePureTs = false;
+
+export function setRustDenseEnabled(enabled: boolean): void {
+  forcePureTs = !enabled;
+}
+
+export function isRustDenseEnabled(): boolean {
+  if (
+    forcePureTs ||
+    process.env.ANVESA_DISABLE_NATIVE === '1' ||
+    process.env.ANVESA_DISABLE_NATIVE === 'true'
+  ) {
+    return false;
+  }
+  return isRustDenseAvailable();
+}
+
+export function loadRustDense(): RustDenseBinding | null {
+  if (
+    forcePureTs ||
+    process.env.ANVESA_DISABLE_NATIVE === '1' ||
+    process.env.ANVESA_DISABLE_NATIVE === 'true'
+  ) {
+    return null;
+  }
+  if (attempted) {
+    return nativeModule;
+  }
+  attempted = true;
+
+  const rootDir = join(__dirname, '..', '..');
+  const candidates = [
+    join(rootDir, 'crates', 'anvesa-napi', 'anvesa_napi.node'),
+    join(rootDir, 'target', 'release', 'anvesa_napi.node'),
+    join(rootDir, 'target', 'release', 'anvesa_napi.dll'),
+    join(rootDir, 'target', 'debug', 'anvesa_napi.node'),
+    join(rootDir, 'target', 'debug', 'anvesa_napi.dll'),
+    join(__dirname, 'anvesa_napi.node'),
+  ];
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      try {
+        nativeModule = require(candidate) as RustDenseBinding;
+        return nativeModule;
+      } catch (failure) {
+        if (failure) continue;
+      }
+    }
+  }
+
+  return null;
+}
+
+export function isRustDenseAvailable(): boolean {
+  if (
+    forcePureTs ||
+    process.env.ANVESA_DISABLE_NATIVE === '1' ||
+    process.env.ANVESA_DISABLE_NATIVE === 'true'
+  ) {
+    return false;
+  }
+  return loadRustDense() !== null;
+}

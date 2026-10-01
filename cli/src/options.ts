@@ -44,6 +44,9 @@ const OPTIONS = {
   path: { type: 'string' },
   wql: { type: 'string' },
   semantic: { type: 'string' },
+  format: { type: 'string' },
+  compact: { type: 'boolean' },
+  full: { type: 'boolean' },
 } as const;
 
 export interface Parsed {
@@ -90,6 +93,9 @@ export interface Parsed {
     readonly path?: string;
     readonly wql?: string;
     readonly semantic?: string;
+    readonly format?: string;
+    readonly compact?: boolean;
+    readonly full?: boolean;
   };
 }
 

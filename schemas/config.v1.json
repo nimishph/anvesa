@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/nimishph/anvesa/main/schemas/config.v1.json",
+  "title": "Anvesa Project Configuration Schema (v1)",
+  "description": "Configuration file for Anvesa code intelligence and search engine (.anvesa/config.json). Defines embedding model, channels, fusion rank parameters, indexing, syntax chunking, search tuning, and security constraints.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "URI to the Anvesa config JSON Schema for editor autocomplete and validation."
+    },
+    "model": {
+      "type": ["string", "null"],
+      "description": "A built-in model id (e.g. 'sentence-transformers/all-MiniLM-L6-v2'). Unset means the tier the machine suits."
+    },
+    "channels": {
+      "type": "object",
+      "description": "Channel configurations keyed by channel name (e.g., 'notes', 'docs').",
+      "patternProperties": {
+        "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Whether this channel is indexed and searched."
+            },
+            "weight": {
+              "type": "number",
+              "minimum": 0,
+              "default": 1,
+              "description": "Weight multiplier for this channel in reciprocal rank fusion."
+            },
+            "module": {
+              "type": "string",
+              "description": "Path to a custom channel transformer module relative to the project root."
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "description": "SHA-256 integrity hash for pinned custom channel modules."
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "fusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Rank fusion tuning parameters.",
+      "properties": {
+        "k": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 60,
+          "description": "Reciprocal rank fusion constant k (higher values smooth differences across ranks)."
+        }
+      }
+    },
+    "indexing": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Indexing options and storage partitioning.",
+      "properties": {
+        "fragments": {
+          "type": "string",
+          "enum": ["on", "off"],
+          "default": "off",
+          "description": "Partition index into multiple fragment databases as defined in .anvesa/fragments.json."
+        },
+        "ignore": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Additional glob patterns to ignore during repository indexing beyond .gitignore."
+        },
+        "maxFileSizeBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 524288,
+          "description": "Skip indexing files larger than this size in bytes (default 512KB)."
+        },
+        "concurrency": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum number of concurrent worker operations during indexing."
+        },
+        "embeddingBatchSize": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 32,
+          "description": "Number of text chunks to embed per batch pass."
+        }
+      }
+    },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Security constraints and execution guards.",
+      "properties": {
+        "requireChecksums": {
+          "type": "boolean",
+          "default": false,
+          "description": "Refuse to load any custom channel module that is not pinned with a sha256 checksum."
+        }
+      }
+    },
+    "search": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Default parameters and thresholds for query and search operations.",
+      "properties": {
+        "defaultLimit": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 20,
+          "description": "Default maximum number of search results to return when not specified."
+        },
+        "excludeLanes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Retrieval lanes to exclude by default (e.g. ['docs', 'structural'])."
+        },
+        "minScore": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Minimum cosine similarity cutoff for dense matches."
+        },
+        "collapse": {
+          "type": "boolean",
+          "default": false,
+          "description": "Collapse multiple search result chunks originating from the same symbol or card group."
+        }
+      }
+    },
+    "syntax": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "AST parsing and code chunking configuration.",
+      "properties": {
+        "stripComments": {
+          "type": "boolean",
+          "default": false,
+          "description": "Strip comments from AST code cards to conserve token and vector space."
+        },
+        "maxChunkLines": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 120,
+          "description": "Maximum number of source lines per extracted AST code chunk."
+        },
+        "minChunkLines": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 3,
+          "description": "Minimum number of source lines required for a distinct code chunk."
+        }
+      }
+    },
+    "redteam": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Adversarial detection and card quarantine security settings.",
+      "properties": {
+        "maxCardsPerSource": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 500,
+          "description": "Anti-flood card generation threshold per source file."
+        },
+        "quarantineOnSuspect": {
+          "type": "boolean",
+          "default": false,
+          "description": "Quarantine any card suspected of containing prompt injections or adversarial payload."
+        }
+      }
+    }
+  }
+}

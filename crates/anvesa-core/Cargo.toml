@@ -1,0 +1,16 @@
+[package]
+name = "anvesa-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Pure mathematical vector kernel, RRF fusion, and scoring engine for Anvesa."
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

@@ -7,6 +7,8 @@
  * the top of a single lane, and no lane's scale can drown another.
  */
 
+import { isRustDenseEnabled, loadRustDense, type NapiLane } from '@cntxt-labs/anvesa-dense';
+
 /** The constant from the RRF paper; it damps the advantage of the very top ranks. */
 export const DEFAULT_RRF_K = 60;
 
@@ -49,6 +51,37 @@ export interface Fused<T> {
 }
 
 export function fuse<T>(lanes: readonly Lane<T>[], k: number = DEFAULT_RRF_K): Fused<T>[] {
+  if (isRustDenseEnabled()) {
+    const native = loadRustDense();
+    if (native) {
+      const itemMap = new Map<string, T>();
+      const nativeLanes: NapiLane[] = [];
+      for (const lane of lanes) {
+        if (lane.weight <= 0) continue;
+        const hits: { key: string; score?: number }[] = [];
+        for (const h of lane.hits) {
+          if (!itemMap.has(h.key)) itemMap.set(h.key, h.item);
+          hits.push({ key: h.key, ...(h.score !== undefined ? { score: h.score } : {}) });
+        }
+        nativeLanes.push({ name: lane.name, weight: lane.weight, hits });
+      }
+
+      const results = native.fuseRankingsNative(nativeLanes, k);
+      return results.map((r) => ({
+        key: r.key,
+        item: itemMap.get(r.key) as T,
+        score: r.score,
+        bestScore: r.bestScore ?? undefined,
+        foundBy: r.foundBy.map((c) => ({
+          lane: c.lane,
+          rank: c.rank,
+          weight: c.weight,
+          score: c.score ?? undefined,
+        })),
+      }));
+    }
+  }
+
   const combined = new Map<string, { item: T; score: number; foundBy: Contribution[] }>();
   for (const lane of lanes) {
     if (lane.weight <= 0) continue;

@@ -5,7 +5,8 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { z } from 'zod';
 import { type Context, openSession } from './commands.ts';
-import { toJson } from './render.ts';
+import { getPrimer } from './primer.ts';
+import { extractDocSummary, toJson } from './render.ts';
 import { VERSION } from './version.ts';
 
 /**
@@ -44,6 +45,13 @@ export function createMcpServer(retriever: Retriever): McpServer {
         'Search the project by meaning (every dense channel) and, when the query is WQL, by structure, fused by rank. Results say which lane found each. Every result always has a score (rank position across lanes; not comparable across different searches, and never a sign of relevance — a bad query can score its best guess the same as a great match). Judge relevance from bestScore instead, when it is present (the strongest real similarity a lane reported); it is absent only when nothing but the structural lane, which has no similarity score, found the result.',
       inputSchema: {
         query: z.string(),
+        format: z
+          .enum(['compact', 'full', 'locations'])
+          .optional()
+          .describe(
+            'compact (default) returns concise metadata and 1-line docstrings (frugal tokens); full includes complete source card bodies; locations returns quickfix lines.',
+          ),
+        full: z.boolean().optional().describe('If true, include full card text in compact mode.'),
         channels: z.array(z.string()).optional(),
         exclude: z
           .array(z.string())
@@ -64,17 +72,52 @@ export function createMcpServer(retriever: Retriever): McpServer {
         ...page,
       },
     },
-    ({ query, channels, exclude, weights, wql, limit, cursor }) =>
-      respond(() =>
-        retriever.search(query, {
+    ({ query, format, full, channels, exclude, weights, wql, limit, cursor }) =>
+      respond(async () => {
+        const resultPage = await retriever.search(query, {
           ...(channels ? { channels } : {}),
           ...(exclude ? { exclude } : {}),
           ...(weights ? { weights } : {}),
           ...(wql ? { wql } : {}),
           ...(limit ? { limit } : {}),
           ...(cursor ? { cursor } : {}),
-        }),
-      ),
+        });
+        const selectedFormat = format ?? (full ? 'full' : 'full');
+        if (selectedFormat === 'locations') {
+          return {
+            items: resultPage.items.map((item) => ({
+              location: `${item.path}:${item.line ?? 1}:1`,
+              kind: item.kind,
+              title: item.title,
+              foundBy: item.foundBy,
+            })),
+          };
+        }
+        if (selectedFormat === 'compact') {
+          return {
+            ...resultPage,
+            items: resultPage.items.map((item) => {
+              const docSummary = extractDocSummary(item.card?.text);
+              const { card, ...rest } = item;
+              return {
+                ...rest,
+                signature: card?.attrs.signature,
+                docstring: docSummary,
+                card: card
+                  ? {
+                      id: card.id,
+                      source: card.source,
+                      channel: card.channel,
+                      attrs: card.attrs,
+                      provenance: card.provenance,
+                    }
+                  : undefined,
+              };
+            }),
+          };
+        }
+        return resultPage;
+      }),
   );
 
   for (const channel of retriever.registry.channels()) {
@@ -289,6 +332,21 @@ export function createMcpServer(retriever: Retriever): McpServer {
           ...(cursor ? { cursor } : {}),
         }),
       ),
+  );
+
+  server.registerTool(
+    'primer',
+    {
+      description:
+        'Token-frugal guidance on Anvesa concepts (overview, wql, fusion, graph, indexing, grammars). Returns table of contents if topic is omitted.',
+      inputSchema: {
+        topic: z
+          .string()
+          .optional()
+          .describe('Specific topic name, e.g. overview, wql, fusion, graph, indexing, grammars.'),
+      },
+    },
+    ({ topic }) => respond(async () => getPrimer(topic)),
   );
 
   return server;

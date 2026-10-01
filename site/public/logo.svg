@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <linearGradient id="anvGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10B981" />
+      <stop offset="50%" stop-color="#06B6D4" />
+      <stop offset="100%" stop-color="#3B82F6" />
+    </linearGradient>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e293b" />
+    </linearGradient>
+  </defs>
+  <rect width="200" height="200" rx="44" fill="url(#bgGrad)" />
+  <circle cx="100" cy="100" r="70" fill="none" stroke="url(#anvGrad)" stroke-width="8" stroke-dasharray="16 10" opacity="0.6"/>
+  <!-- Central compass search eye / code diamond -->
+  <path d="M 100 45 L 145 100 L 100 155 L 55 100 Z" fill="none" stroke="url(#anvGrad)" stroke-width="10" stroke-linejoin="round"/>
+  <circle cx="100" cy="100" r="18" fill="url(#anvGrad)" />
+  <circle cx="100" cy="65" r="7" fill="#10B981" />
+  <circle cx="135" cy="100" r="7" fill="#06B6D4" />
+  <circle cx="100" cy="135" r="7" fill="#3B82F6" />
+  <circle cx="65" cy="100" r="7" fill="#10B981" />
+</svg>

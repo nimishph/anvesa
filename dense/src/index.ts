@@ -40,6 +40,20 @@ export { previewCards } from './preview.ts';
 export * from './redteam/index.ts';
 export type { RetrievalScreen, RetrievedPage, RetrieveOptions } from './retrieve.ts';
 export { retrieve } from './retrieve.ts';
+export type {
+  NapiContribution,
+  NapiFusedResult,
+  NapiLane,
+  NapiLaneHit,
+  RustDenseBinding,
+  ScoredIndex,
+} from './rust-bridge.ts';
+export {
+  isRustDenseAvailable,
+  isRustDenseEnabled,
+  loadRustDense,
+  setRustDenseEnabled,
+} from './rust-bridge.ts';
 export type { Scaffold, ScaffoldFile, ScaffoldTemplate } from './scaffold.ts';
 export { scaffoldChannel } from './scaffold.ts';
 export { createTransformServices } from './services.ts';
@@ -61,4 +75,10 @@ export type { DocsOptions } from './transformers/docs.ts';
 export { docsTransformer } from './transformers/docs.ts';
 export type { SymbolsOptions } from './transformers/symbols.ts';
 export { symbolsTransformer } from './transformers/symbols.ts';
-export { dot, isUsableVector, normalize } from './vectors.ts';
+export {
+  batchDotProduct,
+  batchScanTopK,
+  dot,
+  isUsableVector,
+  normalize,
+} from './vectors.ts';
