@@ -66,6 +66,16 @@ async function run(command: readonly string[], cwd: string): Promise<void> {
 rmSync(folder, { recursive: true, force: true });
 mkdirSync(folder, { recursive: true });
 
+await run(['cargo', 'build', '-p', 'anvesa-napi', '--release'], root);
+const nativeAddon = join(root, 'target', 'release', 'anvesa_napi.node');
+if (!existsSync(nativeAddon)) {
+  throw new InvalidArgumentError(
+    'native-addon',
+    'target/release/anvesa_napi.node to exist after cargo build',
+    nativeAddon,
+  );
+}
+
 const program = process.platform === 'win32' ? 'anvesa.exe' : 'anvesa';
 await run(
   [
@@ -88,7 +98,9 @@ for (const entry of readdirSync(folder)) {
   if (entry.endsWith('.map')) rmSync(join(folder, entry));
 }
 
+mkdirSync(join(folder, 'runtime'), { recursive: true });
 const modules = join(folder, 'runtime', 'node_modules');
+cpSync(nativeAddon, join(folder, 'runtime', 'anvesa_napi.node'));
 const nodePackage = packageDirectory('onnxruntime-node', join(root, 'embedder'));
 for (const specifier of ['onnxruntime-node', 'onnxruntime-common']) {
   const source =
