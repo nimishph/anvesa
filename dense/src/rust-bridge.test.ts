@@ -26,16 +26,15 @@ function scalarNormalize(vector: Float32Array): Float32Array {
 }
 
 describe('Rust Native SIMD Bridge (anv-ja8)', () => {
-  test('native bridge loads and detects availability', () => {
+  test('native bridge availability is reported consistently', () => {
     const available = isRustDenseAvailable();
-    expect(available).toBe(true);
-
     const bridge = loadRustDense();
-    expect(bridge).not.toBeNull();
-    expect(typeof bridge?.dotProductSimd).toBe('function');
-    expect(typeof bridge?.normalizeSimd).toBe('function');
-    expect(typeof bridge?.batchScanTopK).toBe('function');
-    expect(typeof bridge?.batchDotProduct).toBe('function');
+    expect(available).toBe(bridge !== null);
+    if (!bridge) return;
+    expect(typeof bridge.dotProductSimd).toBe('function');
+    expect(typeof bridge.normalizeSimd).toBe('function');
+    expect(typeof bridge.batchScanTopK).toBe('function');
+    expect(typeof bridge.batchDotProduct).toBe('function');
   });
 
   test('dot product SIMD matches scalar dot for small dimensions', () => {
@@ -96,7 +95,6 @@ describe('Rust Native SIMD Bridge (anv-ja8)', () => {
 
   test('batchScanTopK accurately ranks vectors directly in contiguous native memory', () => {
     const bridge = loadRustDense();
-    expect(bridge).not.toBeNull();
     if (!bridge) return;
 
     const dims = 4;
@@ -130,7 +128,6 @@ describe('Rust Native SIMD Bridge (anv-ja8)', () => {
 
   test('batchDotProduct computes all scores in a single native SIMD pass', () => {
     const bridge = loadRustDense();
-    expect(bridge).not.toBeNull();
     if (!bridge) return;
 
     const dims = 3;

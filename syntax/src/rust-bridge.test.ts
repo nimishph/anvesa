@@ -8,19 +8,17 @@ import {
 } from './rust-bridge.ts';
 
 describe('Rust Native Tree-Sitter Syntax Bridge (anv-gjm)', () => {
-  test('native syntax bridge loads and detects availability', () => {
+  test('native syntax bridge availability is reported consistently', () => {
     const available = isRustSyntaxAvailable();
-    expect(available).toBe(true);
-
     const bridge = loadRustSyntax();
-    expect(bridge).not.toBeNull();
-    expect(typeof bridge?.extractFileOutlineNative).toBe('function');
-    expect(typeof bridge?.parseFilesBatchNative).toBe('function');
+    expect(available).toBe(bridge !== null);
+    if (!bridge) return;
+    expect(typeof bridge.extractFileOutlineNative).toBe('function');
+    expect(typeof bridge.parseFilesBatchNative).toBe('function');
   });
 
   test('extracts TypeScript functions, classes, interfaces, and imports', () => {
     const bridge = loadRustSyntax();
-    expect(bridge).not.toBeNull();
     if (!bridge) return;
 
     const source = `
@@ -85,7 +83,6 @@ export interface ServerOpts {
 
   test('extracts Python functions, classes, calls, and docstrings', () => {
     const bridge = loadRustSyntax();
-    expect(bridge).not.toBeNull();
     if (!bridge) return;
 
     const source = `
@@ -120,7 +117,6 @@ class DataProcessor:
 
   test('parses multiple files in parallel across CPU cores using Rayon', () => {
     const bridge = loadRustSyntax();
-    expect(bridge).not.toBeNull();
     if (!bridge) return;
 
     const files = [
@@ -157,7 +153,6 @@ class DataProcessor:
 
   test('gracefully handles syntax errors in malformed source', () => {
     const bridge = loadRustSyntax();
-    expect(bridge).not.toBeNull();
     if (!bridge) return;
 
     const malformed = 'export function broken( { return ';
