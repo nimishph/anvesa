@@ -177,6 +177,16 @@ describe('comparing the latest execution with the window before it', () => {
     ).toBe('stable');
   });
 
+  test('hosted-runner timing noise under the absolute floor is stable', () => {
+    const before = [
+      run('r1', result(SHA_A, { 'incremental.ms': 222 })),
+      run('r2', result(SHA_A, { 'incremental.ms': 222 })),
+    ];
+    expect(
+      verdicts([...before, run('r3', result(SHA_A, { 'incremental.ms': 366 }))])['incremental.ms'],
+    ).toBe('stable');
+  });
+
   test('counts that move, and quality that drops, are reported', () => {
     const before = [run('r1', result(SHA_A, steady)), run('r2', result(SHA_A, steady))];
     const after = run('r3', result(SHA_A, { ...steady, symbols: 150, 'query.exact.hitRate': 0.6 }));

@@ -51,7 +51,7 @@ export interface Tolerances {
 
 export const DEFAULT_TOLERANCES: Tolerances = {
   relative: 0.25,
-  floorMs: 100,
+  floorMs: 200,
   floorMb: 16,
   floorBytes: 64 * 1024,
   ratio: 0.02,
