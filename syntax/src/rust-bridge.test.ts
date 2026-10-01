@@ -7,8 +7,13 @@ import {
   setRustSyntaxEnabled,
 } from './rust-bridge.ts';
 
+// The native binding is built by `cargo build -p anvesa-napi` and is not checked in, so a checkout
+// without it (CI, a fresh clone) skips the tests that need it rather than failing on its absence.
+// The pure-TS fallback tests below run either way.
+const nativeTest = test.skipIf(loadRustSyntax() === null);
+
 describe('Rust Native Tree-Sitter Syntax Bridge (anv-gjm)', () => {
-  test('native syntax bridge loads and detects availability', () => {
+  nativeTest('native syntax bridge loads and detects availability', () => {
     const available = isRustSyntaxAvailable();
     expect(available).toBe(true);
 
@@ -18,9 +23,8 @@ describe('Rust Native Tree-Sitter Syntax Bridge (anv-gjm)', () => {
     expect(typeof bridge?.parseFilesBatchNative).toBe('function');
   });
 
-  test('extracts TypeScript functions, classes, interfaces, and imports', () => {
+  nativeTest('extracts TypeScript functions, classes, interfaces, and imports', () => {
     const bridge = loadRustSyntax();
-    expect(bridge).not.toBeNull();
     if (!bridge) return;
 
     const source = `
@@ -83,9 +87,8 @@ export interface ServerOpts {
     expect(callNames).toContain('express');
   });
 
-  test('extracts Python functions, classes, calls, and docstrings', () => {
+  nativeTest('extracts Python functions, classes, calls, and docstrings', () => {
     const bridge = loadRustSyntax();
-    expect(bridge).not.toBeNull();
     if (!bridge) return;
 
     const source = `
@@ -118,9 +121,8 @@ class DataProcessor:
     expect(callNames).toContain('sum');
   });
 
-  test('parses multiple files in parallel across CPU cores using Rayon', () => {
+  nativeTest('parses multiple files in parallel across CPU cores using Rayon', () => {
     const bridge = loadRustSyntax();
-    expect(bridge).not.toBeNull();
     if (!bridge) return;
 
     const files = [
@@ -155,9 +157,8 @@ class DataProcessor:
     expect(results[3]?.symbols[0]?.name).toBe('FuncD');
   });
 
-  test('gracefully handles syntax errors in malformed source', () => {
+  nativeTest('gracefully handles syntax errors in malformed source', () => {
     const bridge = loadRustSyntax();
-    expect(bridge).not.toBeNull();
     if (!bridge) return;
 
     const malformed = 'export function broken( { return ';

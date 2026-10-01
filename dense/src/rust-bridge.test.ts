@@ -25,8 +25,13 @@ function scalarNormalize(vector: Float32Array): Float32Array {
   return out;
 }
 
+// The native binding is built by `cargo build -p anvesa-napi` and is not checked in, so a checkout
+// without it (CI, a fresh clone) skips the tests that need it rather than failing on its absence.
+// The pure-TS fallback tests below run either way.
+const nativeTest = test.skipIf(loadRustDense() === null);
+
 describe('Rust Native SIMD Bridge (anv-ja8)', () => {
-  test('native bridge loads and detects availability', () => {
+  nativeTest('native bridge loads and detects availability', () => {
     const available = isRustDenseAvailable();
     expect(available).toBe(true);
 
@@ -94,9 +99,8 @@ describe('Rust Native SIMD Bridge (anv-ja8)', () => {
     );
   });
 
-  test('batchScanTopK accurately ranks vectors directly in contiguous native memory', () => {
+  nativeTest('batchScanTopK accurately ranks vectors directly in contiguous native memory', () => {
     const bridge = loadRustDense();
-    expect(bridge).not.toBeNull();
     if (!bridge) return;
 
     const dims = 4;
@@ -128,9 +132,8 @@ describe('Rust Native SIMD Bridge (anv-ja8)', () => {
     expect(top3[1]?.score).toBeGreaterThan(top3[2]?.score ?? 0);
   });
 
-  test('batchDotProduct computes all scores in a single native SIMD pass', () => {
+  nativeTest('batchDotProduct computes all scores in a single native SIMD pass', () => {
     const bridge = loadRustDense();
-    expect(bridge).not.toBeNull();
     if (!bridge) return;
 
     const dims = 3;
