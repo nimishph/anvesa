@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Build the distributable for this machine's platform: the compiled program and the `runtime`
- * folder that holds the ONNX runtime beside it.
+ * folder that holds the ONNX runtime and the anvesa_napi native addon beside it.
  *
  *   bun run tooling/package-release.ts [--out dist]
  *
@@ -66,12 +66,20 @@ async function run(command: readonly string[], cwd: string): Promise<void> {
 rmSync(folder, { recursive: true, force: true });
 mkdirSync(folder, { recursive: true });
 
-await run(['cargo', 'build', '-p', 'anvesa-napi', '--release'], root);
-const nativeAddon = join(root, 'target', 'release', 'anvesa_napi.node');
+// Cargo names a cdylib after the platform (libanvesa_napi.so, libanvesa_napi.dylib,
+// anvesa_napi.dll); it ships renamed to anvesa_napi.node, the name a require() loads as an addon.
+await run(['cargo', 'build', '-p', 'anvesa-napi', '--release', '--locked'], root);
+const cdylib =
+  process.platform === 'win32'
+    ? 'anvesa_napi.dll'
+    : process.platform === 'darwin'
+      ? 'libanvesa_napi.dylib'
+      : 'libanvesa_napi.so';
+const nativeAddon = join(root, 'target', 'release', cdylib);
 if (!existsSync(nativeAddon)) {
   throw new InvalidArgumentError(
     'native-addon',
-    'target/release/anvesa_napi.node to exist after cargo build',
+    `target/release/${cdylib} to exist after cargo build`,
     nativeAddon,
   );
 }
