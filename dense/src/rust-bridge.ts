@@ -86,15 +86,7 @@ export function loadRustDense(): RustDenseBinding | null {
   }
   attempted = true;
 
-  const rootDir = join(__dirname, '..', '..');
-  const candidates = [
-    join(rootDir, 'crates', 'anvesa-napi', 'anvesa_napi.node'),
-    join(rootDir, 'target', 'release', 'anvesa_napi.node'),
-    join(rootDir, 'target', 'release', 'anvesa_napi.dll'),
-    join(rootDir, 'target', 'debug', 'anvesa_napi.node'),
-    join(rootDir, 'target', 'debug', 'anvesa_napi.dll'),
-    join(__dirname, 'anvesa_napi.node'),
-  ];
+  const candidates = rustDenseBindingCandidates();
 
   for (const candidate of candidates) {
     if (existsSync(candidate)) {
@@ -108,6 +100,23 @@ export function loadRustDense(): RustDenseBinding | null {
   }
 
   return null;
+}
+
+export function rustDenseBindingCandidates(moduleDir = __dirname): readonly string[] {
+  const rootDir = join(moduleDir, '..', '..');
+  const executableDir = dirname(process.execPath);
+  return [
+    join(executableDir, 'runtime', 'anvesa_napi.node'),
+    join(executableDir, 'runtime', 'anvesa_napi.dll'),
+    join(executableDir, 'anvesa_napi.node'),
+    join(executableDir, 'anvesa_napi.dll'),
+    join(rootDir, 'crates', 'anvesa-napi', 'anvesa_napi.node'),
+    join(rootDir, 'target', 'release', 'anvesa_napi.node'),
+    join(rootDir, 'target', 'release', 'anvesa_napi.dll'),
+    join(rootDir, 'target', 'debug', 'anvesa_napi.node'),
+    join(rootDir, 'target', 'debug', 'anvesa_napi.dll'),
+    join(moduleDir, 'anvesa_napi.node'),
+  ];
 }
 
 export function isRustDenseAvailable(): boolean {

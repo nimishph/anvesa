@@ -9,7 +9,15 @@
  * It needs `bun run package` first. It does not touch the network: the two packages are copied
  * into a `node_modules` folder, which is the layout an install produces.
  */
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -70,6 +78,11 @@ try {
     'the launcher runs the program',
     version.code === 0 && /^anvesa \d/.test(version.out),
     version.err,
+  );
+  check(
+    'the platform package includes native NAPI addon',
+    existsSync(join(modules, platformPackage(here), 'bin', 'runtime', 'anvesa_napi.node')),
+    '',
   );
   const indexed = await run(['index', '--no-embed']);
   check(

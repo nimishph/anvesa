@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test';
+import { dirname, join } from 'node:path';
 import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
-import { isRustDenseAvailable, loadRustDense, setRustDenseEnabled } from './rust-bridge.ts';
+import {
+  isRustDenseAvailable,
+  loadRustDense,
+  rustDenseBindingCandidates,
+  setRustDenseEnabled,
+} from './rust-bridge.ts';
 import { batchDotProduct, batchScanTopK, dot, normalize } from './vectors.ts';
 
 function scalarDot(a: Float32Array, b: Float32Array): number {
@@ -31,6 +37,11 @@ function scalarNormalize(vector: Float32Array): Float32Array {
 const nativeTest = test.skipIf(loadRustDense() === null);
 
 describe('Rust Native SIMD Bridge (anv-ja8)', () => {
+  test('native dense candidates include the packaged runtime path', () => {
+    const candidates = rustDenseBindingCandidates();
+    expect(candidates).toContain(join(dirname(process.execPath), 'runtime', 'anvesa_napi.node'));
+  });
+
   nativeTest('native bridge loads and detects availability', () => {
     const available = isRustDenseAvailable();
     expect(available).toBe(true);

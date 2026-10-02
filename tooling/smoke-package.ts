@@ -7,7 +7,7 @@
  *
  *   bun run tooling/smoke-package.ts [--dist dist]
  */
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -64,6 +64,10 @@ try {
     'prints a version',
     version.code === 0 && /^anvesa \d+\.\d+\.\d+/.test(version.out),
     version,
+  );
+  expect(
+    'ships native NAPI addon beside runtime assets',
+    existsSync(join(dist, unpacked.name, 'runtime', 'anvesa_napi.node')),
   );
 
   const grammars = await run(['grammar', 'list', '--json']);

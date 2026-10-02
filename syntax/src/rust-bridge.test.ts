@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'bun:test';
+import { dirname, join } from 'node:path';
 import {
   extractFileOutline,
   isRustSyntaxAvailable,
   loadRustSyntax,
   parseFilesBatch,
+  rustSyntaxBindingCandidates,
   setRustSyntaxEnabled,
 } from './rust-bridge.ts';
 
@@ -13,6 +15,11 @@ import {
 const nativeTest = test.skipIf(loadRustSyntax() === null);
 
 describe('Rust Native Tree-Sitter Syntax Bridge (anv-gjm)', () => {
+  test('native syntax candidates include the packaged runtime path', () => {
+    const candidates = rustSyntaxBindingCandidates();
+    expect(candidates).toContain(join(dirname(process.execPath), 'runtime', 'anvesa_napi.node'));
+  });
+
   nativeTest('native syntax bridge loads and detects availability', () => {
     const available = isRustSyntaxAvailable();
     expect(available).toBe(true);
