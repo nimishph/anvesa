@@ -159,7 +159,8 @@ for (const specifier of ['onnxruntime-node', 'onnxruntime-common']) {
 for (const file of ['README.md', 'LICENSE']) {
   if (existsSync(join(root, file))) cpSync(join(root, file), join(folder, file));
 }
-const skills = join(root, 'cli', 'skills');
+// The agent skill has one source, skills/ at the repository root; the package carries a copy.
+const skills = join(root, 'skills');
 if (existsSync(skills)) cpSync(skills, join(folder, 'skills'), { recursive: true });
 writeFileSync(join(folder, 'VERSION'), `${version}\n`);
 

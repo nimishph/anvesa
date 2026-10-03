@@ -119,8 +119,8 @@ what is missing.
 A language becomes searchable by symbol once it has a *mapping*: which syntax nodes are declarations,
 imports, calls and control flow, and where each finds its name. TypeScript, JavaScript, Python, PHP,
 Go, Rust, Java and Ruby ship one (each was learned from real code with the trainer below, then checked).
-C, C++ and C# do not: their declarations hide the name in a nested declarator or a grammar that a
-mapping cannot describe, so a mapping for them would look right and be wrong. For any other language
+C and C++ ship a partial one: types (struct, class, namespace) come out, but functions do not, since
+their names hide in a nested declarator that a mapping cannot describe yet. C# ships none. For any other language
 whose grammar is installed, learn one from code:
 
 ```sh

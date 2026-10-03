@@ -5,3 +5,6 @@ node_modules/
 target/
 *.node
 
+
+# Copied in at release from skills/ (the one source).
+/cli/skills/
