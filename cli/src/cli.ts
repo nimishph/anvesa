@@ -56,7 +56,7 @@ usage: anvesa <command> [arguments] [options]
   pattern list|run <name> [param=val...]  declarative structural patterns
   primer [topic]            token-frugal guidance on Anvesa architecture and concepts (--compact)
   issue [title]             raise an issue on GitHub with sanitized diagnostics
-  mcp serve                 run as an MCP server on stdio
+  mcp serve                 run as an MCP server on stdio, for --root (default: current directory)
   --version                 print the version
 
 options: --root <dir>  --json  --limit N  --cursor <token>  --channel <name>  --no-embed
