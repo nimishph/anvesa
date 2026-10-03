@@ -35,6 +35,7 @@ describe('plugin manifest', () => {
     expect(plugin.version).toBe(json('cli/package.json').version);
     expect(plugin.mcpServers.anvesa).toEqual({
       command: 'node',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: Claude Code's own placeholders, literal by design
       args: ['${CLAUDE_PLUGIN_ROOT}/plugin/mcp-server.cjs', '--root', '${CLAUDE_PROJECT_DIR}'],
     });
   });
