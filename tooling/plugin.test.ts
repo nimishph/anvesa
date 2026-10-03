@@ -9,7 +9,7 @@ import { join, resolve } from 'node:path';
 const root = resolve(import.meta.dir, '..');
 const json = (file: string) => JSON.parse(readFileSync(join(root, file), 'utf8'));
 
-type Argv = { argv?: string[]; problem?: string };
+type Argv = { argv?: string[]; cwd?: string; problem?: string };
 const launcher = createRequire(import.meta.url)('../plugin/mcp-server.cjs') as {
   command(options: {
     env: Record<string, string>;
@@ -104,7 +104,7 @@ describe('MCP launcher', () => {
     },
   );
 
-  test('otherwise npx fetches this plugin version', () => {
+  test('otherwise npx fetches this plugin version, from outside any project', () => {
     const prefix = folder('node-prefix');
     const npx = join(folder('node-prefix', 'node_modules', 'npm', 'bin'), 'npx-cli.js');
     writeFileSync(npx, '');
@@ -119,6 +119,9 @@ describe('MCP launcher', () => {
       'serve',
       ...args,
     ]);
+    // In a project that has a package of the same name (anvesa's own workspace), npx would run
+    // that one instead.
+    expect(chosen.cwd).toBe(tmpdir());
   });
 
   test('with nothing to run, it says what to install', () => {
@@ -130,5 +133,63 @@ describe('MCP launcher', () => {
       args,
     });
     expect(chosen.problem).toContain('npm install -g @cntxt-labs/anvesa');
+  });
+});
+
+const hook = createRequire(import.meta.url)('../plugin/session-start.cjs') as {
+  plan(input: {
+    hasIndex: boolean;
+    status: Record<string, unknown> | undefined;
+    now: number;
+    isAlive: (pid: number) => boolean;
+  }): { note?: string; start: boolean };
+  stateDir(env: Record<string, string>, root: string): string;
+  STALE_RUN_MS: number;
+};
+
+describe('SessionStart index refresh', () => {
+  const now = 1_000_000_000;
+  const alive = () => true;
+
+  test('a project without an index is not indexed uninvited; Claude is told', () => {
+    const decided = hook.plan({ hasIndex: false, status: undefined, now, isAlive: alive });
+    expect(decided.start).toBe(false);
+    expect(decided.note).toContain('no index yet');
+  });
+
+  test('an indexed project refreshes, silently', () => {
+    expect(hook.plan({ hasIndex: true, status: undefined, now, isAlive: alive })).toEqual({
+      start: true,
+    });
+    const done = { state: 'done', startedAt: now - 5000, at: now - 1000 };
+    expect(hook.plan({ hasIndex: true, status: done, now, isAlive: alive })).toEqual({
+      start: true,
+    });
+  });
+
+  test('a refresh still running is left alone; a dead or stale one is replaced', () => {
+    const running = { state: 'running', pid: 42, startedAt: now - 1000 };
+    expect(hook.plan({ hasIndex: true, status: running, now, isAlive: alive }).start).toBe(false);
+    expect(hook.plan({ hasIndex: true, status: running, now, isAlive: () => false }).start).toBe(
+      true,
+    );
+    const old = { ...running, startedAt: now - hook.STALE_RUN_MS - 1 };
+    expect(hook.plan({ hasIndex: true, status: old, now, isAlive: alive }).start).toBe(true);
+  });
+
+  test('a failed refresh is reported in one short note, and retried', () => {
+    const failed = { state: 'failed', reason: 'exit 1: no grammar for go', at: now - 1000 };
+    const decided = hook.plan({ hasIndex: true, status: failed, now, isAlive: alive });
+    expect(decided.start).toBe(true);
+    expect(decided.note).toBe(
+      'anvesa: the last background index refresh failed (exit 1: no grammar for go); search may be stale. Run `anvesa index` to see why.',
+    );
+  });
+
+  test("state lives in the plugin's data folder, one folder per project, not in the repo", () => {
+    const a = hook.stateDir({ CLAUDE_PLUGIN_DATA: '/data' }, '/work/a');
+    expect(a.startsWith(join('/data', 'refresh'))).toBe(true);
+    expect(hook.stateDir({ CLAUDE_PLUGIN_DATA: '/data' }, '/work/b')).not.toBe(a);
+    expect(a).not.toContain('work');
   });
 });

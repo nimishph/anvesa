@@ -8,6 +8,7 @@
 
 const { spawn } = require('node:child_process');
 const { existsSync, readFileSync, realpathSync, statSync } = require('node:fs');
+const { tmpdir } = require('node:os');
 const path = require('node:path');
 
 const PACKAGE = '@cntxt-labs/anvesa';
@@ -60,15 +61,30 @@ function npx(node) {
   return undefined;
 }
 
-/** The command that serves MCP for the project, or a problem to report. */
-function command({ env, platform, node, root, args }) {
-  if (env.ANVESA_BIN) return { argv: [env.ANVESA_BIN, 'mcp', 'serve', ...args] };
+/**
+ * The command that runs anvesa with `subcommand` (MCP serving by default), or a problem to report.
+ * `offline` keeps npx to its cache, for runs that must not reach the network.
+ */
+function command({
+  env,
+  platform,
+  node,
+  root,
+  args,
+  subcommand = ['mcp', 'serve'],
+  offline = false,
+}) {
+  if (env.ANVESA_BIN) return { argv: [env.ANVESA_BIN, ...subcommand, ...args] };
   const found = installed(env, platform, node);
-  if (found) return { argv: [...found, 'mcp', 'serve', ...args] };
+  if (found) return { argv: [...found, ...subcommand, ...args] };
   const fetch = npx(node);
   if (fetch) {
     const spec = `${PACKAGE}@${pluginVersion(root)}`;
-    return { argv: [...fetch, '--yes', spec, 'mcp', 'serve', ...args] };
+    const mode = offline ? ['--offline'] : [];
+    // npx prefers a package of that name in the working directory's project (anvesa's own
+    // workspace, or a project that depends on it), so it runs from a neutral folder; the project
+    // is always named with --root.
+    return { argv: [...fetch, ...mode, '--yes', spec, ...subcommand, ...args], cwd: tmpdir() };
   }
   return {
     problem:
@@ -93,7 +109,7 @@ if (require.main === module) {
     process.exit(1);
   }
   const [program, ...rest] = chosen.argv;
-  const child = spawn(program, rest, { stdio: 'inherit' });
+  const child = spawn(program, rest, { stdio: 'inherit', cwd: chosen.cwd });
   child.on('error', (error) => {
     process.stderr.write(`anvesa plugin: could not start ${program}: ${error.message}\n`);
     process.exit(1);
