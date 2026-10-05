@@ -1,7 +1,7 @@
 {
   "name": "anvesa",
   "displayName": "anvesa",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "Find code by meaning and by structure: semantic search, WQL structural queries and the call graph, offline, over MCP and the CLI. Prefer it to grep for intent, symbols and relationships.",
   "author": {
     "name": "nimishph",
