@@ -35,7 +35,7 @@ import { CommandFailedError } from './errors.ts';
 import { renderSetup, setupProject } from './init.ts';
 import { integerOption, type Parsed } from './options.ts';
 import { getPrimer, renderPrimer } from './primer.ts';
-import { findProjectRoot } from './project-root.ts';
+import { findProjectRoot, isProjectRoot } from './project-root.ts';
 import * as show from './render.ts';
 import { VERSION } from './version.ts';
 
@@ -333,6 +333,61 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         show.renderIndex({ ...result, embedder, embedderReason }),
       );
     }),
+
+  // Paths only: nothing is opened, so it answers even where the index or the config is broken.
+  where: async (ctx) => {
+    const projectRoot = root(ctx);
+    const cwd = resolve(ctx.environment.cwd);
+    const foundBy =
+      ctx.parsed.values.root !== undefined
+        ? 'named by --root'
+        : projectRoot !== cwd
+          ? `nearest project above ${cwd}`
+          : isProjectRoot(projectRoot, ctx.environment.env)
+            ? 'current directory'
+            : 'no project here or above; current directory';
+    const configPath = join(projectRoot, PROJECT_CONFIG_PATH);
+    let sharded = false;
+    let configProblem: string | undefined;
+    try {
+      sharded = (await loadProjectConfig(projectRoot)).fragments;
+    } catch (failure) {
+      configProblem = failure instanceof Error ? failure.message : String(failure);
+    }
+    const paths = {
+      root: projectRoot,
+      foundBy,
+      config: configPath,
+      configExists: existsSync(configPath),
+      ...(configProblem ? { configProblem } : {}),
+      index: join(projectRoot, '.anvesa', sharded ? 'shards' : 'index.db'),
+      sharded,
+      models: modelCache(ctx).root,
+    };
+    const only = ctx.parsed.positionals[0];
+    if (only !== undefined) {
+      const picked = {
+        root: paths.root,
+        config: paths.config,
+        index: paths.index,
+        models: paths.models,
+      }[only];
+      if (picked === undefined) {
+        throw new InvalidArgumentError('where', 'root, config, index or models', only);
+      }
+      emit(ctx, { [only]: picked }, () => `${picked}\n`);
+      return;
+    }
+    emit(ctx, paths, () =>
+      [
+        `root    ${paths.root} (${paths.foundBy})`,
+        `config  ${paths.config}${paths.configExists ? '' : ' (not created; defaults in use)'}${configProblem ? ` (invalid: ${configProblem})` : ''}`,
+        `index   ${paths.index}${existsSync(paths.index) ? '' : ' (not built yet)'}`,
+        `models  ${paths.models}`,
+        '',
+      ].join('\n'),
+    );
+  },
 
   // The embedder is opened so `status` names the model in use; without it every project read as "none".
   status: async (ctx) => {

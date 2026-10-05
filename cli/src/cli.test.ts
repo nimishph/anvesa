@@ -422,6 +422,39 @@ describe('command line', () => {
     expect(existsSync(join(inside, '.anvesa', 'config.json'))).toBe(true);
   });
 
+  test('where names the project in use, how it was found, and its paths', async () => {
+    const root = makeProject();
+    const inside = join(root, 'src');
+    const bare = await cliWith({ cwd: inside }, inside, 'where');
+    expect(bare.code).toBe(0);
+    expect(bare.out).toContain(`root    ${inside} (no project here or above; current directory)`);
+    expect(bare.out).toContain('(not created; defaults in use)');
+    expect(existsSync(join(inside, '.anvesa'))).toBe(false);
+
+    expect((await cli(root, 'index')).code).toBe(0);
+    const found = await cliWith({ cwd: inside }, inside, 'where');
+    expect(found.out).toContain(`root    ${root} (nearest project above ${inside})`);
+    const config = join(root, '.anvesa', 'config.json');
+    expect((await cliWith({ cwd: inside }, inside, 'where', 'config')).out).toBe(`${config}\n`);
+    expect(json(await cliWith({ cwd: inside }, inside, 'where', '--json'))).toMatchObject({
+      root,
+      config,
+      index: join(root, '.anvesa', 'index.db'),
+      sharded: false,
+    });
+    expect(json(await cli(root, 'where', '--root', 'src', '--json')).foundBy).toBe(
+      'named by --root',
+    );
+    expect((await cli(root, 'where', 'nope')).code).toBe(2);
+
+    // A config that does not validate is still located, and said to be invalid.
+    mkdirSync(join(root, '.anvesa'), { recursive: true });
+    writeFileSync(config, '{ not json');
+    const broken = await cli(root, 'where');
+    expect(broken.code).toBe(0);
+    expect(broken.out).toContain('(invalid:');
+  });
+
   test('an index that cannot be upgraded names the copy it took first', async () => {
     const root = makeProject();
     expect((await cli(root, 'index')).code).toBe(0);

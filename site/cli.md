@@ -217,6 +217,20 @@ anvesa status
 
 ---
 
+### `where [root|config|index|models]`
+Shows which project a command run here would use and how it was found (named by `--root`, the
+nearest project above the current directory, or the current directory), with the paths of its
+config, index and models. It opens nothing, so it answers even when the index or config is broken.
+Name one path to print just that path, for scripts.
+
+```sh
+anvesa where
+anvesa where config        # e.g. $EDITOR "$(anvesa where config)"
+anvesa where --json
+```
+
+---
+
 ### `mcp serve`
 Launches the native Model Context Protocol (MCP) server daemon over `stdio` for agent IDE integration.
 

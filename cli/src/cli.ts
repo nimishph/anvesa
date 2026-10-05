@@ -30,6 +30,8 @@ usage: anvesa <command> [arguments] [options]
                             --no-embed or --no-dense: structure and graph only, no embedding pass,
                             --show-walk: print each path the walk offers, with its outcome, on stderr)
   status                    what is indexed, and by which channels and model
+  where [root|config|index|models]   the project in use, how it was found, and its config, index and
+                            models paths; name one to print just that path (for scripts)
   search <question>         fused search over every channel and, for WQL, the structure
                             (--wql <wql>, --channel, --exclude <lane>, --weight <lane>=<n>)
                             (supports conjunction: 'save user && //function', 'save user where //class')
