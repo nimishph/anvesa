@@ -1302,7 +1302,7 @@ export class Retriever {
   #unusedManifestWarning(): string | undefined {
     if (this.config.fragments || this.config.indexing?.fragments === 'off') return undefined;
     if (!existsSync(join(this.root, FRAGMENTS_PATH))) return undefined;
-    return `${FRAGMENTS_PATH} is not used: ${PROJECT_CONFIG_PATH} does not set "indexing": { "fragments": "on" }, so everything went into one index.db. Run: anvesa fragments enable (or set it to "off" to keep one database and silence this)`;
+    return `.anvesa/fragments.json is not used: ${PROJECT_CONFIG_PATH} does not set "indexing": { "fragments": "on" }, so everything went into one index.db. Run: anvesa fragments enable (or set it to "off" to keep one database and silence this)`;
   }
 
   #requireEmbedder(): Embedder {
