@@ -391,6 +391,10 @@ function notSource(unsupported: ReadonlyMap<string, number>): string {
 export function renderIndex(result: {
   report: IndexReport;
   synced: readonly { channel: string; reports: readonly unknown[]; removed: readonly string[] }[];
+  /** The model the run embedded with; `null` when there was none. Absent: not known, not shown. */
+  embedder?: { id: string; dimensions: number; maxTokens: number } | null;
+  /** Why there is no embedder, when there is none. */
+  embedderReason?: string;
 }): string {
   const { report } = result;
   const f = report.files;
@@ -421,6 +425,11 @@ export function renderIndex(result: {
   }
   return lines(
     `indexed in ${(report.elapsedMs / 1000).toFixed(2)} s${report.resumedAfterInterruption ? ' (after an interrupted run)' : ''}${report.reextracted ? ' (extraction changed: every file read again)' : ''}`,
+    result.embedder
+      ? `model: ${result.embedder.id} (embedding size ${result.embedder.dimensions}, ${result.embedder.maxTokens} max tokens)`
+      : result.embedder === null
+        ? `model: none${result.embedderReason ? ` (${result.embedderReason})` : ''}; structure and graph only`
+        : undefined,
     `files: ${f.added} added, ${f.modified} modified, ${f.unchanged} unchanged, ${f.touched} re-stamped, ${f.removed} removed, ${f.quarantined + f.stillQuarantined} quarantined`,
     f.unsupported.size > 0 ? notSource(f.unsupported) : undefined,
     report.link

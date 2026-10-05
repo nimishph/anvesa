@@ -17,6 +17,7 @@ const OPTIONS = {
   'no-download': { type: 'boolean' },
   force: { type: 'boolean' },
   'retry-quarantined': { type: 'boolean' },
+  'show-walk': { type: 'boolean' },
   depth: { type: 'string' },
   types: { type: 'boolean' },
   'resolved-only': { type: 'boolean' },
@@ -75,6 +76,7 @@ export interface Parsed {
     readonly 'no-download'?: boolean;
     readonly force?: boolean;
     readonly 'retry-quarantined'?: boolean;
+    readonly 'show-walk'?: boolean;
     readonly depth?: string;
     readonly types?: boolean;
     readonly 'resolved-only'?: boolean;

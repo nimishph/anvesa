@@ -205,6 +205,7 @@ function scaffoldFiles(): readonly ScaffoldFile[] {
  */
 function indexProgress(ctx: Context): (event: IndexEvent) => void {
   const interactive = ctx.environment.isTTY === true;
+  const showWalk = ctx.parsed.values['show-walk'] === true;
   const counts = { seen: 0, added: 0, modified: 0, quarantined: 0 };
   let lastWrite = 0;
   let lineLength = 0;
@@ -228,6 +229,15 @@ function indexProgress(ctx: Context): (event: IndexEvent) => void {
       if (event.outcome === 'added') counts.added += 1;
       else if (event.outcome === 'modified') counts.modified += 1;
       else if (event.outcome === 'quarantined') counts.quarantined += 1;
+      if (showWalk) {
+        // Clear the running count first, so the path does not land on top of it; it is redrawn below.
+        if (interactive && lineLength > 0) ctx.environment.stderr(`\r${' '.repeat(lineLength)}\r`);
+        lineLength = 0;
+        lastWrite = 0;
+        ctx.environment.stderr(
+          `walk: ${event.path} (${event.outcome}${event.reason ? `: ${event.reason}` : ''})\n`,
+        );
+      }
       if (interactive) {
         const now = Date.now();
         if (now - lastWrite < 80) return;
@@ -306,7 +316,13 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
                 path === scope || path.startsWith(`${scope.replace(/\/$/, '')}/`),
             }),
       });
-      emit(ctx, result, () => show.renderIndex(result));
+      const info = retriever.embedder?.info;
+      const embedder = info
+        ? { id: info.id, dimensions: info.dimensions, maxTokens: info.maxTokens }
+        : null;
+      emit(ctx, { ...result, embedder }, () =>
+        show.renderIndex({ ...result, embedder, embedderReason }),
+      );
     }),
 
   // The embedder is opened so `status` names the model in use; without it every project read as "none".
