@@ -422,6 +422,33 @@ describe('command line', () => {
     expect(existsSync(join(inside, '.anvesa', 'config.json'))).toBe(true);
   });
 
+  test('--scope narrows search, query and retrieve; a scope that can never match is a usage error', async () => {
+    const root = makeProject();
+    expect((await cli(root, 'index')).code).toBe(0);
+    const paths = (ran: Ran) => [
+      ...new Set(json(ran).items.map((item: { path: string }) => item.path)),
+    ];
+    const everywhere = paths(await cli(root, 'search', 'parse configuration', '--json'));
+    expect(everywhere.length).toBeGreaterThan(1);
+    expect(
+      paths(await cli(root, 'search', 'parse configuration', '--scope', 'docs', '--json')),
+    ).toEqual(['docs/guide.md']);
+    expect(
+      paths(await cli(root, 'query', '//function', '--scope', 'src/config.ts', '--json')),
+    ).toEqual(['src/config.ts']);
+
+    // Refused before anything is opened: no project is created where there was none.
+    const fresh = mkdtempSync(join(tmpdir(), 'anvesa-cli-'));
+    roots.push(fresh);
+    for (const bad of ['../x', '/etc', 'C:/code']) {
+      const refused = await cli(fresh, 'search', 'parse', '--scope', bad);
+      expect(refused.code).toBe(2);
+      expect(refused.err).toContain('--scope');
+    }
+    expect((await cli(fresh, 'index', '--scope', '../x')).code).toBe(2);
+    expect(existsSync(join(fresh, '.anvesa'))).toBe(false);
+  });
+
   test('where names the project in use, how it was found, and its paths', async () => {
     const root = makeProject();
     const inside = join(root, 'src');
@@ -1626,6 +1653,36 @@ describe('mcp server', () => {
       );
       for (const banned of ['search_lexical', 'grep', 'get_symbol'])
         expect(names).not.toContain(banned);
+    } finally {
+      await session.close();
+    }
+  });
+
+  test('search, query and retrieve take a scope; one that could never match is a typed error', async () => {
+    const root = makeProject();
+    expect((await cli(root, 'index')).code).toBe(0);
+    const session = await connect(root);
+    try {
+      const { client } = session;
+      const paths = (body: { items: { path: string }[] }) => [
+        ...new Set(body.items.map((item) => item.path)),
+      ];
+      const searched = await call(client, 'search', {
+        query: 'parse configuration',
+        scope: 'docs',
+      });
+      expect(searched.isError).toBe(false);
+      expect(paths(searched.body)).toEqual(['docs/guide.md']);
+      const queried = await call(client, 'query', { wql: '//function', scope: 'src/server.ts' });
+      expect(paths(queried.body)).toEqual(['src/server.ts']);
+      const retrieved = await call(client, 'retrieve_symbols', {
+        query: 'parse configuration',
+        scope: 'src/config.ts',
+      });
+      expect(retrieved.isError).toBe(false);
+      const refused = await call(client, 'search', { query: 'parse', scope: '../outside' });
+      expect(refused.isError).toBe(true);
+      expect(JSON.stringify(refused.body)).toContain('CORE_INVALID_ARGUMENT');
     } finally {
       await session.close();
     }

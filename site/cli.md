@@ -80,6 +80,11 @@ anvesa search "jwt auth" --format json
 - `--channel <name>`: Limit search to a specific channel (e.g. `code`, `docs`).
 - `--exclude <lane>`: Exclude specific lanes from RRF fusion (e.g. `--exclude docs`).
 - `--weight <lane>=<num>`: Custom lane multiplier in RRF fusion (e.g. `--weight docs=0.5`).
+- `--scope <path>`: Only results from that path or under it, e.g. `--scope packages/api`. The path is relative
+  to the project root and matches whole segments (`src` does not match `src2/`). Every lane applies it before
+  ranking, documentation included, so a narrow scope still returns a full page. Records with no file under the
+  path (an issue channel, say) are left out. A scope that could never match (absolute, or with `..`) is refused.
+  `query` and `retrieve` take it too, and the MCP `search`, `query` and `retrieve_*` tools take a `scope` field.
 
 ---
 

@@ -115,6 +115,7 @@ import {
 import { mappingStoreFor } from './mappings.ts';
 import { PatternRunner } from './pattern-runner.ts';
 import { gateForProject, loadPolicies } from './redteam.ts';
+import { bothScopes, pathScope } from './scope.ts';
 import { type StructuralCoverage, StructuralLane } from './structural-lane.ts';
 import { workspaceSource } from './workspace-source.ts';
 
@@ -215,8 +216,20 @@ export interface SearchResult {
   readonly foundBy: readonly Contribution[];
 }
 
+/** A path test as a dense store's card filter, so it runs in the scan, before the best are kept. */
+function cardFilter(include: ((path: string) => boolean) | undefined): {
+  readonly filter?: (card: Card) => boolean;
+} {
+  return include ? { filter: (card) => include(card.source.path) } : {};
+}
+
 export interface SearchOptions extends PageRequest {
   readonly include?: (path: string) => boolean;
+  /**
+   * Only results from this path or under it, relative to the project root (see `pathScope`). Every
+   * lane applies it, dense and structural alike, before results are ranked.
+   */
+  readonly scope?: string;
   /** Only these dense channels. Default: every enabled one. */
   readonly channels?: readonly string[];
   /** Leave these lanes out (a channel name, or `structural`). */
@@ -512,12 +525,14 @@ export class Retriever {
   ): Promise<Page<SearchHit>> {
     this.#requireLoaded(channel);
     this.registry.require(channel);
+    const { include } = this.#scoped(options);
     return retrieveDense({
       channel,
       query,
       embedder: this.#requireEmbedder(),
       store: this.vectors,
       gate: this.#gate,
+      ...cardFilter(include),
       ...(options.limit === undefined ? {} : { limit: options.limit }),
       ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
       ...(options.deadline ? { deadline: options.deadline } : {}),
@@ -525,7 +540,8 @@ export class Retriever {
   }
 
   /** Structural retrieval: a WQL query over the outlines of every indexed file. */
-  async query(wql: string, options: QueryOptions = {}): Promise<QueryPage> {
+  async query(wql: string, given: QueryOptions = {}): Promise<QueryPage> {
+    const options = this.#scoped(given);
     await this.#requireIndexed();
     const split = splitConjunction(wql, undefined, options.semantic);
     const effectiveWql = split.wql ?? wql;
@@ -584,6 +600,7 @@ export class Retriever {
         store: this.vectors,
         gate: this.#gate,
         limit: fetchLimit,
+        ...cardFilter(options.include),
         ...(options.deadline ? { deadline: options.deadline } : {}),
       });
       denseItems.push(...res.items);
@@ -634,7 +651,8 @@ export class Retriever {
    * with each channel's weight. A lane that fails is reported and left out; the search fails only
    * if no lane could run at all.
    */
-  async search(query: string, options: SearchOptions = {}): Promise<SearchPage> {
+  async search(query: string, given: SearchOptions = {}): Promise<SearchPage> {
+    const options = this.#scoped(given);
     await this.#requireIndexed();
     const { value: limit, source } = resolveLimit('limit', options.limit);
     const offset = options.cursor === undefined ? 0 : decodeCursor(options.cursor);
@@ -722,6 +740,7 @@ export class Retriever {
               store: this.vectors,
               gate: this.#gate,
               limit: fetchLimit,
+              ...cardFilter(options.include),
               ...(options.deadline ? { deadline: options.deadline } : {}),
             });
             return res.items.filter((hit) => matcher(hit.card) !== undefined).map(cardHit);
@@ -746,6 +765,7 @@ export class Retriever {
                   store: this.vectors,
                   gate: this.#gate,
                   limit: depth,
+                  ...cardFilter(options.include),
                   ...(options.deadline ? { deadline: options.deadline } : {}),
                 })
               ).items.map(cardHit),
@@ -761,6 +781,7 @@ export class Retriever {
             return this.#structure
               .query(query, {
                 limit: depth,
+                ...(options.include ? { include: options.include } : {}),
                 ...(options.deadline ? { deadline: options.deadline } : {}),
               })
               .items.map(wqlHit);
@@ -1266,6 +1287,12 @@ export class Retriever {
   }
 
   // --- internals --------------------------------------------------------------------------------
+
+  /** `options` with its `scope` checked and folded into `include`, the one test every lane reads. */
+  #scoped<T extends SearchOptions>(options: T): T {
+    const include = bothScopes(options.include, pathScope(options.scope));
+    return include ? { ...options, include } : options;
+  }
 
   /**
    * A manifest the config never chose to use: written by hand or by `fragments propose --write`,

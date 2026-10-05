@@ -22,6 +22,7 @@ import {
   modelsDirectory,
   openProjectEmbedder,
   PROJECT_CONFIG_PATH,
+  pathScope,
   pinChannelModule,
   Retriever,
   refineMapping,
@@ -137,6 +138,12 @@ function pageRequest(ctx: Context): PageRequest {
     ...(limit === undefined ? {} : { limit }),
     ...(ctx.parsed.values.cursor === undefined ? {} : { cursor: ctx.parsed.values.cursor }),
   };
+}
+
+/** `--scope` for a search, query or retrieve (checked once, in runCli). */
+function scopeOption(ctx: Context): { readonly scope?: string } {
+  const scope = ctx.parsed.values.scope;
+  return scope === undefined ? {} : { scope };
 }
 
 /** Run a command against an open project, and close it whatever happens. */
@@ -313,17 +320,12 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         ctx.environment.stderr(
           `note: no embedder (${embedderReason}); indexing facts and graph only\n`,
         );
-      const scope = ctx.parsed.values.scope;
+      const inScope = pathScope(ctx.parsed.values.scope, '--scope');
       const result = await retriever.index({
         onEvent: indexProgress(ctx),
         ...(ctx.parsed.values.force ? { force: true } : {}),
         ...(ctx.parsed.values['retry-quarantined'] ? { retryQuarantined: true } : {}),
-        ...(scope === undefined
-          ? {}
-          : {
-              scope: (path: string) =>
-                path === scope || path.startsWith(`${scope.replace(/\/$/, '')}/`),
-            }),
+        ...(inScope ? { scope: inScope } : {}),
       });
       const info = retriever.embedder?.info;
       const embedder = info
@@ -432,6 +434,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         ...(exclude ? { exclude } : {}),
         ...(weights ? { weights } : {}),
         ...(ctx.parsed.values.wql ? { wql: ctx.parsed.values.wql } : {}),
+        ...scopeOption(ctx),
       });
       const format = resolveFormat(ctx);
       if (format === 'json') {
@@ -450,11 +453,10 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
   retrieve: (ctx) =>
     withProject(ctx, { embed: true }, async ({ retriever }) => {
       const channel = need(ctx, 0, 'channel');
-      const page = await retriever.retrieve(
-        channel,
-        need(ctx, 1, 'query') && rest(ctx, 1),
-        pageRequest(ctx),
-      );
+      const page = await retriever.retrieve(channel, need(ctx, 1, 'query') && rest(ctx, 1), {
+        ...pageRequest(ctx),
+        ...scopeOption(ctx),
+      });
       emit(ctx, page, () => show.renderRetrieved(page));
     }),
 
@@ -467,6 +469,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       const page = await retriever.query(rawWql, {
         ...pageRequest(ctx),
         ...(semantic ? { semantic } : {}),
+        ...scopeOption(ctx),
       });
       const format = resolveFormat(ctx);
       if (format === 'json') {

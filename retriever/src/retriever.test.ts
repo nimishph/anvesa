@@ -143,6 +143,71 @@ function schemaVersionOf(path: string): number {
   return version;
 }
 
+describe('scope', () => {
+  const split = {
+    'package.json': '{"name":"app"}',
+    'api/users.ts': `/** Save the user record to the database. */
+export function saveUser() { return 1; }
+`,
+    'api/README.md': '# Users API\n## Saving\nSave the user record before replying.\n',
+    'web/prefs.ts': `/** Save the user preferences in the browser. */
+export function saveUserPrefs() { return 2; }
+`,
+    'apis/legacy.ts': `/** Save the user the old way. */
+export function saveUserLegacy() { return 3; }
+`,
+  };
+  const paths = (items: readonly { readonly path?: string | undefined }[]) =>
+    [...new Set(items.map((i) => i.path))].sort();
+
+  test('narrows every lane of a search to the path, documentation included', async () => {
+    const r = await indexed(split);
+    const everywhere = await r.search('save the user', { limit: 50 });
+    expect(paths(everywhere.items)).toEqual([
+      'api/README.md',
+      'api/users.ts',
+      'apis/legacy.ts',
+      'web/prefs.ts',
+    ]);
+    const scoped = await r.search('save the user', { limit: 50, scope: 'api' });
+    expect(paths(scoped.items)).toEqual(['api/README.md', 'api/users.ts']);
+    // Structural, conjunction, one channel and a plain query honour it the same way.
+    const structural = paths((await r.search('//function', { scope: 'api/' })).items);
+    expect(structural).toContain('api/users.ts');
+    expect(structural.every((path) => path?.startsWith('api/') === true)).toBe(true);
+    expect(paths((await r.search('save the user && //function', { scope: 'web' })).items)).toEqual([
+      'web/prefs.ts',
+    ]);
+    expect(
+      paths(
+        (await r.retrieve('symbols', 'save the user', { scope: 'apis' })).items.map(
+          (h) => h.card.source,
+        ),
+      ),
+    ).toEqual(['apis/legacy.ts']);
+    expect(paths((await r.query('//function', { scope: './web' })).items)).toEqual([
+      'web/prefs.ts',
+    ]);
+  });
+
+  test('a narrow scope still fills its page with the best matches inside it', async () => {
+    const r = await indexed(split);
+    const page = await r.search('save the user', { limit: 1, scope: 'web' });
+    expect(page.items.map((i) => i.path)).toEqual(['web/prefs.ts']);
+  });
+
+  test('a scope that could never match is refused, and one that matches nothing is just empty', async () => {
+    const r = await indexed(split);
+    await expect(r.search('save', { scope: '../elsewhere' })).rejects.toBeInstanceOf(
+      InvalidArgumentError,
+    );
+    await expect(r.query('//function', { scope: '/abs' })).rejects.toBeInstanceOf(
+      InvalidArgumentError,
+    );
+    expect((await r.search('save the user', { scope: 'nowhere' })).items).toEqual([]);
+  });
+});
+
 describe('fusion', () => {
   test('an item near the top of several lanes beats one at the top of a single lane', () => {
     const lane = (name: string, keys: string[], weight = 1) => ({
