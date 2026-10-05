@@ -69,6 +69,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: bun install --frozen-lockfile
       - run: bun run package
+      # The golden queries run from the source tree, which reads files with the native addon the
+      # release ships (its grammars are compiled in). Without it here, a language the packaged
+      # program has natively (PHP) would be missing from the source tree.
+      - name: Build the native addon for the source tree
+        run: bun run native:build
 
       - name: Install the grammars every golden suite and benchmark repository needs
         run: |
@@ -104,7 +109,12 @@ jobs:
 
       - name: Keep the history for the next release
         if: always()
-        run: tar -czf stress-history.tar.gz -C "$ANVESA_STRESS_HOME" manifest.json runs
+        run: |
+          if [ -f "$ANVESA_STRESS_HOME/manifest.json" ]; then
+            tar -czf stress-history.tar.gz -C "$ANVESA_STRESS_HOME" manifest.json runs
+          else
+            echo "::notice::the stress benchmark did not run, so there is no history to keep"
+          fi
 
       - uses: actions/upload-artifact@v4
         if: always()
