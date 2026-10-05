@@ -27,7 +27,8 @@ usage: anvesa <command> [arguments] [options]
                             --yes accepts the proposals; --model <id> picks the encoder; --no-download only
                             reports what it would fetch. Nothing downloads without a yes.
   index                     bring the index up to date (--force, --retry-quarantined, --scope <path>,
-                            --no-embed or --no-dense: structure and graph only, no embedding pass)
+                            --no-embed or --no-dense: structure and graph only, no embedding pass,
+                            --show-walk: print each path the walk offers, with its outcome, on stderr)
   status                    what is indexed, and by which channels and model
   search <question>         fused search over every channel and, for WQL, the structure
                             (--wql <wql>, --channel, --exclude <lane>, --weight <lane>=<n>)

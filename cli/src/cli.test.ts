@@ -377,6 +377,35 @@ describe('command line', () => {
     expect(tty.err).toContain('— linking\n');
   });
 
+  test('index names the model and its embedding size, and --show-walk lists each path walked', async () => {
+    const root = makeProject();
+    const walked = await cliWith({ isTTY: false }, root, 'index', '--show-walk');
+    expect(walked.code).toBe(0);
+    expect(walked.out).toContain(
+      `model: ${embedder.info.id} (embedding size ${embedder.info.dimensions}, ${embedder.info.maxTokens} max tokens)`,
+    );
+    expect(walked.err).toContain('walk: src/config.ts (added)');
+    expect(walked.out).not.toContain('walk:');
+
+    const again = await cliWith({ isTTY: true }, root, 'index', '--show-walk', '--json');
+    expect(again.err).toMatch(/walk: src\/config.ts \((unchanged|touched)\)\n/);
+    expect(JSON.parse(again.out).embedder).toEqual({
+      id: embedder.info.id,
+      dimensions: embedder.info.dimensions,
+      maxTokens: embedder.info.maxTokens,
+    });
+
+    const quiet = await cli(root, 'index');
+    expect(quiet.err).not.toContain('walk:');
+
+    const own = { embedder: undefined, env: { ANVESA_MODELS: join(root, 'no-models') } };
+    const bare = await cliWith(own, root, 'index', '--no-dense');
+    expect(bare.out).toContain('model: none');
+    expect(
+      JSON.parse((await cliWith(own, root, 'index', '--no-dense', '--json')).out).embedder,
+    ).toBeNull();
+  });
+
   test('an index that cannot be upgraded names the copy it took first', async () => {
     const root = makeProject();
     expect((await cli(root, 'index')).code).toBe(0);

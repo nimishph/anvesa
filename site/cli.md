@@ -50,6 +50,11 @@ anvesa index [options]
 - `--scope <path>`: Restrict indexing to a specific subdirectory.
 - `--no-embed` (alias `--no-dense`): Structural AST indexing only (skips neural embedding generation).
 - `--retry-quarantined`: Re-evaluate files previously flagged by red-team screens.
+- `--show-walk`: Print each path the walk offers, with its outcome (`added`, `unchanged`, `quarantined`, ...), on stderr.
+
+The summary names the model the run embedded with and its embedding size, e.g.
+`model: bge-base-en-v1.5 (embedding size 768, 512 max tokens)`, or `model: none (...)` when there is no
+embedder. With `--json` the same is under `embedder` (`null` when there is none).
 
 ---
 
