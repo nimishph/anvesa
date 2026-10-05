@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import {
   type Embedder,
+  ModelCache,
   nativeLanguageKeys,
   npmPackageSource,
   SyntaxRuntime,
@@ -305,7 +306,7 @@ describe('command line', () => {
       expect(ran.out).toContain('503');
     });
 
-    test('--model must be a built-in encoder', async () => {
+    test('--model must be a built-in encoder or one installed here', async () => {
       const { root, home, models } = pythonProject();
       const ran = await cliWith(
         { grammars: { home } },
@@ -420,6 +421,133 @@ describe('command line', () => {
     expect(json(named).root).toBe(inside);
     expect((await cliWith({ cwd: inside }, inside, 'init', '--no-download')).code).toBe(0);
     expect(existsSync(join(inside, '.anvesa', 'config.json'))).toBe(true);
+  });
+
+  test('--scope narrows search, query and retrieve; a scope that can never match is a usage error', async () => {
+    const root = makeProject();
+    expect((await cli(root, 'index')).code).toBe(0);
+    const paths = (ran: Ran) => [
+      ...new Set(json(ran).items.map((item: { path: string }) => item.path)),
+    ];
+    const everywhere = paths(await cli(root, 'search', 'parse configuration', '--json'));
+    expect(everywhere.length).toBeGreaterThan(1);
+    expect(
+      paths(await cli(root, 'search', 'parse configuration', '--scope', 'docs', '--json')),
+    ).toEqual(['docs/guide.md']);
+    expect(
+      paths(await cli(root, 'query', '//function', '--scope', 'src/config.ts', '--json')),
+    ).toEqual(['src/config.ts']);
+
+    // Refused before anything is opened: no project is created where there was none.
+    const fresh = mkdtempSync(join(tmpdir(), 'anvesa-cli-'));
+    roots.push(fresh);
+    for (const bad of ['../x', '/etc', 'C:/code']) {
+      const refused = await cli(fresh, 'search', 'parse', '--scope', bad);
+      expect(refused.code).toBe(2);
+      expect(refused.err).toContain('--scope');
+    }
+    expect((await cli(fresh, 'index', '--scope', '../x')).code).toBe(2);
+    expect(existsSync(join(fresh, '.anvesa'))).toBe(false);
+  });
+
+  test('index records the model it embedded with; another model is named, not a silent zero', async () => {
+    const root = makeProject();
+    const first = await cli(root, 'index');
+    expect(first.code).toBe(0);
+    expect(first.err).toContain('recorded "model": "test-words"');
+    const config = JSON.parse(readFileSync(join(root, '.anvesa', 'config.json'), 'utf8'));
+    expect(config.model).toBe('test-words');
+    expect((await cli(root, 'index')).err).not.toContain('recorded');
+
+    const other = { embedder: { ...embedder, info: { ...embedder.info, id: 'other-model' } } };
+    const status = await cliWith(other, root, 'status');
+    expect(status.out).toContain('embedded with: test-words');
+    expect(status.out).toContain(
+      'warning: the index was embedded with test-words, not other-model',
+    );
+    const searched = await cliWith(other, root, 'search', 'parse the configuration file');
+    expect(searched.code).toBe(1);
+    expect(searched.err).toContain('RETRIEVER_MODEL_MISMATCH');
+    expect(searched.err).toContain('--model test-words');
+  });
+
+  test('init --model takes a model the user installed, and records it', async () => {
+    const root = makeProject();
+    const models = join(root, 'models');
+    const source = join(root, 'source');
+    mkdirSync(source, { recursive: true });
+    writeFileSync(join(source, 'model.onnx'), 'a stand-in graph');
+    copyFileSync(
+      resolve(import.meta.dir, '../../embedder/src/__fixtures__/bpe.tokenizer.json'),
+      join(source, 'tokenizer.json'),
+    );
+    await new ModelCache(models).installCustom({
+      id: 'my-encoder',
+      maxTokens: 128,
+      pooling: 'cls',
+      source,
+      files: { model: join(source, 'model.onnx'), tokenizer: join(source, 'tokenizer.json') },
+      validate: async () => 8,
+    });
+
+    const ran = await cli(
+      root,
+      'init',
+      '--no-download',
+      '--models',
+      models,
+      '--model',
+      'my-encoder',
+    );
+    expect(ran.code).toBe(0);
+    const config = JSON.parse(readFileSync(join(root, '.anvesa', 'config.json'), 'utf8'));
+    expect(config.model).toBe('my-encoder');
+    expect((await cli(root, 'model', 'verify', 'my-encoder', '--models', models)).code).toBe(0);
+
+    const unknown = await cli(
+      root,
+      'init',
+      '--no-download',
+      '--models',
+      models,
+      '--model',
+      'ghost',
+    );
+    expect(unknown.code).toBe(2);
+    expect(unknown.err).toContain('my-encoder');
+  });
+
+  test('where names the project in use, how it was found, and its paths', async () => {
+    const root = makeProject();
+    const inside = join(root, 'src');
+    const bare = await cliWith({ cwd: inside }, inside, 'where');
+    expect(bare.code).toBe(0);
+    expect(bare.out).toContain(`root    ${inside} (no project here or above; current directory)`);
+    expect(bare.out).toContain('(not created; defaults in use)');
+    expect(existsSync(join(inside, '.anvesa'))).toBe(false);
+
+    expect((await cli(root, 'index')).code).toBe(0);
+    const found = await cliWith({ cwd: inside }, inside, 'where');
+    expect(found.out).toContain(`root    ${root} (nearest project above ${inside})`);
+    const config = join(root, '.anvesa', 'config.json');
+    expect((await cliWith({ cwd: inside }, inside, 'where', 'config')).out).toBe(`${config}\n`);
+    expect(json(await cliWith({ cwd: inside }, inside, 'where', '--json'))).toMatchObject({
+      root,
+      config,
+      index: join(root, '.anvesa', 'index.db'),
+      sharded: false,
+    });
+    expect(json(await cli(root, 'where', '--root', 'src', '--json')).foundBy).toBe(
+      'named by --root',
+    );
+    expect((await cli(root, 'where', 'nope')).code).toBe(2);
+
+    // A config that does not validate is still located, and said to be invalid.
+    mkdirSync(join(root, '.anvesa'), { recursive: true });
+    writeFileSync(config, '{ not json');
+    const broken = await cli(root, 'where');
+    expect(broken.code).toBe(0);
+    expect(broken.out).toContain('(invalid:');
   });
 
   test('an index that cannot be upgraded names the copy it took first', async () => {
@@ -1336,7 +1464,27 @@ describe('sharded indexing', () => {
     const disabled = await cli(root, 'fragments', 'disable');
     expect(disabled.code).toBe(0);
     expect((await cli(root, 'fragments', 'status')).out).toContain('sharded indexing is off');
+    // Turned off on purpose, the manifest that stays behind is not warned about.
+    expect((await cli(root, 'index', '--force')).out).not.toContain('is not used');
     expect((await cli(root, 'fragments', 'frobnicate')).code).toBe(2);
+  });
+
+  test('a manifest the config never turned on is warned about by index, until a choice is made', async () => {
+    const root = makeProject();
+    await cli(root, 'index');
+    expect((await cli(root, 'fragments', 'propose', '--write')).code).toBe(0);
+
+    const warned = await cli(root, 'index');
+    expect(warned.code).toBe(0);
+    expect(warned.out).toContain('warning: .anvesa/fragments.json is not used');
+    expect(warned.out).toContain('anvesa fragments enable');
+    expect(existsSync(join(root, '.anvesa', 'shards'))).toBe(false);
+    expect(json(await cli(root, 'index', '--json')).report.warnings).toContainEqual(
+      expect.stringContaining('fragments.json is not used'),
+    );
+
+    writeFileSync(join(root, '.anvesa', 'config.json'), '{"indexing":{"fragments":"off"}}');
+    expect((await cli(root, 'index')).out).not.toContain('is not used');
   });
 
   test('turning it on with no manifest at hand is refused by the commands that need one; enable proposes from an index', async () => {
@@ -1573,6 +1721,36 @@ describe('mcp server', () => {
       );
       for (const banned of ['search_lexical', 'grep', 'get_symbol'])
         expect(names).not.toContain(banned);
+    } finally {
+      await session.close();
+    }
+  });
+
+  test('search, query and retrieve take a scope; one that could never match is a typed error', async () => {
+    const root = makeProject();
+    expect((await cli(root, 'index')).code).toBe(0);
+    const session = await connect(root);
+    try {
+      const { client } = session;
+      const paths = (body: { items: { path: string }[] }) => [
+        ...new Set(body.items.map((item) => item.path)),
+      ];
+      const searched = await call(client, 'search', {
+        query: 'parse configuration',
+        scope: 'docs',
+      });
+      expect(searched.isError).toBe(false);
+      expect(paths(searched.body)).toEqual(['docs/guide.md']);
+      const queried = await call(client, 'query', { wql: '//function', scope: 'src/server.ts' });
+      expect(paths(queried.body)).toEqual(['src/server.ts']);
+      const retrieved = await call(client, 'retrieve_symbols', {
+        query: 'parse configuration',
+        scope: 'src/config.ts',
+      });
+      expect(retrieved.isError).toBe(false);
+      const refused = await call(client, 'search', { query: 'parse', scope: '../outside' });
+      expect(refused.isError).toBe(true);
+      expect(JSON.stringify(refused.body)).toContain('CORE_INVALID_ARGUMENT');
     } finally {
       await session.close();
     }

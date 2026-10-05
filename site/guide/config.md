@@ -22,7 +22,7 @@ Anvesa is configured via `.anvesa/config.json` in your repository root. A full J
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/nimishph/anvesa/main/schemas/config.v1.json",
-  "model": "sentence-transformers/all-MiniLM-L6-v2",
+  "model": "all-MiniLM-L6-v2",
   "fusion": {
     "k": 60
   },
@@ -76,7 +76,7 @@ Anvesa is configured via `.anvesa/config.json` in your repository root. A full J
 
 ### `model`
 *Type:* `string | null`  
-The ONNX embedding model ID to use for dense vector search (e.g. `'sentence-transformers/all-MiniLM-L6-v2'`). When unset (`null`), Anvesa automatically selects the optimal model based on detected hardware acceleration (AVX2, Apple Silicon Metal, or DirectML).
+The embedding model for dense search: a built-in id (e.g. `'all-MiniLM-L6-v2'`) or the name of one you installed with `anvesa model install <name> --from <dir>`. `anvesa init --model` and `anvesa index` record the model the index was embedded with here, so every run and every teammate searches with it. When unset, Anvesa picks the most capable installed model this machine's cores and free memory suit.
 
 ### `fusion`
 *Type:* `object`  
@@ -94,7 +94,7 @@ The ONNX embedding model ID to use for dense vector search (e.g. `'sentence-tran
 - **`concurrency`** (`integer`): Number of worker threads for parallel parsing and embedding.
 - **`maxFileSizeBytes`** (`integer`, default `524288` [512KB]): Maximum file size indexed. Files exceeding this limit are skipped.
 - **`embeddingBatchSize`** (`integer`, default `32`): Batch size passed to local ONNX runtime during card embedding.
-- **`fragments`** (`"on" | "off"`, default `"off"`): Enables index partitioning into separate SQLite database shards for very large repositories.
+- **`fragments`** (`"on" | "off"`, default `"off"`): Enables index partitioning into separate SQLite database shards for very large repositories. Shards follow `.anvesa/fragments.json`. If that file exists but `fragments` is unset, `anvesa index` warns that the manifest is not used; `anvesa fragments disable` writes `"off"`, which keeps one database and silences the warning.
 - **`ignore`** (`string[]`): Additional glob patterns ignored during indexing beyond `.gitignore` and `.anvesaignore`.
 
 ### `syntax`

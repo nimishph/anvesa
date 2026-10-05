@@ -43,6 +43,7 @@ Anvesa combines dense semantic search (ONNX embeddings) with structural AST anal
 - \`anvesa map [dir]\` — PageRank-weighted architectural repomap.
 - \`anvesa explain\` — High-level repository structural summary.
 - \`anvesa status\` — Check index freshness, models, and channels.
+- \`anvesa where [config]\` — Which project is in use, how it was found, and its config, index and models paths.
 - \`anvesa primer [topic]\` — Token-frugal concept guidance for agents.
 - \`anvesa mcp serve\` — Zero-runtime Model Context Protocol server.`,
   },

@@ -5,6 +5,7 @@ import { InvalidArgumentError, type PageRequest } from '@cntxt-labs/anvesa-core'
 import {
   type Assistant,
   auditMapping,
+  CONFIG_SCHEMA_URL,
   chatAssistant,
   checkMapping,
   doctorModels,
@@ -22,6 +23,7 @@ import {
   modelsDirectory,
   openProjectEmbedder,
   PROJECT_CONFIG_PATH,
+  pathScope,
   pinChannelModule,
   Retriever,
   refineMapping,
@@ -29,13 +31,14 @@ import {
   trainLanguage,
   verifyMappings,
   verifyModel,
+  writeProjectConfig,
 } from '@cntxt-labs/anvesa-retriever';
 import type { Environment } from './environment.ts';
 import { CommandFailedError } from './errors.ts';
 import { renderSetup, setupProject } from './init.ts';
 import { integerOption, type Parsed } from './options.ts';
 import { getPrimer, renderPrimer } from './primer.ts';
-import { findProjectRoot } from './project-root.ts';
+import { findProjectRoot, isProjectRoot } from './project-root.ts';
 import * as show from './render.ts';
 import { VERSION } from './version.ts';
 
@@ -137,6 +140,12 @@ function pageRequest(ctx: Context): PageRequest {
     ...(limit === undefined ? {} : { limit }),
     ...(ctx.parsed.values.cursor === undefined ? {} : { cursor: ctx.parsed.values.cursor }),
   };
+}
+
+/** `--scope` for a search, query or retrieve (checked once, in runCli). */
+function scopeOption(ctx: Context): { readonly scope?: string } {
+  const scope = ctx.parsed.values.scope;
+  return scope === undefined ? {} : { scope };
 }
 
 /** Run a command against an open project, and close it whatever happens. */
@@ -313,19 +322,29 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         ctx.environment.stderr(
           `note: no embedder (${embedderReason}); indexing facts and graph only\n`,
         );
-      const scope = ctx.parsed.values.scope;
+      const inScope = pathScope(ctx.parsed.values.scope, '--scope');
       const result = await retriever.index({
         onEvent: indexProgress(ctx),
         ...(ctx.parsed.values.force ? { force: true } : {}),
         ...(ctx.parsed.values['retry-quarantined'] ? { retryQuarantined: true } : {}),
-        ...(scope === undefined
-          ? {}
-          : {
-              scope: (path: string) =>
-                path === scope || path.startsWith(`${scope.replace(/\/$/, '')}/`),
-            }),
+        ...(inScope ? { scope: inScope } : {}),
       });
       const info = retriever.embedder?.info;
+      // The model the index was embedded with is recorded, so every later run, on any machine,
+      // searches with it instead of whatever that machine would pick.
+      if (info && result.report.dense) {
+        const onDisk = await loadProjectConfig(retriever.root);
+        if (onDisk.model !== info.id) {
+          await writeProjectConfig(retriever.root, {
+            ...onDisk,
+            $schema: onDisk.$schema ?? CONFIG_SCHEMA_URL,
+            model: info.id,
+          });
+          ctx.environment.stderr(
+            `note: recorded "model": "${info.id}" in ${PROJECT_CONFIG_PATH}, so later runs search with the model this index was embedded with\n`,
+          );
+        }
+      }
       const embedder = info
         ? { id: info.id, dimensions: info.dimensions, maxTokens: info.maxTokens }
         : null;
@@ -333,6 +352,61 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         show.renderIndex({ ...result, embedder, embedderReason }),
       );
     }),
+
+  // Paths only: nothing is opened, so it answers even where the index or the config is broken.
+  where: async (ctx) => {
+    const projectRoot = root(ctx);
+    const cwd = resolve(ctx.environment.cwd);
+    const foundBy =
+      ctx.parsed.values.root !== undefined
+        ? 'named by --root'
+        : projectRoot !== cwd
+          ? `nearest project above ${cwd}`
+          : isProjectRoot(projectRoot, ctx.environment.env)
+            ? 'current directory'
+            : 'no project here or above; current directory';
+    const configPath = join(projectRoot, PROJECT_CONFIG_PATH);
+    let sharded = false;
+    let configProblem: string | undefined;
+    try {
+      sharded = (await loadProjectConfig(projectRoot)).fragments;
+    } catch (failure) {
+      configProblem = failure instanceof Error ? failure.message : String(failure);
+    }
+    const paths = {
+      root: projectRoot,
+      foundBy,
+      config: configPath,
+      configExists: existsSync(configPath),
+      ...(configProblem ? { configProblem } : {}),
+      index: join(projectRoot, '.anvesa', sharded ? 'shards' : 'index.db'),
+      sharded,
+      models: modelCache(ctx).root,
+    };
+    const only = ctx.parsed.positionals[0];
+    if (only !== undefined) {
+      const picked = {
+        root: paths.root,
+        config: paths.config,
+        index: paths.index,
+        models: paths.models,
+      }[only];
+      if (picked === undefined) {
+        throw new InvalidArgumentError('where', 'root, config, index or models', only);
+      }
+      emit(ctx, { [only]: picked }, () => `${picked}\n`);
+      return;
+    }
+    emit(ctx, paths, () =>
+      [
+        `root    ${paths.root} (${paths.foundBy})`,
+        `config  ${paths.config}${paths.configExists ? '' : ' (not created; defaults in use)'}${configProblem ? ` (invalid: ${configProblem})` : ''}`,
+        `index   ${paths.index}${existsSync(paths.index) ? '' : ' (not built yet)'}`,
+        `models  ${paths.models}`,
+        '',
+      ].join('\n'),
+    );
+  },
 
   // The embedder is opened so `status` names the model in use; without it every project read as "none".
   status: async (ctx) => {
@@ -353,6 +427,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         },
         interrupted: false,
         embedder: undefined,
+        indexedModels: [],
         structural: { files: 0, missing: [] },
         channels: [],
       };
@@ -377,6 +452,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         ...(exclude ? { exclude } : {}),
         ...(weights ? { weights } : {}),
         ...(ctx.parsed.values.wql ? { wql: ctx.parsed.values.wql } : {}),
+        ...scopeOption(ctx),
       });
       const format = resolveFormat(ctx);
       if (format === 'json') {
@@ -395,11 +471,10 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
   retrieve: (ctx) =>
     withProject(ctx, { embed: true }, async ({ retriever }) => {
       const channel = need(ctx, 0, 'channel');
-      const page = await retriever.retrieve(
-        channel,
-        need(ctx, 1, 'query') && rest(ctx, 1),
-        pageRequest(ctx),
-      );
+      const page = await retriever.retrieve(channel, need(ctx, 1, 'query') && rest(ctx, 1), {
+        ...pageRequest(ctx),
+        ...scopeOption(ctx),
+      });
       emit(ctx, page, () => show.renderRetrieved(page));
     }),
 
@@ -412,6 +487,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       const page = await retriever.query(rawWql, {
         ...pageRequest(ctx),
         ...(semantic ? { semantic } : {}),
+        ...scopeOption(ctx),
       });
       const format = resolveFormat(ctx);
       if (format === 'json') {

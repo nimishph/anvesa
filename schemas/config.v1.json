@@ -12,7 +12,7 @@
     },
     "model": {
       "type": ["string", "null"],
-      "description": "A built-in model id (e.g. 'sentence-transformers/all-MiniLM-L6-v2'). Unset means the tier the machine suits."
+      "description": "A built-in model id (e.g. 'all-MiniLM-L6-v2') or the name of a model installed with anvesa model install. anvesa index records the model the index was embedded with. Unset means the tier the machine suits."
     },
     "channels": {
       "type": "object",

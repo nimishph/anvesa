@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import {
@@ -39,6 +40,7 @@ import {
   type DriftReport,
   FactExtractor,
   type FactExtractor as FactExtractorType,
+  FRAGMENTS_PATH,
   type FragmentManifest,
   GraphQueries,
   generateRepoMap,
@@ -95,6 +97,7 @@ import {
 import { buildWqlMatcher, findMatchingCard, splitConjunction } from './conjunction.ts';
 import {
   EmbedderUnavailableError,
+  ModelMismatchError,
   NotIndexedError,
   ProjectConfigError,
   TargetError,
@@ -113,6 +116,7 @@ import {
 import { mappingStoreFor } from './mappings.ts';
 import { PatternRunner } from './pattern-runner.ts';
 import { gateForProject, loadPolicies } from './redteam.ts';
+import { bothScopes, pathScope } from './scope.ts';
 import { type StructuralCoverage, StructuralLane } from './structural-lane.ts';
 import { workspaceSource } from './workspace-source.ts';
 
@@ -213,8 +217,20 @@ export interface SearchResult {
   readonly foundBy: readonly Contribution[];
 }
 
+/** A path test as a dense store's card filter, so it runs in the scan, before the best are kept. */
+function cardFilter(include: ((path: string) => boolean) | undefined): {
+  readonly filter?: (card: Card) => boolean;
+} {
+  return include ? { filter: (card) => include(card.source.path) } : {};
+}
+
 export interface SearchOptions extends PageRequest {
   readonly include?: (path: string) => boolean;
+  /**
+   * Only results from this path or under it, relative to the project root (see `pathScope`). Every
+   * lane applies it, dense and structural alike, before results are ranked.
+   */
+  readonly scope?: string;
   /** Only these dense channels. Default: every enabled one. */
   readonly channels?: readonly string[];
   /** Leave these lanes out (a channel name, or `structural`). */
@@ -296,6 +312,9 @@ export class Retriever {
   readonly #shards: ShardSet | undefined;
   readonly #backups: readonly StoreBackup[];
   readonly #gate: RedTeamGate;
+  #indexedModels:
+    | Promise<readonly { readonly model: string; readonly cards: number }[]>
+    | undefined;
 
   private constructor(parts: {
     root: string;
@@ -460,7 +479,11 @@ export class Retriever {
       ...(this.#ingester ? { ingester: this.#ingester } : {}),
       ...(this.#only ? { only: this.#only } : {}),
     });
-    const report = await indexer.index(options);
+    const indexed = await indexer.index(options);
+    const unused = this.#unusedManifestWarning();
+    const report = unused
+      ? { ...indexed, warnings: [...(indexed.warnings ?? []), unused] }
+      : indexed;
     const synced: SyncReport[] = [];
     if (this.#ingester) {
       for (const [name, source] of this.#sources) {
@@ -473,6 +496,7 @@ export class Retriever {
       }
     }
     await this.#structure.refresh();
+    this.#indexedModels = undefined;
     return { report, synced };
   }
 
@@ -487,10 +511,50 @@ export class Retriever {
     const source =
       this.#sources.get(channel) ??
       workspaceSource(this.workspace, channel, (path) => ingester.claims(path));
-    return ingester.syncChannel(channel, source, {
-      ...(options.force ? { force: true } : {}),
-      ...(options.deadline ? { deadline: options.deadline } : {}),
-    });
+    try {
+      return await ingester.syncChannel(channel, source, {
+        ...(options.force ? { force: true } : {}),
+        ...(options.deadline ? { deadline: options.deadline } : {}),
+      });
+    } finally {
+      this.#indexedModels = undefined;
+    }
+  }
+
+  /**
+   * The models the index holds vectors for, with how many cards each, most first. Read once and
+   * kept until this retriever writes vectors again.
+   */
+  indexedModels(): Promise<readonly { readonly model: string; readonly cards: number }[]> {
+    this.#indexedModels ??= (async () => {
+      const cards = new Map<string, number>();
+      for (const channel of this.registry.channels()) {
+        for (const row of (await this.vectors.stats(channel)).models) {
+          if (row.cards > 0) cards.set(row.model, (cards.get(row.model) ?? 0) + row.cards);
+        }
+      }
+      return [...cards]
+        .map(([model, count]) => ({ model, cards: count }))
+        .sort((a, b) => b.cards - a.cards || a.model.localeCompare(b.model));
+    })();
+    return this.#indexedModels;
+  }
+
+  /**
+   * Why a dense lane would find nothing: the embedder in use has no vectors in the index, and
+   * another model has. `undefined` when they agree, or when nothing has been embedded yet.
+   */
+  async #modelMismatch(): Promise<ModelMismatchError | undefined> {
+    const embedder = this.embedder;
+    if (!embedder) return undefined;
+    const models = await this.indexedModels();
+    if (models.length === 0 || models.some((row) => row.model === embedder.info.id)) {
+      return undefined;
+    }
+    return new ModelMismatchError(
+      embedder.info.id,
+      models.map((row) => row.model),
+    );
   }
 
   // --- retrieval --------------------------------------------------------------------------------
@@ -506,12 +570,16 @@ export class Retriever {
   ): Promise<Page<SearchHit>> {
     this.#requireLoaded(channel);
     this.registry.require(channel);
+    const { include } = this.#scoped(options);
+    const mismatch = await this.#modelMismatch();
+    if (mismatch) throw mismatch;
     return retrieveDense({
       channel,
       query,
       embedder: this.#requireEmbedder(),
       store: this.vectors,
       gate: this.#gate,
+      ...cardFilter(include),
       ...(options.limit === undefined ? {} : { limit: options.limit }),
       ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
       ...(options.deadline ? { deadline: options.deadline } : {}),
@@ -519,7 +587,8 @@ export class Retriever {
   }
 
   /** Structural retrieval: a WQL query over the outlines of every indexed file. */
-  async query(wql: string, options: QueryOptions = {}): Promise<QueryPage> {
+  async query(wql: string, given: QueryOptions = {}): Promise<QueryPage> {
+    const options = this.#scoped(given);
     await this.#requireIndexed();
     const split = splitConjunction(wql, undefined, options.semantic);
     const effectiveWql = split.wql ?? wql;
@@ -549,6 +618,8 @@ export class Retriever {
 
     // Conjunction active: rank matching WQL hits by semantic relevance
     const embedder = this.#requireEmbedder();
+    const mismatch = await this.#modelMismatch();
+    if (mismatch) throw mismatch;
     const { value: limit, source } = resolveLimit('limit', options.limit);
     const offset = options.cursor === undefined ? 0 : decodeCursor(options.cursor);
     const depth = offset + limit + 1;
@@ -578,6 +649,7 @@ export class Retriever {
         store: this.vectors,
         gate: this.#gate,
         limit: fetchLimit,
+        ...cardFilter(options.include),
         ...(options.deadline ? { deadline: options.deadline } : {}),
       });
       denseItems.push(...res.items);
@@ -628,13 +700,18 @@ export class Retriever {
    * with each channel's weight. A lane that fails is reported and left out; the search fails only
    * if no lane could run at all.
    */
-  async search(query: string, options: SearchOptions = {}): Promise<SearchPage> {
+  async search(query: string, given: SearchOptions = {}): Promise<SearchPage> {
+    const options = this.#scoped(given);
     await this.#requireIndexed();
     const { value: limit, source } = resolveLimit('limit', options.limit);
     const offset = options.cursor === undefined ? 0 : decodeCursor(options.cursor);
     const depth = offset + limit + 1;
     const split = splitConjunction(query, options.wql);
     const isConjunction = Boolean(split.semantic && split.wql);
+    // Searching by meaning with the wrong model finds nothing; say so. A WQL query still has its
+    // structural lane, so there the dense lanes are reported as degraded instead.
+    const mismatch = await this.#modelMismatch();
+    if (mismatch && (isConjunction || !looksLikeWql(query))) throw mismatch;
 
     const wanted = options.channels ?? this.registry.channels();
     const laneNames = new Set([...this.registry.channels(), 'structural']);
@@ -716,6 +793,7 @@ export class Retriever {
               store: this.vectors,
               gate: this.#gate,
               limit: fetchLimit,
+              ...cardFilter(options.include),
               ...(options.deadline ? { deadline: options.deadline } : {}),
             });
             return res.items.filter((hit) => matcher(hit.card) !== undefined).map(cardHit);
@@ -731,8 +809,9 @@ export class Retriever {
           runs.push({
             name: channel,
             weight: weightOf(channel, configured),
-            run: async () =>
-              (
+            run: async () => {
+              if (mismatch) throw mismatch;
+              return (
                 await retrieveDense({
                   channel,
                   query,
@@ -740,9 +819,11 @@ export class Retriever {
                   store: this.vectors,
                   gate: this.#gate,
                   limit: depth,
+                  ...cardFilter(options.include),
                   ...(options.deadline ? { deadline: options.deadline } : {}),
                 })
-              ).items.map(cardHit),
+              ).items.map(cardHit);
+            },
           });
         }
       }
@@ -755,6 +836,7 @@ export class Retriever {
             return this.#structure
               .query(query, {
                 limit: depth,
+                ...(options.include ? { include: options.include } : {}),
                 ...(options.deadline ? { deadline: options.deadline } : {}),
               })
               .items.map(wqlHit);
@@ -1250,10 +1332,33 @@ export class Retriever {
 
   /** Turn sharded indexing on or off in the project config. Takes effect the next time it is opened. */
   async setFragments(on: boolean): Promise<void> {
-    await this.#writeConfig({ ...this.config, fragments: on });
+    // "off" is written out, not left unset: it records the choice, so the manifest kept beside it
+    // is not taken for one that was forgotten.
+    await this.#writeConfig({
+      ...this.config,
+      fragments: on,
+      indexing: { ...this.config.indexing, fragments: on ? 'on' : 'off' },
+    });
   }
 
   // --- internals --------------------------------------------------------------------------------
+
+  /** `options` with its `scope` checked and folded into `include`, the one test every lane reads. */
+  #scoped<T extends SearchOptions>(options: T): T {
+    const include = bothScopes(options.include, pathScope(options.scope));
+    return include ? { ...options, include } : options;
+  }
+
+  /**
+   * A manifest the config never chose to use: written by hand or by `fragments propose --write`,
+   * then left without `indexing.fragments`. An explicit "off" (what `fragments disable` writes)
+   * is a choice, and says nothing.
+   */
+  #unusedManifestWarning(): string | undefined {
+    if (this.config.fragments || this.config.indexing?.fragments === 'off') return undefined;
+    if (!existsSync(join(this.root, FRAGMENTS_PATH))) return undefined;
+    return `.anvesa/fragments.json is not used: ${PROJECT_CONFIG_PATH} does not set "indexing": { "fragments": "on" }, so everything went into one index.db. Run: anvesa fragments enable (or set it to "off" to keep one database and silence this)`;
+  }
 
   #requireEmbedder(): Embedder {
     if (!this.embedder) throw new EmbedderUnavailableError('this project was opened without one');

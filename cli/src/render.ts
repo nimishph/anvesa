@@ -343,6 +343,14 @@ export function renderStatus(status: Status): string {
     `languages: ${index.byLanguage.map((l) => `${l.language} ${l.files}`).join(', ') || 'none'}`,
     status.interrupted ? 'the last index run did not finish; run: anvesa index' : undefined,
     `embedder: ${status.embedder ? `${status.embedder.id} (${status.embedder.dimensions} dims)` : 'none (structural queries only)'}`,
+    status.indexedModels.length > 0
+      ? `embedded with: ${status.indexedModels.map((m) => `${m.model} (${m.cards} cards)`).join(', ')}`
+      : undefined,
+    status.embedder &&
+      status.indexedModels.length > 0 &&
+      !status.indexedModels.some((m) => m.model === status.embedder?.id)
+      ? `warning: the index was embedded with ${status.indexedModels[0]?.model}, not ${status.embedder.id}; searching by meaning would find nothing. Use --model ${status.indexedModels[0]?.model}, or re-embed: anvesa index --model ${status.embedder.id}`
+      : undefined,
     `structural: ${status.structural.files} files${status.structural.missing.length ? `, ${status.structural.missing.length} not searchable` : ''}`,
     'channels:',
     ...status.channels.map(renderChannelLine),

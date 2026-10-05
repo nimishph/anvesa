@@ -132,7 +132,20 @@ async function chooseModel(
   const known = new Map(advice.models.map((entry) => [entry.spec.id, entry]));
 
   if (explicit !== undefined && !known.has(explicit)) {
-    throw new InvalidArgumentError('--model', `one of ${[...known.keys()].join(', ')}`, explicit);
+    // A model the user brought is not in the advice, but once installed it is as good a choice.
+    if (installed.has(explicit)) {
+      await rememberModel(projectRoot, explicit);
+      return {
+        id: explicit,
+        state: 'already',
+        note: `${explicit} is installed and set in .anvesa/config.json`,
+      };
+    }
+    throw new InvalidArgumentError(
+      '--model',
+      `one of ${[...new Set([...known.keys(), ...installed])].join(', ')}, or a model installed with: anvesa model install <name> --from <dir>`,
+      explicit,
+    );
   }
   if (explicit === undefined && installed.size > 0) {
     const [first] = [...installed];
@@ -177,7 +190,12 @@ async function chooseModel(
     };
   }
   const id = chosen.spec.id;
-  if (installed.has(id)) return { id, state: 'already', note: `${id} is installed` };
+  if (installed.has(id)) {
+    // Named outright, it is a choice for the project, so it is recorded like a download is.
+    if (explicit === undefined) return { id, state: 'already', note: `${id} is installed` };
+    await rememberModel(projectRoot, id);
+    return { id, state: 'already', note: `${id} is installed and set in .anvesa/config.json` };
+  }
   if (!permitted) {
     return {
       id,
@@ -218,14 +236,18 @@ async function chooseModel(
     return { id, state: 'failed', note: `download of ${id} failed: ${(failure as Error).message}` };
   }
 
-  // Record the choice so every teammate and every run uses the same model.
+  await rememberModel(projectRoot, id);
+  return { id, state: 'installed', note: `${id} installed and set in .anvesa/config.json` };
+}
+
+/** Record the choice so every teammate and every run uses the same model. */
+async function rememberModel(projectRoot: string, id: string): Promise<void> {
   const config = await loadProjectConfig(projectRoot);
   await writeProjectConfig(projectRoot, {
     ...config,
     $schema: config.$schema ?? CONFIG_SCHEMA_URL,
     model: id,
   });
-  return { id, state: 'installed', note: `${id} installed and set in .anvesa/config.json` };
 }
 
 function skipped(advice: ReturnType<typeof adviseModels>, why: string): SetupResult['model'] {

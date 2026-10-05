@@ -20,6 +20,7 @@ import { loadProjectConfig, validateProjectConfig } from './config.ts';
 import {
   ChannelModuleError,
   EmbedderUnavailableError,
+  ModelMismatchError,
   NotIndexedError,
   ProjectConfigError,
   TargetError,
@@ -142,6 +143,124 @@ function schemaVersionOf(path: string): number {
   raw.close();
   return version;
 }
+
+describe('the model the index was embedded with', () => {
+  /** The same vectors under another name: a different model, as far as the index can tell. */
+  const other = (): Embedder => ({
+    ...embedder(),
+    info: { ...embedder().info, id: 'other-model' },
+  });
+
+  test('is listed, and a search by meaning with another model is an error naming both', async () => {
+    const built = await indexed();
+    expect((await built.indexedModels()).map((row) => row.model)).toEqual(['test-words']);
+    const root = built.root;
+    await built.close();
+
+    const r = await retriever(root, { embedder: other() });
+    const failure = await r.search('parse the configuration file').catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(ModelMismatchError);
+    expect((failure as ModelMismatchError).message).toContain('test-words');
+    expect((failure as ModelMismatchError).message).toContain('other-model');
+    expect((failure as ModelMismatchError).hint).toContain('--model test-words');
+    await expect(r.retrieve('symbols', 'parse')).rejects.toBeInstanceOf(ModelMismatchError);
+    await expect(r.query('//function', { semantic: 'parse' })).rejects.toBeInstanceOf(
+      ModelMismatchError,
+    );
+    await expect(r.search('parse && //function')).rejects.toBeInstanceOf(ModelMismatchError);
+
+    // A structural query still answers; the dense lanes say why they could not.
+    const structural = await r.search('//function[@name="parseConfig"]');
+    expect(structural.items.map((item) => item.path)).toContain('src/config.ts');
+    expect(structural.degraded.map((d) => d.error.code)).toContain('RETRIEVER_MODEL_MISMATCH');
+    expect((await r.query('//function')).items.length).toBeGreaterThan(0);
+
+    const status = await r.status();
+    expect(status.indexedModels.map((row) => row.model)).toEqual(['test-words']);
+  });
+
+  test('embedding again with the new model makes it the one searched', async () => {
+    const built = await indexed();
+    const root = built.root;
+    await built.close();
+    const r = await retriever(root, { embedder: other() });
+    await r.index({ force: true });
+    expect((await r.indexedModels()).map((row) => row.model)).toContain('other-model');
+    const found = await r.search('parse the configuration file');
+    expect(found.items[0]?.path).toBe('src/config.ts');
+  });
+
+  test('a project with nothing embedded yet is no mismatch', async () => {
+    const r = await retriever(makeProject(), { embedder: other() });
+    await r.index();
+    expect((await r.search('parse the configuration file')).items.length).toBeGreaterThan(0);
+  });
+});
+
+describe('scope', () => {
+  const split = {
+    'package.json': '{"name":"app"}',
+    'api/users.ts': `/** Save the user record to the database. */
+export function saveUser() { return 1; }
+`,
+    'api/README.md': '# Users API\n## Saving\nSave the user record before replying.\n',
+    'web/prefs.ts': `/** Save the user preferences in the browser. */
+export function saveUserPrefs() { return 2; }
+`,
+    'apis/legacy.ts': `/** Save the user the old way. */
+export function saveUserLegacy() { return 3; }
+`,
+  };
+  const paths = (items: readonly { readonly path?: string | undefined }[]) =>
+    [...new Set(items.map((i) => i.path))].sort();
+
+  test('narrows every lane of a search to the path, documentation included', async () => {
+    const r = await indexed(split);
+    const everywhere = await r.search('save the user', { limit: 50 });
+    expect(paths(everywhere.items)).toEqual([
+      'api/README.md',
+      'api/users.ts',
+      'apis/legacy.ts',
+      'web/prefs.ts',
+    ]);
+    const scoped = await r.search('save the user', { limit: 50, scope: 'api' });
+    expect(paths(scoped.items)).toEqual(['api/README.md', 'api/users.ts']);
+    // Structural, conjunction, one channel and a plain query honour it the same way.
+    const structural = paths((await r.search('//function', { scope: 'api/' })).items);
+    expect(structural).toContain('api/users.ts');
+    expect(structural.every((path) => path?.startsWith('api/') === true)).toBe(true);
+    expect(paths((await r.search('save the user && //function', { scope: 'web' })).items)).toEqual([
+      'web/prefs.ts',
+    ]);
+    expect(
+      paths(
+        (await r.retrieve('symbols', 'save the user', { scope: 'apis' })).items.map(
+          (h) => h.card.source,
+        ),
+      ),
+    ).toEqual(['apis/legacy.ts']);
+    expect(paths((await r.query('//function', { scope: './web' })).items)).toEqual([
+      'web/prefs.ts',
+    ]);
+  });
+
+  test('a narrow scope still fills its page with the best matches inside it', async () => {
+    const r = await indexed(split);
+    const page = await r.search('save the user', { limit: 1, scope: 'web' });
+    expect(page.items.map((i) => i.path)).toEqual(['web/prefs.ts']);
+  });
+
+  test('a scope that could never match is refused, and one that matches nothing is just empty', async () => {
+    const r = await indexed(split);
+    await expect(r.search('save', { scope: '../elsewhere' })).rejects.toBeInstanceOf(
+      InvalidArgumentError,
+    );
+    await expect(r.query('//function', { scope: '/abs' })).rejects.toBeInstanceOf(
+      InvalidArgumentError,
+    );
+    expect((await r.search('save the user', { scope: 'nowhere' })).items).toEqual([]);
+  });
+});
 
 describe('fusion', () => {
   test('an item near the top of several lanes beats one at the top of a single lane', () => {
@@ -820,9 +939,10 @@ describe('an index kept in shards', () => {
       fragments: 'on',
     });
     await r.setFragments(false);
+    // Off is written out, so the manifest left beside it reads as a choice, not as forgotten.
     expect(
       JSON.parse(readFileSync(join(r.root, '.anvesa', 'config.json'), 'utf8')).indexing,
-    ).toBeUndefined();
+    ).toEqual({ fragments: 'off' });
     await expect(
       retriever(makeProject(), { embedder: null }).then((x) =>
         x.proposeFragments({ tier: 'path' }),

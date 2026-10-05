@@ -1,4 +1,5 @@
 import { CodeLensError, InvalidArgumentError, toCodeLensError } from '@cntxt-labs/anvesa-core';
+import { pathScope } from '@cntxt-labs/anvesa-retriever';
 import {
   COMMANDS,
   type Context,
@@ -30,8 +31,12 @@ usage: anvesa <command> [arguments] [options]
                             --no-embed or --no-dense: structure and graph only, no embedding pass,
                             --show-walk: print each path the walk offers, with its outcome, on stderr)
   status                    what is indexed, and by which channels and model
+  where [root|config|index|models]   the project in use, how it was found, and its config, index and
+                            models paths; name one to print just that path (for scripts)
   search <question>         fused search over every channel and, for WQL, the structure
-                            (--wql <wql>, --channel, --exclude <lane>, --weight <lane>=<n>)
+                            (--wql <wql>, --channel, --exclude <lane>, --weight <lane>=<n>,
+                            --scope <path>: only results from that path or under it, relative to
+                            the project root; every lane, documentation included; also on retrieve, query)
                             (supports conjunction: 'save user && //function', 'save user where //class')
   retrieve <channel> <q>    one channel on its own
   query '<wql>'             structural query, e.g. '//function[@name="parse"]'
@@ -116,6 +121,8 @@ export async function runCli(argv: readonly string[], environment: Environment):
     if (audit && parsed.values.download) {
       throw new InvalidArgumentError('--download', 'absent when --no-network is set', 'present');
     }
+    // Checked before anything is opened, so a scope that can never match fails at once, by name.
+    pathScope(parsed.values.scope, '--scope');
     if (audit) guard = blockNetwork();
     const ctx: Context = { environment, parsed };
 

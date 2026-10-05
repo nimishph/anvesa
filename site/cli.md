@@ -33,7 +33,7 @@ anvesa init [options]
 **Options:**
 - `--yes`, `-y`: Non-interactive mode; automatically accept recommended encoders and parsers.
 - `--force`: Overwrite existing `.anvesaignore` and `.anvesa/config.json`.
-- `--model <id>`: Manually choose dense embedding model ID.
+- `--model <id>`: Choose the embedding model: a built-in id, or one you installed with `anvesa model install <name> --from <dir>`. It is recorded as `"model"` in `.anvesa/config.json`.
 - `--no-download`: Report proposed models and parsers without downloading them.
 
 ---
@@ -61,6 +61,11 @@ embedder. With `--json` the same is under `embedder` (`null` when there is none)
 ### `search <query>`
 Fused semantic and structural retrieval blending dense neural lanes with AST constraints.
 
+The index remembers which model embedded it: `anvesa index` records it as `"model"` in
+`.anvesa/config.json`, so later runs (and teammates) search with the same one. Searching by meaning with a
+different model is an error that names both (`RETRIEVER_MODEL_MISMATCH`), never a silent `0 results`; a
+pure WQL search still answers from structure. `anvesa status` shows `embedded with:` and warns on a mismatch.
+
 ```sh
 # Natural language semantic query
 anvesa search "validate session token"
@@ -80,6 +85,11 @@ anvesa search "jwt auth" --format json
 - `--channel <name>`: Limit search to a specific channel (e.g. `code`, `docs`).
 - `--exclude <lane>`: Exclude specific lanes from RRF fusion (e.g. `--exclude docs`).
 - `--weight <lane>=<num>`: Custom lane multiplier in RRF fusion (e.g. `--weight docs=0.5`).
+- `--scope <path>`: Only results from that path or under it, e.g. `--scope packages/api`. The path is relative
+  to the project root and matches whole segments (`src` does not match `src2/`). Every lane applies it before
+  ranking, documentation included, so a narrow scope still returns a full page. Records with no file under the
+  path (an issue channel, say) are left out. A scope that could never match (absolute, or with `..`) is refused.
+  `query` and `retrieve` take it too, and the MCP `search`, `query` and `retrieve_*` tools take a `scope` field.
 
 ---
 
@@ -213,6 +223,20 @@ Displays index health, database size, freshness timestamp, and active embedding 
 
 ```sh
 anvesa status
+```
+
+---
+
+### `where [root|config|index|models]`
+Shows which project a command run here would use and how it was found (named by `--root`, the
+nearest project above the current directory, or the current directory), with the paths of its
+config, index and models. It opens nothing, so it answers even when the index or config is broken.
+Name one path to print just that path, for scripts.
+
+```sh
+anvesa where
+anvesa where config        # e.g. $EDITOR "$(anvesa where config)"
+anvesa where --json
 ```
 
 ---

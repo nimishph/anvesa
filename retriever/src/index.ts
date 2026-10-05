@@ -43,5 +43,6 @@ export * from './pattern-runner.ts';
 export * from './redteam.ts';
 export { fenceUntrusted } from './render.ts';
 export * from './retriever.ts';
+export { pathScope } from './scope.ts';
 export { type StructuralCoverage, StructuralLane } from './structural-lane.ts';
 export { workspaceSource } from './workspace-source.ts';
