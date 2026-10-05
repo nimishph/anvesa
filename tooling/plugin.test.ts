@@ -1,5 +1,13 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -20,7 +28,9 @@ const launcher = createRequire(import.meta.url)('../plugin/mcp-server.cjs') as {
   }): Argv;
 };
 
-const scratch = mkdtempSync(join(tmpdir(), 'anvesa-plugin-'));
+// The launcher resolves an installed program to its real path, so the expectations start from one:
+// on macOS the temp folder (/var/folders/...) is itself a link to /private/var/folders/....
+const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'anvesa-plugin-')));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 function folder(...parts: string[]): string {

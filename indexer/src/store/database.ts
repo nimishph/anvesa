@@ -87,7 +87,15 @@ export class StoreDatabase {
   readonly #db: Database;
   readonly #backup: StoreBackup | undefined;
   readonly #onClose = new Set<() => void>();
-  #group: { readonly flushMs: number; since: number } | undefined;
+  #group:
+    | {
+        readonly flushMs: number;
+        /** Set while the group's transaction is open: it commits when this fires. */
+        timer: ReturnType<typeof setTimeout> | undefined;
+        /** A commit the timer could not make, raised by the next write or by `endGroup`. */
+        failure: unknown;
+      }
+    | undefined;
   #closed = false;
 
   private constructor(path: string, db: Database, backup: StoreBackup | undefined) {
@@ -175,68 +183,83 @@ export class StoreDatabase {
    */
   transaction<T>(operation: string, work: (db: Database) => T): T {
     const db = this.connection(operation);
+    this.#openGroupTransaction(db);
     let result: T;
     try {
       result = db.transaction(() => work(db)).immediate();
     } catch (failure) {
       throw asStoreError(operation, failure);
     }
-    this.#flushGroupIfDue(db);
     return result;
   }
 
   /**
-   * Hold one write transaction open so the many small ones that follow become savepoints in it:
-   * each still lands whole or not at all, but they reach the disk together, every `flushMs` or so,
-   * instead of one commit each. A commit rewrites every index page a write touched, so on an index
-   * with many small files most of the time went to commits. Until {@link endGroup}.
+   * Let the small transactions that follow reach the disk together: while writes are grouped, the
+   * first one opens a transaction that the rest join as savepoints (each still lands whole or not
+   * at all), and it is committed `flushMs` after it opened, by a timer, whether or not anything
+   * else is written. A commit rewrites every index page a write touched, so on an index with many
+   * small files most of the time went to commits. Until {@link endGroup}.
    *
-   * The write lock is held between commits, so another process's writer waits up to about
-   * `flushMs` longer than it did. A crash loses the writes since the last commit, as it would have
-   * lost the one in flight, and an index run that was cut short redoes what it did not finish.
-   * Nothing happens when a transaction is already open, or a group is.
+   * The write lock is held only from a grouped write until that timer, never while nothing is
+   * written, so another process's writer waits at most about `flushMs` longer than it did. A crash
+   * loses what was written since the last commit, which an index run that was cut short redoes.
+   * Nothing happens when a group is already open.
    */
   beginGroup(flushMs = DEFAULT_GROUP_FLUSH_MS): void {
-    const db = this.connection('group writes');
-    if (this.#group || db.inTransaction) return;
+    this.connection('group writes');
+    if (this.#group) return;
+    this.#group = { flushMs, timer: undefined, failure: undefined };
+  }
+
+  /** Commit what the group holds and stop grouping. */
+  endGroup(): void {
+    const group = this.#group;
+    if (!group) return;
+    this.#group = undefined;
+    if (group.timer !== undefined) clearTimeout(group.timer);
+    if (group.failure !== undefined) throw group.failure;
+    if (group.timer === undefined) return;
+    try {
+      this.connection('commit grouped writes').exec('COMMIT');
+    } catch (failure) {
+      throw asStoreError('commit grouped writes', failure);
+    }
+  }
+
+  /** Whether writes are being grouped, so some may not yet be visible to other connections. */
+  get grouping(): boolean {
+    return this.#group !== undefined;
+  }
+
+  /** Open the group's transaction for the first write since the last commit, and time its commit. */
+  #openGroupTransaction(db: Database): void {
+    const group = this.#group;
+    if (!group) return;
+    if (group.failure !== undefined) {
+      // The timer could not commit; nothing grouped since then can be trusted to land.
+      this.#group = undefined;
+      throw group.failure;
+    }
+    if (group.timer !== undefined || db.inTransaction) return;
     try {
       db.exec('BEGIN IMMEDIATE');
     } catch (failure) {
       throw asStoreError('group writes', failure);
     }
-    this.#group = { flushMs, since: performance.now() };
-  }
-
-  /** Commit what the group holds and stop grouping. */
-  endGroup(): void {
-    if (!this.#group) return;
-    this.#group = undefined;
-    const db = this.connection('commit grouped writes');
-    if (!db.inTransaction) return;
-    try {
-      db.exec('COMMIT');
-    } catch (failure) {
-      throw asStoreError('commit grouped writes', failure);
-    }
-  }
-
-  /** Whether writes are being grouped, so some are not yet visible to other connections. */
-  get grouping(): boolean {
-    return this.#group !== undefined;
-  }
-
-  #flushGroupIfDue(db: Database): void {
-    const group = this.#group;
-    if (!group || performance.now() - group.since < group.flushMs) return;
-    try {
-      db.exec('COMMIT');
-      db.exec('BEGIN IMMEDIATE');
-    } catch (failure) {
-      // Without its transaction the group is over; what follows commits one at a time.
-      this.#group = undefined;
-      throw asStoreError('commit grouped writes', failure);
-    }
-    group.since = performance.now();
+    // Statements run to completion between awaits, so when the timer fires the only transaction
+    // open on this connection is the group's own.
+    const timer = setTimeout(() => {
+      group.timer = undefined;
+      if (this.#group !== group || this.#closed) return;
+      try {
+        db.exec('COMMIT');
+      } catch (failure) {
+        group.failure = asStoreError('commit grouped writes', failure);
+      }
+    }, group.flushMs);
+    // A pending commit must not keep the process alive; closing commits it anyway.
+    timer.unref?.();
+    group.timer = timer;
   }
 
   /** Run `release` when this database closes, to let go of what was opened alongside it. */
@@ -251,8 +274,14 @@ export class StoreDatabase {
    */
   close(): void {
     if (this.#closed) return;
-    // What a group holds was written by transactions that each completed: keep it.
-    if (this.#group) this.endGroup();
+    // What a group holds was written by transactions that each completed: keep it. The connection
+    // is closed even if that fails, and the failure is reported after.
+    let unsaved: unknown;
+    try {
+      this.endGroup();
+    } catch (failure) {
+      unsaved = failure;
+    }
     this.#closed = true;
     for (const release of this.#onClose) release();
     this.#onClose.clear();
@@ -261,6 +290,7 @@ export class StoreDatabase {
     } catch (failure) {
       throw asStoreError('close the database', failure);
     }
+    if (unsaved !== undefined) throw unsaved;
   }
 }
 
@@ -340,6 +370,14 @@ function hasTables(db: Database): boolean {
     n: number;
   } | null;
   return (row?.n ?? 0) > 0;
+}
+
+/** At least a quarter of the file is free pages: worth rewriting to give them back. */
+function mostlyFree(db: Database): boolean {
+  const free = (getRow(db, 'PRAGMA freelist_count') as { freelist_count: number } | null)
+    ?.freelist_count;
+  const total = (getRow(db, 'PRAGMA page_count') as { page_count: number } | null)?.page_count;
+  return free !== undefined && total !== undefined && total > 0 && free * 4 >= total;
 }
 
 function journalMode(db: Database): string {
@@ -494,9 +532,15 @@ function migrate(db: Database, path: string, readonly: boolean): StoreBackup | u
     }
   }
   // A migration that moves data out of a table leaves its old pages free; the file would keep that
-  // size until rewritten. VACUUM cannot run inside a transaction, so it follows the steps. A fresh
-  // index has nothing to give back.
-  if (current > 0 && path !== MEMORY_DATABASE && pending.some((migration) => migration.vacuum)) {
+  // size until rewritten. VACUUM cannot run inside a transaction, so it follows the steps. It runs
+  // only when there is real space to give back: an index another process is creating at the same
+  // moment has none, and rewriting a file another process is opening breaks that open.
+  if (
+    current > 0 &&
+    path !== MEMORY_DATABASE &&
+    pending.some((migration) => migration.vacuum) &&
+    mostlyFree(db)
+  ) {
     db.exec('VACUUM');
   }
   return backup;

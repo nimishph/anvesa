@@ -212,16 +212,20 @@ export class SqliteVectorStore implements VectorStore {
   /**
    * The same scan in the native addon, which reads the file on its own read-only connection so no
    * row crosses into JavaScript. `undefined` when it cannot stand in for {@link #scan}: no addon (or
-   * one built before the scan existed), an in-memory database it cannot see, writes still grouped
-   * in an open transaction, a `filter` that only
-   * JavaScript can run, or a file it could not open or read. It ranks exactly as `#scan` does, and
+   * one built before the scan existed), Linux or macOS (see below), an in-memory database it
+   * cannot see, writes still grouped in an open transaction, a `filter` that only JavaScript can
+   * run, or a file it could not open or read. It ranks exactly as `#scan` does, and
    * refuses a corrupt vector and an expired deadline the same way.
    */
   #scanNative(unit: Float32Array, options: SearchOptions): Scored[] | undefined {
     const native = loadRustDense();
     const path = this.#database.path;
-    // Grouped writes are not committed yet, so another connection would not see them.
+    // Grouped writes are not committed yet, so another connection would not see them. And only on
+    // Windows: the addon links its own copy of SQLite, and on Linux and macOS a file's locks belong
+    // to the process, so that copy closing its handle would drop the locks this connection holds
+    // (SQLite's "multiple copies of SQLite in one application"). Windows locks per handle.
     if (
+      process.platform !== 'win32' ||
       !native?.scanVectorsNative ||
       options.filter ||
       path === MEMORY_DATABASE ||

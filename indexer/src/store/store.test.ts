@@ -331,6 +331,49 @@ describe('opening the database', () => {
   });
 });
 
+describe('grouped writes', () => {
+  const write = (database: StoreDatabase, key: string) =>
+    database.transaction('test write', (db) =>
+      db.query('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').run(key, 'v'),
+    );
+
+  test('hold the write lock only until their timer commits them, even when nothing else is written', async () => {
+    const path = dbPath();
+    const grouped = StoreDatabase.open(path);
+    const other = StoreDatabase.open(path, { busyTimeoutMs: 0 });
+    grouped.beginGroup(50);
+    write(grouped, 'a');
+    // Inside the window another writer is refused at once (it was told not to wait)...
+    expect(() => write(other, 'b')).toThrow();
+    await Bun.sleep(150);
+    // ...and after it, the lock is free although the group is still open and nothing was written.
+    expect(() => write(other, 'b')).not.toThrow();
+    write(grouped, 'c');
+    grouped.endGroup();
+    const rows = other
+      .connection('test')
+      .query("SELECT key FROM meta WHERE key IN ('a', 'b', 'c') ORDER BY key")
+      .all();
+    expect(rows).toEqual([{ key: 'a' }, { key: 'b' }, { key: 'c' }]);
+    grouped.close();
+    other.close();
+  });
+
+  test('a group with nothing written never takes the lock, and closing commits what it holds', () => {
+    const path = dbPath();
+    const grouped = StoreDatabase.open(path);
+    const other = StoreDatabase.open(path, { busyTimeoutMs: 0 });
+    grouped.beginGroup(60_000);
+    expect(() => write(other, 'x')).not.toThrow();
+    write(grouped, 'y');
+    grouped.close();
+    expect(other.connection('test').query("SELECT key FROM meta WHERE key = 'y'").get()).toEqual({
+      key: 'y',
+    });
+    other.close();
+  });
+});
+
 describe('copying an index before it is upgraded', () => {
   test('an index with migrations to apply is copied aside, and the copy is the old index', () => {
     const path = olderSchemaIndex();
