@@ -421,7 +421,11 @@ export async function writeProjectConfig(root: string, config: ProjectConfig): P
         ? Object.fromEntries(Object.entries(config.indexing).filter(([k]) => k !== 'fragments'))
         : {};
       const indexing = {
-        ...(config.fragments ? { fragments: 'on' as const } : {}),
+        ...(config.fragments
+          ? { fragments: 'on' as const }
+          : config.indexing?.fragments === 'off'
+            ? { fragments: 'off' as const }
+            : {}),
         ...tuning,
       };
       return Object.keys(indexing).length > 0 ? { indexing } : {};

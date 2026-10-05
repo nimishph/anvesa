@@ -820,9 +820,10 @@ describe('an index kept in shards', () => {
       fragments: 'on',
     });
     await r.setFragments(false);
+    // Off is written out, so the manifest left beside it reads as a choice, not as forgotten.
     expect(
       JSON.parse(readFileSync(join(r.root, '.anvesa', 'config.json'), 'utf8')).indexing,
-    ).toBeUndefined();
+    ).toEqual({ fragments: 'off' });
     await expect(
       retriever(makeProject(), { embedder: null }).then((x) =>
         x.proposeFragments({ tier: 'path' }),

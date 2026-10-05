@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import {
@@ -39,6 +40,7 @@ import {
   type DriftReport,
   FactExtractor,
   type FactExtractor as FactExtractorType,
+  FRAGMENTS_PATH,
   type FragmentManifest,
   GraphQueries,
   generateRepoMap,
@@ -460,7 +462,11 @@ export class Retriever {
       ...(this.#ingester ? { ingester: this.#ingester } : {}),
       ...(this.#only ? { only: this.#only } : {}),
     });
-    const report = await indexer.index(options);
+    const indexed = await indexer.index(options);
+    const unused = this.#unusedManifestWarning();
+    const report = unused
+      ? { ...indexed, warnings: [...(indexed.warnings ?? []), unused] }
+      : indexed;
     const synced: SyncReport[] = [];
     if (this.#ingester) {
       for (const [name, source] of this.#sources) {
@@ -1250,10 +1256,27 @@ export class Retriever {
 
   /** Turn sharded indexing on or off in the project config. Takes effect the next time it is opened. */
   async setFragments(on: boolean): Promise<void> {
-    await this.#writeConfig({ ...this.config, fragments: on });
+    // "off" is written out, not left unset: it records the choice, so the manifest kept beside it
+    // is not taken for one that was forgotten.
+    await this.#writeConfig({
+      ...this.config,
+      fragments: on,
+      indexing: { ...this.config.indexing, fragments: on ? 'on' : 'off' },
+    });
   }
 
   // --- internals --------------------------------------------------------------------------------
+
+  /**
+   * A manifest the config never chose to use: written by hand or by `fragments propose --write`,
+   * then left without `indexing.fragments`. An explicit "off" (what `fragments disable` writes)
+   * is a choice, and says nothing.
+   */
+  #unusedManifestWarning(): string | undefined {
+    if (this.config.fragments || this.config.indexing?.fragments === 'off') return undefined;
+    if (!existsSync(join(this.root, FRAGMENTS_PATH))) return undefined;
+    return `${FRAGMENTS_PATH} is not used: ${PROJECT_CONFIG_PATH} does not set "indexing": { "fragments": "on" }, so everything went into one index.db. Run: anvesa fragments enable (or set it to "off" to keep one database and silence this)`;
+  }
 
   #requireEmbedder(): Embedder {
     if (!this.embedder) throw new EmbedderUnavailableError('this project was opened without one');

@@ -1336,7 +1336,27 @@ describe('sharded indexing', () => {
     const disabled = await cli(root, 'fragments', 'disable');
     expect(disabled.code).toBe(0);
     expect((await cli(root, 'fragments', 'status')).out).toContain('sharded indexing is off');
+    // Turned off on purpose, the manifest that stays behind is not warned about.
+    expect((await cli(root, 'index', '--force')).out).not.toContain('is not used');
     expect((await cli(root, 'fragments', 'frobnicate')).code).toBe(2);
+  });
+
+  test('a manifest the config never turned on is warned about by index, until a choice is made', async () => {
+    const root = makeProject();
+    await cli(root, 'index');
+    expect((await cli(root, 'fragments', 'propose', '--write')).code).toBe(0);
+
+    const warned = await cli(root, 'index');
+    expect(warned.code).toBe(0);
+    expect(warned.out).toContain('warning: .anvesa/fragments.json is not used');
+    expect(warned.out).toContain('anvesa fragments enable');
+    expect(existsSync(join(root, '.anvesa', 'shards'))).toBe(false);
+    expect(json(await cli(root, 'index', '--json')).report.warnings).toContainEqual(
+      expect.stringContaining('fragments.json is not used'),
+    );
+
+    writeFileSync(join(root, '.anvesa', 'config.json'), '{"indexing":{"fragments":"off"}}');
+    expect((await cli(root, 'index')).out).not.toContain('is not used');
   });
 
   test('turning it on with no manifest at hand is refused by the commands that need one; enable proposes from an index', async () => {

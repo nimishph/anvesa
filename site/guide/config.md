@@ -94,7 +94,7 @@ The ONNX embedding model ID to use for dense vector search (e.g. `'sentence-tran
 - **`concurrency`** (`integer`): Number of worker threads for parallel parsing and embedding.
 - **`maxFileSizeBytes`** (`integer`, default `524288` [512KB]): Maximum file size indexed. Files exceeding this limit are skipped.
 - **`embeddingBatchSize`** (`integer`, default `32`): Batch size passed to local ONNX runtime during card embedding.
-- **`fragments`** (`"on" | "off"`, default `"off"`): Enables index partitioning into separate SQLite database shards for very large repositories.
+- **`fragments`** (`"on" | "off"`, default `"off"`): Enables index partitioning into separate SQLite database shards for very large repositories. Shards follow `.anvesa/fragments.json`. If that file exists but `fragments` is unset, `anvesa index` warns that the manifest is not used; `anvesa fragments disable` writes `"off"`, which keeps one database and silences the warning.
 - **`ignore`** (`string[]`): Additional glob patterns ignored during indexing beyond `.gitignore` and `.anvesaignore`.
 
 ### `syntax`
