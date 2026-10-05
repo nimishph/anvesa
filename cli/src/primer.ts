@@ -139,7 +139,7 @@ Anvesa stores index data in \`.anvesa/index.db\` (or fragmented databases for la
 - \`anvesa index\` — Incremental run; only processes modified or added files.
 - \`anvesa index --force\` — Rebuilds AST outlines and cards from scratch.
 - \`anvesa index --scope <path>\` — Limit indexing to a specific subdirectory.
-- \`anvesa index --no-embed\` — Structural AST and graph only (instant, no GPU/CPU neural load).
+- \`anvesa index --no-embed\` (alias \`--no-dense\`) — Structural AST and graph only (no embedding pass).
 - \`anvesa index --retry-quarantined\` — Re-evaluates previously quarantined files.
 
 ### Fragment Sharding (\`anvesa fragments\`)
@@ -161,7 +161,11 @@ For large codebases where a single \`index.db\` exceeds 500MB:
 ### Tree-sitter Grammars (\`anvesa grammar\`)
 - \`grammar list\` — Inspect status and SHA-256 hashes of installed parsers.
 - \`grammar install <lang>\` — Install from prebuilt WASM or local directory.
-- \`mapping list|show|train|audit|refine|fork|lock\` — Manage syntax-to-card extraction mappings.
+- \`mapping list|show|train|audit|refine|fork|lock|remove|verify|check\` — Manage syntax-to-card mappings.
+- \`mapping train <lang> --samples <dir>\` — Learn a mapping from code; \`--tags <tags.scm>\` starts from the
+  grammar's own definitions and calls, \`--assist\` asks a language model (OPENROUTER_API_KEY) about the rest.
+- Bundled: TS/JS (Vue via TS), Python, PHP, Go, Rust, Java, Ruby. C/C++ partial (functions unnamed: use
+  \`//function\`, not \`[@name=...]\`). C# none: train one.
 
 ### Local Embedding Models (\`anvesa model\`)
 - \`model list\` — List installed hardware tiers and ONNX models.

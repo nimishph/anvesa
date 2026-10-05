@@ -88,6 +88,7 @@ pass `--download`.
 ```sh
 cd my-project
 anvesa index                       # only changed files are read
+anvesa index --no-embed            # structure and graph only, no embedding pass (alias: --no-dense)
 anvesa search "parse the configuration file"
 anvesa query '//function[@name="parseConfig"]'
 anvesa callers parseConfig         # a name, a symbol id, or src/config.ts:42
@@ -147,6 +148,14 @@ Give several folders at once with `--samples app core tests`. Sample paths are r
 run the command, like any path on a command line, even with `--root`; `mapping audit` and
 `mapping refine` given no samples read the whole project at `--root`.
 What it cannot decide is reported, for example an `impl` block that has no name.
+
+Two options help with what the samples alone leave open. `--tags <tags.scm>` starts from the
+grammar's own tag queries (its definitions and calls). `--assist` asks a language model about the
+node types still undecided: the key comes from `OPENROUTER_API_KEY` (or `ANVESA_ASSIST_API_KEY`,
+with `ANVESA_ASSIST_BASE_URL` for any OpenAI-compatible endpoint), `--assist-model` picks the model,
+and every suggestion is checked against the samples before it is used. Answers are kept in
+`.anvesa/assist/<language>.json`, so training again gives the same mapping; `--assist-refresh` asks
+again. `--assist` needs the network, so it refuses to run under `--no-network`.
 
 Mappings are kept in the project (`.anvesa/mappings`, committed, so a team shares them) or per user
 (`--user`), and win over the bundled ones in that order. Every file is pinned by a checksum in
@@ -311,6 +320,26 @@ skill file that teaches an agent when to reach for anvesa over grep and how to u
 (or MCP tools). Point an agent's skill loader at that path, or copy it into wherever your agent
 harness reads skills from.
 
+### Claude Code plugin
+
+The repository is also a Claude Code plugin (`.claude-plugin/plugin.json`):
+
+```text
+/plugin marketplace add nimishph/cntxt-labs
+/plugin install anvesa@cntxt-labs
+```
+
+(or, from a checkout, `claude --plugin-dir /path/to/anvesa`). It brings three things:
+
+- **The skill** above, from `skills/anvesa`.
+- **The MCP server**, serving the project Claude Code is opened in. `plugin/mcp-server.cjs` runs
+  `ANVESA_BIN` if set, else an anvesa already on `PATH`, else `npx @cntxt-labs/anvesa` at the
+  plugin's version, so it works before anything is installed.
+- **A session-start refresh**: `anvesa index --no-network` runs detached in the background, only in
+  a project that already has an index (it never indexes a repository uninvited). A refresh that
+  works is silent; one that fails is mentioned once at the next session start and retried. Its
+  record lives in the plugin's data folder, so nothing is added to the repository.
+
 ## How well does it work
 
 `bun run eval:retrieval` measures retrieval on a repository, with queries derived from its own
@@ -390,7 +419,7 @@ Declared factors are checked against what a run measures: source files and lines
 and, for the human-versus-assistant axis, the share of the last year's commits that carry an
 assistant's mark and any agent files (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`...).
 
-A run indexes each repository from nothing (structure only, then embeddings unless `--no-dense`),
+A run indexes each repository from nothing (structure only, then embeddings unless the stress tool is given `--no-dense`),
 indexes again, and asks about a seeded sample of its own symbols (exact name, in words, and callers).
 It records time, CPU, peak memory, database size, files, symbols, link rates and query latency and
 hit rates. `compare` sets the latest execution against the window before it (three by default), only

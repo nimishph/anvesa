@@ -48,7 +48,7 @@ anvesa index [options]
 **Options:**
 - `--force`: Rebuild entire index from scratch (discards cached AST hashes).
 - `--scope <path>`: Restrict indexing to a specific subdirectory.
-- `--no-embed`: Structural AST indexing only (skips neural embedding generation; executes in <2 seconds).
+- `--no-embed` (alias `--no-dense`): Structural AST indexing only (skips neural embedding generation).
 - `--retry-quarantined`: Re-evaluate files previously flagged by red-team screens.
 
 ---
@@ -180,6 +180,26 @@ anvesa primer
 anvesa primer wql
 anvesa primer overview --compact
 ```
+
+---
+
+### `mapping <action>`
+How a language's syntax becomes an outline: `list|show|train|audit|refine|fork|lock|remove|verify|check`.
+
+```sh
+anvesa mapping train csharp --samples ./src --samples ./tests
+anvesa mapping train csharp --samples ./src --tags tags.scm   # start from the grammar's tag queries
+anvesa mapping train csharp --samples ./src --assist          # ask a language model about what is left
+```
+
+**Options (train):**
+- `--samples <dir|file>`: Code to learn from (repeatable).
+- `--replace`: Learn from scratch instead of extending the mapping in effect.
+- `--min-samples N` (default 10), `--min-files N` (default 3): How much evidence a mapping needs.
+- `--tags <tags.scm>`: Start from the grammar's own definitions and calls.
+- `--assist`: Ask a language model (key from `OPENROUTER_API_KEY` or `ANVESA_ASSIST_API_KEY`); answers are
+  checked against the samples and kept in `.anvesa/assist/`. `--assist-model <id>` picks the model,
+  `--assist-refresh` asks again. Refused under `--no-network`.
 
 ---
 

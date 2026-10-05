@@ -114,32 +114,39 @@ Anvesa maintains an incremental symbol dependency graph in SQLite.
     },
     PrimerTopicInfo {
         name: "indexing",
-        title: "Incremental Indexing & Grammar Management",
-        description: "How changes are detected, caching, and --no-dense fast passes.",
-        content: r#"# Incremental Indexing
+        title: "Incremental Indexing & Storage Architecture",
+        description: "AST caching, sharded fragment databases, and offline indexing.",
+        content: r#"# Indexing & Storage Architecture
 
-Anvesa tracks file modification times and content hashes in SQLite.
+Anvesa stores index data in `.anvesa/index.db` (or fragmented databases for large repositories).
 
-### Indexing Modes
-- `anvesa index` — Full structural outline and neural embedding pass.
-- `anvesa index --no-dense` — Fast AST-only index (skips embeddings, <2 seconds).
-- `anvesa index --force` — Rebuilds all cards and hashes from scratch."#,
+### Indexing Options
+- `anvesa index` — Incremental run; only processes modified or added files.
+- `anvesa index --force` — Rebuilds AST outlines and cards from scratch.
+- `anvesa index --scope <path>` — Limit indexing to a specific subdirectory.
+- `anvesa index --no-embed` (alias `--no-dense`) — Structural AST and graph only (no embedding pass).
+- `anvesa index --retry-quarantined` — Re-evaluates previously quarantined files.
+
+### Fragment Sharding (`anvesa fragments`)
+- `anvesa fragments status|propose|enable|disable|settle` — one database per fragment."#,
     },
     PrimerTopicInfo {
         name: "grammars",
-        title: "Tree-Sitter Grammars & Tier-1 Language Support",
-        description: "Built-in Tier-1 languages and custom grammar management.",
-        content: r#"# Grammars & Supported Languages
+        title: "Grammars & Mappings",
+        description: "Tree-sitter grammars, mappings, and supported languages.",
+        content: r#"# Grammars & Mappings
 
-### Built-in Tier-1 Languages (Native Rust Tree-Sitter)
-- TypeScript (`.ts`, `.tsx`)
-- JavaScript (`.js`, `.jsx`, `.mjs`, `.cjs`)
-- Python (`.py`)
-- Rust (`.rs`)
-- Go (`.go`)
+### Tree-sitter Grammars (`anvesa grammar`)
+- `grammar list` — Inspect status and SHA-256 hashes of installed parsers.
+- `grammar install <lang>` — Install from prebuilt WASM or local directory.
+- `mapping list|show|train|audit|refine|fork|lock|remove|verify|check` — Manage syntax-to-card mappings.
+- `mapping train <lang> --samples <dir>` — Learn a mapping from code; `--tags <tags.scm>` starts from the
+  grammar's own definitions and calls, `--assist` asks a language model (OPENROUTER_API_KEY) about the rest.
 
-### Grammar Discovery & Lockfiles
-Grammars are verified with SHA-256 integrity checksums stored in `.anvesa/grammars.lock`."#,
+### Bundled Mappings
+- TypeScript, JavaScript (and Vue, through TypeScript), Python, PHP, Go, Rust, Java, Ruby.
+- C/C++ partial: functions come out unnamed; use `//function`, not `[@name=...]`.
+- C# none: train one with `anvesa mapping train csharp --samples <dir>`."#,
     },
 ];
 

@@ -58,9 +58,9 @@ Anvesa will:
 - Generate dense vector embeddings for all code cards using local ONNX models
 - Store everything in SQLite at `.anvesa/index.db`
 
-> **Tip (Fast Pass):** To skip embedding generation and index only the structural AST (<2 seconds), use:
+> **Tip (Fast Pass):** To skip embedding generation and index only the structural AST and graph, use:
 > ```sh
-> anvesa index --no-dense
+> anvesa index --no-embed     # --no-dense is the same flag
 > ```
 
 ### 3. Search and Query
