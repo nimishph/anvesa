@@ -48,6 +48,7 @@ export interface ProjectView {
   readonly embedder: Embedder | undefined;
   readonly structure: StructuralLane;
   channels(): Promise<readonly ChannelInfo[]>;
+  indexedModels(): Promise<readonly { readonly model: string; readonly cards: number }[]>;
   query(
     wql: string,
     options?: { readonly limit?: number },
@@ -61,6 +62,8 @@ export interface Status {
   readonly interrupted: boolean;
   readonly channels: readonly ChannelInfo[];
   readonly embedder: { readonly id: string; readonly dimensions: number } | undefined;
+  /** The models the index holds vectors for, most cards first. Empty before anything is embedded. */
+  readonly indexedModels: readonly { readonly model: string; readonly cards: number }[];
   readonly structural: StructuralCoverage;
   readonly quarantinedFiles: number;
 }
@@ -76,6 +79,7 @@ export async function statusOf(retriever: ProjectView): Promise<Status> {
     embedder: retriever.embedder
       ? { id: retriever.embedder.info.id, dimensions: retriever.embedder.info.dimensions }
       : undefined,
+    indexedModels: await retriever.indexedModels(),
     structural: await retriever.structure.refresh(),
     quarantinedFiles: index.quarantinedFiles,
   };

@@ -20,6 +20,7 @@ import { loadProjectConfig, validateProjectConfig } from './config.ts';
 import {
   ChannelModuleError,
   EmbedderUnavailableError,
+  ModelMismatchError,
   NotIndexedError,
   ProjectConfigError,
   TargetError,
@@ -142,6 +143,59 @@ function schemaVersionOf(path: string): number {
   raw.close();
   return version;
 }
+
+describe('the model the index was embedded with', () => {
+  /** The same vectors under another name: a different model, as far as the index can tell. */
+  const other = (): Embedder => ({
+    ...embedder(),
+    info: { ...embedder().info, id: 'other-model' },
+  });
+
+  test('is listed, and a search by meaning with another model is an error naming both', async () => {
+    const built = await indexed();
+    expect((await built.indexedModels()).map((row) => row.model)).toEqual(['test-words']);
+    const root = built.root;
+    await built.close();
+
+    const r = await retriever(root, { embedder: other() });
+    const failure = await r.search('parse the configuration file').catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(ModelMismatchError);
+    expect((failure as ModelMismatchError).message).toContain('test-words');
+    expect((failure as ModelMismatchError).message).toContain('other-model');
+    expect((failure as ModelMismatchError).hint).toContain('--model test-words');
+    await expect(r.retrieve('symbols', 'parse')).rejects.toBeInstanceOf(ModelMismatchError);
+    await expect(r.query('//function', { semantic: 'parse' })).rejects.toBeInstanceOf(
+      ModelMismatchError,
+    );
+    await expect(r.search('parse && //function')).rejects.toBeInstanceOf(ModelMismatchError);
+
+    // A structural query still answers; the dense lanes say why they could not.
+    const structural = await r.search('//function[@name="parseConfig"]');
+    expect(structural.items.map((item) => item.path)).toContain('src/config.ts');
+    expect(structural.degraded.map((d) => d.error.code)).toContain('RETRIEVER_MODEL_MISMATCH');
+    expect((await r.query('//function')).items.length).toBeGreaterThan(0);
+
+    const status = await r.status();
+    expect(status.indexedModels.map((row) => row.model)).toEqual(['test-words']);
+  });
+
+  test('embedding again with the new model makes it the one searched', async () => {
+    const built = await indexed();
+    const root = built.root;
+    await built.close();
+    const r = await retriever(root, { embedder: other() });
+    await r.index({ force: true });
+    expect((await r.indexedModels()).map((row) => row.model)).toContain('other-model');
+    const found = await r.search('parse the configuration file');
+    expect(found.items[0]?.path).toBe('src/config.ts');
+  });
+
+  test('a project with nothing embedded yet is no mismatch', async () => {
+    const r = await retriever(makeProject(), { embedder: other() });
+    await r.index();
+    expect((await r.search('parse the configuration file')).items.length).toBeGreaterThan(0);
+  });
+});
 
 describe('scope', () => {
   const split = {

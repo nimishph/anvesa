@@ -84,3 +84,22 @@ export class AssistError extends RetrieverSubsystemError {
     });
   }
 }
+
+/**
+ * The model in use is not the one the index was embedded with. Their vectors cannot be compared,
+ * so a search would find nothing and look like it found nothing relevant.
+ */
+export class ModelMismatchError extends RetrieverSubsystemError {
+  readonly code = 'RETRIEVER_MODEL_MISMATCH';
+
+  constructor(current: string, indexed: readonly string[], init: ErrorInit = {}) {
+    super(
+      `The index was embedded with ${indexed.join(', ')}, but this run uses ${current}; vectors from different models cannot be compared, so a search would find nothing`,
+      {
+        hint: `Use the model the index was built with (--model ${indexed[0]}, or "model": "${indexed[0]}" in .anvesa/config.json), or embed it again with this one: anvesa index --model ${current}`,
+        ...init,
+        context: { current, indexed, ...init.context },
+      },
+    );
+  }
+}

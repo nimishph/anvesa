@@ -5,6 +5,7 @@ import { InvalidArgumentError, type PageRequest } from '@cntxt-labs/anvesa-core'
 import {
   type Assistant,
   auditMapping,
+  CONFIG_SCHEMA_URL,
   chatAssistant,
   checkMapping,
   doctorModels,
@@ -30,6 +31,7 @@ import {
   trainLanguage,
   verifyMappings,
   verifyModel,
+  writeProjectConfig,
 } from '@cntxt-labs/anvesa-retriever';
 import type { Environment } from './environment.ts';
 import { CommandFailedError } from './errors.ts';
@@ -328,6 +330,21 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         ...(inScope ? { scope: inScope } : {}),
       });
       const info = retriever.embedder?.info;
+      // The model the index was embedded with is recorded, so every later run, on any machine,
+      // searches with it instead of whatever that machine would pick.
+      if (info && result.report.dense) {
+        const onDisk = await loadProjectConfig(retriever.root);
+        if (onDisk.model !== info.id) {
+          await writeProjectConfig(retriever.root, {
+            ...onDisk,
+            $schema: onDisk.$schema ?? CONFIG_SCHEMA_URL,
+            model: info.id,
+          });
+          ctx.environment.stderr(
+            `note: recorded "model": "${info.id}" in ${PROJECT_CONFIG_PATH}, so later runs search with the model this index was embedded with\n`,
+          );
+        }
+      }
       const embedder = info
         ? { id: info.id, dimensions: info.dimensions, maxTokens: info.maxTokens }
         : null;
@@ -410,6 +427,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         },
         interrupted: false,
         embedder: undefined,
+        indexedModels: [],
         structural: { files: 0, missing: [] },
         channels: [],
       };

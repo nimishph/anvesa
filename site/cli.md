@@ -33,7 +33,7 @@ anvesa init [options]
 **Options:**
 - `--yes`, `-y`: Non-interactive mode; automatically accept recommended encoders and parsers.
 - `--force`: Overwrite existing `.anvesaignore` and `.anvesa/config.json`.
-- `--model <id>`: Manually choose dense embedding model ID.
+- `--model <id>`: Choose the embedding model: a built-in id, or one you installed with `anvesa model install <name> --from <dir>`. It is recorded as `"model"` in `.anvesa/config.json`.
 - `--no-download`: Report proposed models and parsers without downloading them.
 
 ---
@@ -60,6 +60,11 @@ embedder. With `--json` the same is under `embedder` (`null` when there is none)
 
 ### `search <query>`
 Fused semantic and structural retrieval blending dense neural lanes with AST constraints.
+
+The index remembers which model embedded it: `anvesa index` records it as `"model"` in
+`.anvesa/config.json`, so later runs (and teammates) search with the same one. Searching by meaning with a
+different model is an error that names both (`RETRIEVER_MODEL_MISMATCH`), never a silent `0 results`; a
+pure WQL search still answers from structure. `anvesa status` shows `embedded with:` and warns on a mismatch.
 
 ```sh
 # Natural language semantic query

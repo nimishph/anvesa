@@ -97,6 +97,7 @@ import {
 import { buildWqlMatcher, findMatchingCard, splitConjunction } from './conjunction.ts';
 import {
   EmbedderUnavailableError,
+  ModelMismatchError,
   NotIndexedError,
   ProjectConfigError,
   TargetError,
@@ -311,6 +312,9 @@ export class Retriever {
   readonly #shards: ShardSet | undefined;
   readonly #backups: readonly StoreBackup[];
   readonly #gate: RedTeamGate;
+  #indexedModels:
+    | Promise<readonly { readonly model: string; readonly cards: number }[]>
+    | undefined;
 
   private constructor(parts: {
     root: string;
@@ -492,6 +496,7 @@ export class Retriever {
       }
     }
     await this.#structure.refresh();
+    this.#indexedModels = undefined;
     return { report, synced };
   }
 
@@ -506,10 +511,50 @@ export class Retriever {
     const source =
       this.#sources.get(channel) ??
       workspaceSource(this.workspace, channel, (path) => ingester.claims(path));
-    return ingester.syncChannel(channel, source, {
-      ...(options.force ? { force: true } : {}),
-      ...(options.deadline ? { deadline: options.deadline } : {}),
-    });
+    try {
+      return await ingester.syncChannel(channel, source, {
+        ...(options.force ? { force: true } : {}),
+        ...(options.deadline ? { deadline: options.deadline } : {}),
+      });
+    } finally {
+      this.#indexedModels = undefined;
+    }
+  }
+
+  /**
+   * The models the index holds vectors for, with how many cards each, most first. Read once and
+   * kept until this retriever writes vectors again.
+   */
+  indexedModels(): Promise<readonly { readonly model: string; readonly cards: number }[]> {
+    this.#indexedModels ??= (async () => {
+      const cards = new Map<string, number>();
+      for (const channel of this.registry.channels()) {
+        for (const row of (await this.vectors.stats(channel)).models) {
+          if (row.cards > 0) cards.set(row.model, (cards.get(row.model) ?? 0) + row.cards);
+        }
+      }
+      return [...cards]
+        .map(([model, count]) => ({ model, cards: count }))
+        .sort((a, b) => b.cards - a.cards || a.model.localeCompare(b.model));
+    })();
+    return this.#indexedModels;
+  }
+
+  /**
+   * Why a dense lane would find nothing: the embedder in use has no vectors in the index, and
+   * another model has. `undefined` when they agree, or when nothing has been embedded yet.
+   */
+  async #modelMismatch(): Promise<ModelMismatchError | undefined> {
+    const embedder = this.embedder;
+    if (!embedder) return undefined;
+    const models = await this.indexedModels();
+    if (models.length === 0 || models.some((row) => row.model === embedder.info.id)) {
+      return undefined;
+    }
+    return new ModelMismatchError(
+      embedder.info.id,
+      models.map((row) => row.model),
+    );
   }
 
   // --- retrieval --------------------------------------------------------------------------------
@@ -526,6 +571,8 @@ export class Retriever {
     this.#requireLoaded(channel);
     this.registry.require(channel);
     const { include } = this.#scoped(options);
+    const mismatch = await this.#modelMismatch();
+    if (mismatch) throw mismatch;
     return retrieveDense({
       channel,
       query,
@@ -571,6 +618,8 @@ export class Retriever {
 
     // Conjunction active: rank matching WQL hits by semantic relevance
     const embedder = this.#requireEmbedder();
+    const mismatch = await this.#modelMismatch();
+    if (mismatch) throw mismatch;
     const { value: limit, source } = resolveLimit('limit', options.limit);
     const offset = options.cursor === undefined ? 0 : decodeCursor(options.cursor);
     const depth = offset + limit + 1;
@@ -659,6 +708,10 @@ export class Retriever {
     const depth = offset + limit + 1;
     const split = splitConjunction(query, options.wql);
     const isConjunction = Boolean(split.semantic && split.wql);
+    // Searching by meaning with the wrong model finds nothing; say so. A WQL query still has its
+    // structural lane, so there the dense lanes are reported as degraded instead.
+    const mismatch = await this.#modelMismatch();
+    if (mismatch && (isConjunction || !looksLikeWql(query))) throw mismatch;
 
     const wanted = options.channels ?? this.registry.channels();
     const laneNames = new Set([...this.registry.channels(), 'structural']);
@@ -756,8 +809,9 @@ export class Retriever {
           runs.push({
             name: channel,
             weight: weightOf(channel, configured),
-            run: async () =>
-              (
+            run: async () => {
+              if (mismatch) throw mismatch;
+              return (
                 await retrieveDense({
                   channel,
                   query,
@@ -768,7 +822,8 @@ export class Retriever {
                   ...cardFilter(options.include),
                   ...(options.deadline ? { deadline: options.deadline } : {}),
                 })
-              ).items.map(cardHit),
+              ).items.map(cardHit);
+            },
           });
         }
       }

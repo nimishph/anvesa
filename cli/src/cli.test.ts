@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import {
   type Embedder,
+  ModelCache,
   nativeLanguageKeys,
   npmPackageSource,
   SyntaxRuntime,
@@ -305,7 +306,7 @@ describe('command line', () => {
       expect(ran.out).toContain('503');
     });
 
-    test('--model must be a built-in encoder', async () => {
+    test('--model must be a built-in encoder or one installed here', async () => {
       const { root, home, models } = pythonProject();
       const ran = await cliWith(
         { grammars: { home } },
@@ -447,6 +448,73 @@ describe('command line', () => {
     }
     expect((await cli(fresh, 'index', '--scope', '../x')).code).toBe(2);
     expect(existsSync(join(fresh, '.anvesa'))).toBe(false);
+  });
+
+  test('index records the model it embedded with; another model is named, not a silent zero', async () => {
+    const root = makeProject();
+    const first = await cli(root, 'index');
+    expect(first.code).toBe(0);
+    expect(first.err).toContain('recorded "model": "test-words"');
+    const config = JSON.parse(readFileSync(join(root, '.anvesa', 'config.json'), 'utf8'));
+    expect(config.model).toBe('test-words');
+    expect((await cli(root, 'index')).err).not.toContain('recorded');
+
+    const other = { embedder: { ...embedder, info: { ...embedder.info, id: 'other-model' } } };
+    const status = await cliWith(other, root, 'status');
+    expect(status.out).toContain('embedded with: test-words');
+    expect(status.out).toContain(
+      'warning: the index was embedded with test-words, not other-model',
+    );
+    const searched = await cliWith(other, root, 'search', 'parse the configuration file');
+    expect(searched.code).toBe(1);
+    expect(searched.err).toContain('RETRIEVER_MODEL_MISMATCH');
+    expect(searched.err).toContain('--model test-words');
+  });
+
+  test('init --model takes a model the user installed, and records it', async () => {
+    const root = makeProject();
+    const models = join(root, 'models');
+    const source = join(root, 'source');
+    mkdirSync(source, { recursive: true });
+    writeFileSync(join(source, 'model.onnx'), 'a stand-in graph');
+    copyFileSync(
+      resolve(import.meta.dir, '../../embedder/src/__fixtures__/bpe.tokenizer.json'),
+      join(source, 'tokenizer.json'),
+    );
+    await new ModelCache(models).installCustom({
+      id: 'my-encoder',
+      maxTokens: 128,
+      pooling: 'cls',
+      source,
+      files: { model: join(source, 'model.onnx'), tokenizer: join(source, 'tokenizer.json') },
+      validate: async () => 8,
+    });
+
+    const ran = await cli(
+      root,
+      'init',
+      '--no-download',
+      '--models',
+      models,
+      '--model',
+      'my-encoder',
+    );
+    expect(ran.code).toBe(0);
+    const config = JSON.parse(readFileSync(join(root, '.anvesa', 'config.json'), 'utf8'));
+    expect(config.model).toBe('my-encoder');
+    expect((await cli(root, 'model', 'verify', 'my-encoder', '--models', models)).code).toBe(0);
+
+    const unknown = await cli(
+      root,
+      'init',
+      '--no-download',
+      '--models',
+      models,
+      '--model',
+      'ghost',
+    );
+    expect(unknown.code).toBe(2);
+    expect(unknown.err).toContain('my-encoder');
   });
 
   test('where names the project in use, how it was found, and its paths', async () => {
