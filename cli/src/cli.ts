@@ -26,7 +26,8 @@ usage: anvesa <command> [arguments] [options]
                             language that lacks one, with a progress bar per download. Asks on a terminal;
                             --yes accepts the proposals; --model <id> picks the encoder; --no-download only
                             reports what it would fetch. Nothing downloads without a yes.
-  index                     bring the index up to date (--force, --retry-quarantined, --scope <path>)
+  index                     bring the index up to date (--force, --retry-quarantined, --scope <path>,
+                            --no-embed or --no-dense: structure and graph only, no embedding pass)
   status                    what is indexed, and by which channels and model
   search <question>         fused search over every channel and, for WQL, the structure
                             (--wql <wql>, --channel, --exclude <lane>, --weight <lane>=<n>)
@@ -63,7 +64,7 @@ usage: anvesa <command> [arguments] [options]
   mcp serve                 run as an MCP server on stdio, for --root (default: current directory)
   --version                 print the version
 
-options: --root <dir>  --json  --limit N  --cursor <token>  --channel <name>  --no-embed
+options: --root <dir>  --json  --limit N  --cursor <token>  --channel <name>  --no-embed (or --no-dense)
          --no-network (or ANVESA_NO_NETWORK=1)  audit mode: block every outbound connection, report attempts
          --wql <wql>  --semantic <q>  --models <dir>  --model <id>  --from <dir>  --help
 `;

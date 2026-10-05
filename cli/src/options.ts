@@ -22,6 +22,8 @@ const OPTIONS = {
   'resolved-only': { type: 'boolean' },
   expect: { type: 'string' },
   'no-embed': { type: 'boolean' },
+  // The name the docs and the stress tool use; the same as --no-embed.
+  'no-dense': { type: 'boolean' },
   models: { type: 'string' },
   model: { type: 'string' },
   scope: { type: 'string' },
@@ -78,6 +80,7 @@ export interface Parsed {
     readonly 'resolved-only'?: boolean;
     readonly expect?: string;
     readonly 'no-embed'?: boolean;
+    readonly 'no-dense'?: boolean;
     readonly models?: string;
     readonly model?: string;
     readonly scope?: string;
@@ -121,6 +124,7 @@ export function parseOptions(argv: readonly string[]): Parsed {
       allowPositionals: true,
       strict: true,
     });
+    if (values['no-dense']) values['no-embed'] = true;
     return { values, positionals } as Parsed;
   } catch (failure) {
     throw new InvalidArgumentError(

@@ -404,6 +404,15 @@ describe('command line', () => {
     expect(() => parseOptions(['--limit'])).toThrow();
   });
 
+  test('--no-dense is --no-embed by another name', async () => {
+    expect(parseOptions(['--no-dense']).values['no-embed']).toBe(true);
+    const root = makeProject();
+    const own = { embedder: undefined, env: { ANVESA_MODELS: join(root, 'no-models') } };
+    const indexed = await cliWith(own, root, 'index', '--json', '--no-dense');
+    expect(indexed.code).toBe(0);
+    expect(JSON.parse(indexed.out).report.complete).toBe(true);
+  });
+
   test('index, status, search, query, callers, dependents and explain work end to end', async () => {
     const root = makeProject();
     const before = await cli(root, 'search', 'parse configuration', '--json');
