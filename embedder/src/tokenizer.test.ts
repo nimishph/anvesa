@@ -77,9 +77,6 @@ describe('loading', () => {
         'no-pre.json',
       ),
     ).toThrow(/byte-level/);
-    expect(() =>
-      tokenizerFromJson(bpe({ added_tokens: [{ id: 1, content: 'x', special: false }] }), 'b'),
-    ).toThrow(/added_tokens/);
   });
 
   test('invalid JSON keeps its cause', () => {
@@ -138,6 +135,29 @@ describe('byte-level BPE and SentencePiece unigram against the reference impleme
       );
       expect(inner.length).toBeGreaterThan(3);
       expect(inner.filter((id) => bare.includes(id))).toEqual([]);
+    });
+  }
+
+  // The same tokenizers with ordinary added tokens on them, as ModernBERT ships placeholders and
+  // runs of spaces (scripts/make-added-token-fixtures.py): found in text, leftmost and longest,
+  // with single_word, lstrip, rstrip, normalized content and Metaspace "first" as the reference has them.
+  for (const name of ['bpe-added', 'bpe-added-prefix', 'unigram-added', 'unigram-added-first']) {
+    const tokenizer = tokenizerFromJson(fixture(`${name}.tokenizer.json`), `${name} fixture`);
+    const rows = JSON.parse(fixture(`${name}.golden.json`)) as {
+      text: string;
+      ids: number[];
+      bare: number;
+    }[];
+    test(`${name}: added tokens are found in text exactly as the reference finds them`, () => {
+      const wrong = rows
+        .filter(
+          (row) =>
+            JSON.stringify(tokenizer.encode(row.text)) !== JSON.stringify(row.ids) ||
+            tokenizer.count(row.text) !== row.bare,
+        )
+        .map((row) => ({ text: row.text, want: row.ids, got: tokenizer.encode(row.text) }));
+      expect(wrong).toEqual([]);
+      expect(rows.length).toBeGreaterThan(10);
     });
   }
 

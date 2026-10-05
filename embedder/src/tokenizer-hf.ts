@@ -23,6 +23,8 @@ export interface HfAddedToken {
   readonly single_word?: boolean;
   readonly lstrip?: boolean;
   readonly rstrip?: boolean;
+  /** Matched in the normalized text (true) or the raw text (false). Defaults to `!special`. */
+  readonly normalized?: boolean;
 }
 
 export function parseHfJson(text: string, source: string): HfTokenizerJson {
@@ -189,17 +191,124 @@ export function specialTokenIds(json: HfTokenizerJson): ReadonlySet<number> {
   return new Set((json.added_tokens ?? []).filter((t) => t.special !== false).map((t) => t.id));
 }
 
-/** Added tokens that appear in text as themselves would need matching before splitting. */
-export function refuseTextAddedTokens(json: HfTokenizerJson, source: string): void {
-  for (const token of json.added_tokens ?? []) {
-    if (token.special === false || token.single_word === true || token.rstrip === true) {
-      throw new TokenizerInvalidError(
-        source,
-        'added_tokens',
-        `the added token ${JSON.stringify(token.content)} is matched inside text, which is not supported`,
-      );
+/**
+ * A run of text between added tokens, still to be split and run through the model, or an added
+ * token found in the text. `start` says the run begins the original text (Metaspace "first").
+ */
+export type Segment = { readonly id: number } | { readonly text: string; readonly start: boolean };
+
+type Piece = { readonly id: number } | { readonly text: string; readonly at: number };
+
+const WORD = /[\p{L}\p{N}_]/u;
+const SPACE = /\s/u;
+
+/** The code point that ends just before `index`, or `undefined` at the start. */
+function charBefore(text: string, index: number): string | undefined {
+  if (index <= 0) return undefined;
+  const low = text.charCodeAt(index - 1);
+  const pair = index >= 2 && low >= 0xdc00 && low <= 0xdfff;
+  return text.slice(pair ? index - 2 : index - 1, index);
+}
+
+function charAt(text: string, index: number): string | undefined {
+  if (index >= text.length) return undefined;
+  return String.fromCodePoint(text.codePointAt(index) as number);
+}
+
+/**
+ * Find these tokens in a text as the reference (`AddedVocabulary::find_matches`) does, quirks
+ * included: matches are leftmost, longest where several start at the same place, and never
+ * overlap each other; `single_word` drops one beside a word character; `lstrip` takes the
+ * whitespace before it (not past the last match) and `rstrip` the whitespace after it. A later
+ * match inside what `rstrip` took is still emitted, as the reference emits it. Special tokens are
+ * in the set so they shadow what they overlap, as there, but are left as text.
+ */
+function matcherOf(
+  tokens: readonly { readonly content: string; readonly token: HfAddedToken }[],
+): ((text: string) => Piece[]) | undefined {
+  if (!tokens.some(({ token }) => token.special === false)) return undefined;
+  const byContent = new Map<string, HfAddedToken>();
+  for (const { content, token } of tokens)
+    if (!byContent.has(content)) byContent.set(content, token);
+  const alternatives = [...byContent.keys()]
+    .sort((a, b) => b.length - a.length)
+    .map((content) => content.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const pattern = new RegExp(alternatives.join('|'), 'gu');
+  return (text) => {
+    const pieces: Piece[] = [];
+    let cursor = 0;
+    let matched = false;
+    for (const match of text.matchAll(pattern)) {
+      let start = match.index ?? 0;
+      let end = start + match[0].length;
+      const token = byContent.get(match[0]) as HfAddedToken;
+      if (token.special !== false) continue;
+      if (token.single_word) {
+        const before = charBefore(text, start);
+        const after = charAt(text, end);
+        if ((before && WORD.test(before)) || (after && WORD.test(after))) continue;
+      }
+      if (token.lstrip) {
+        let from = start;
+        while (from > 0 && SPACE.test(text[from - 1] as string)) from -= 1;
+        start = Math.max(from, cursor);
+      }
+      if (token.rstrip) {
+        while (end < text.length && SPACE.test(text[end] as string)) end += 1;
+      }
+      if (cursor < start) pieces.push({ text: text.slice(cursor, start), at: cursor });
+      pieces.push({ id: token.id });
+      cursor = end;
+      matched = true;
     }
-  }
+    if (!matched) return [{ text, at: 0 }];
+    if (cursor < text.length) pieces.push({ text: text.slice(cursor), at: cursor });
+    return pieces;
+  };
+}
+
+/**
+ * Split a text on the file's non-special added tokens, as the reference does before anything
+ * else: those with `normalized: false` are found in the raw text, the rest is normalized, and
+ * those with `normalized: true` (their own content normalized too) are found in that. Special
+ * tokens are never matched: a text that spells one is ordinary text (see `specialTokenIds`).
+ */
+export function addedTokenSplitter(
+  json: HfTokenizerJson,
+  normalize: (text: string) => string,
+): (text: string) => readonly Segment[] {
+  const tokens = (json.added_tokens ?? []).filter((token) => token.content !== '');
+  // The reference's default: special tokens are matched raw, ordinary ones normalized.
+  const isNormalized = (token: HfAddedToken) => token.normalized ?? token.special === false;
+  const raw = matcherOf(
+    tokens
+      .filter((token) => !isNormalized(token))
+      .map((token) => ({ content: token.content, token })),
+  );
+  const normalizedMatch = matcherOf(
+    tokens
+      .filter(isNormalized)
+      .map((token) => ({ content: normalize(token.content), token }))
+      .filter(({ content }) => content !== ''),
+  );
+  return (text) => {
+    const segments: Segment[] = [];
+    for (const piece of raw ? raw(text) : [{ text, at: 0 }]) {
+      if ('id' in piece) {
+        segments.push(piece);
+        continue;
+      }
+      const normalized = normalize(piece.text);
+      for (const inner of normalizedMatch
+        ? normalizedMatch(normalized)
+        : [{ text: normalized, at: 0 }]) {
+        segments.push(
+          'id' in inner ? inner : { text: inner.text, start: piece.at === 0 && inner.at === 0 },
+        );
+      }
+    }
+    return segments;
+  };
 }
 
 /** Names a pad token goes by, tried in order when the file has no `padding` entry. */

@@ -1,5 +1,6 @@
 import { TokenizerInvalidError } from './errors.ts';
 import {
+  addedTokenSplitter,
   buildFrame,
   buildNormalizer,
   compileRegex,
@@ -8,7 +9,7 @@ import {
   type HfTokenizerJson,
   type Normalize,
   padIdOf,
-  refuseTextAddedTokens,
+  type Segment,
   specialTokenIds,
 } from './tokenizer-hf.ts';
 import type { Tokenizer } from './tokenizer-types.ts';
@@ -52,6 +53,8 @@ export interface BpeOptions {
   /** Merge pairs, best first. */
   readonly merges: readonly (readonly [string, string])[];
   readonly normalize: Normalize;
+  /** Finds the file's non-special added tokens; normalizes the text between them. */
+  readonly segments: (text: string) => readonly Segment[];
   /** Splits a text into the pieces that are merged independently. */
   readonly split: (text: string) => readonly string[];
   readonly addPrefixSpace: boolean;
@@ -89,11 +92,19 @@ export class ByteLevelBpeTokenizer implements Tokenizer {
   }
 
   tokenize(text: string): number[] {
-    const { normalize, split, addPrefixSpace } = this.#options;
-    let prepared = normalize(text);
-    if (addPrefixSpace && !prepared.startsWith(' ')) prepared = ` ${prepared}`;
+    const { segments, split, addPrefixSpace } = this.#options;
     const ids: number[] = [];
-    for (const piece of split(prepared)) this.#word(piece, ids);
+    for (const segment of segments(text)) {
+      if ('id' in segment) {
+        ids.push(segment.id);
+        continue;
+      }
+      // Nothing to split is nothing, even with a prefix space to add, as in the reference.
+      if (segment.text === '') continue;
+      let prepared = segment.text;
+      if (addPrefixSpace && !prepared.startsWith(' ')) prepared = ` ${prepared}`;
+      for (const piece of split(prepared)) this.#word(piece, ids);
+    }
     return ids;
   }
 
@@ -227,7 +238,6 @@ interface ByteLevelSpec {
 /** The byte-level BPE tokenizer a `tokenizer.json` describes, or the part that is unsupported. */
 export function bpeFromJson(json: HfTokenizerJson, source: string): ByteLevelBpeTokenizer {
   const model = json.model as HfComponent;
-  refuseTextAddedTokens(json, source);
   for (const field of ['continuing_subword_prefix', 'end_of_word_suffix'] as const) {
     if (typeof model[field] === 'string' && model[field] !== '') {
       throw new TokenizerInvalidError(
@@ -306,11 +316,13 @@ export function bpeFromJson(json: HfTokenizerJson, source: string): ByteLevelBpe
   });
   const unknownName = model.unk_token as string | null | undefined;
   const idOf = (token: string) => everything.get(token);
+  const normalize = buildNormalizer(json.normalizer, source);
   return new ByteLevelBpeTokenizer({
     vocab,
     vocabSize: everything.size,
     merges,
-    normalize: buildNormalizer(json.normalizer, source),
+    normalize,
+    segments: addedTokenSplitter(json, normalize),
     split,
     addPrefixSpace,
     ignoreMerges: model.ignore_merges === true,
