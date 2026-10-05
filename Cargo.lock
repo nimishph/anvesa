@@ -75,7 +75,7 @@ dependencies = [
 
 [[package]]
 name = "anvesa"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "anvesa-core",
  "anvesa-store",
@@ -88,7 +88,7 @@ dependencies = [
 
 [[package]]
 name = "anvesa-cli"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "anvesa",
  "clap",
@@ -100,7 +100,7 @@ dependencies = [
 
 [[package]]
 name = "anvesa-core"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -109,7 +109,7 @@ dependencies = [
 
 [[package]]
 name = "anvesa-napi"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "anvesa-core",
  "anvesa-store",
@@ -123,7 +123,7 @@ dependencies = [
 
 [[package]]
 name = "anvesa-store"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "anvesa-core",
  "rusqlite",
@@ -135,7 +135,7 @@ dependencies = [
 
 [[package]]
 name = "anvesa-syntax"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "rayon",
  "serde",

@@ -1,6 +1,6 @@
 {
   "name": "@cntxt-labs/anvesa-napi",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
   "type": "module",
   "description": "NAPI-RS native Node/Bun bindings for anvesa (SIMD vector math, batch top-k, AST parsing)",
