@@ -17,6 +17,9 @@ napi = { version = "2.16", default-features = false, features = ["napi4"] }
 napi-derive = "2.16"
 anvesa-syntax = { path = "../anvesa-syntax" }
 anvesa-core = { path = "../anvesa-core" }
+anvesa-store = { path = "../anvesa-store" }
+serde_json = { workspace = true }
+rayon = "1.10"
 
 [build-dependencies]
 napi-build = "2.1"

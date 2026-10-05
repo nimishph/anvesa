@@ -8,6 +8,7 @@ import pythonJson from './mappings/python.json' with { type: 'json' };
 import rubyJson from './mappings/ruby.json' with { type: 'json' };
 import rustJson from './mappings/rust.json' with { type: 'json' };
 import typescriptJson from './mappings/typescript.json' with { type: 'json' };
+import { syntheticTags } from './sfc.ts';
 
 /**
  * How one language's syntax-tree node types become W-expression tags.
@@ -31,6 +32,8 @@ export interface LanguageMapping {
   readonly symbolRules?: Readonly<Record<string, SymbolRule>>;
   readonly callRules?: Readonly<Record<string, CallRule>>;
   readonly importRules?: Readonly<Record<string, ImportRule>>;
+  /** Where the source declares which class a name holds; see `TypeRules`. */
+  readonly typeRules?: TypeRules;
 }
 
 export type SymbolKind =
@@ -58,6 +61,52 @@ export interface CallRule {
 export interface ImportRule {
   readonly sourceChild?: string;
   readonly specifierChild?: string;
+}
+
+export type TypeOrigin = 'param' | 'property' | 'promoted' | 'assigned' | 'return';
+export const TYPE_ORIGINS: readonly TypeOrigin[] = [
+  'param',
+  'property',
+  'promoted',
+  'assigned',
+  'return',
+];
+
+/**
+ * Declared types, as data: which syntax nodes bind a name to a class the source writes, so a call
+ * on that name (or on a call's result) can be followed to the class. Only what is written is
+ * recorded; nothing is inferred.
+ */
+export interface TypeRules {
+  /** Node types inside a type expression that name a class (`named_type`, `type_identifier`). */
+  readonly classTypes: readonly string[];
+  /** Type names that are not classes, compared in lower case (`int`, `null`, `string`). */
+  readonly nonClasses: readonly string[];
+  readonly bindings: readonly TypeBinding[];
+}
+
+/** One kind of syntax node that binds a name to a type. */
+export interface TypeBinding {
+  /** The syntax node type: `simple_parameter`, `property_declaration`. */
+  readonly node: string;
+  /**
+   * What it binds. `return` binds the callable's own result (no name); `assigned` binds a name to
+   * the class of the object created on the right of an assignment.
+   */
+  readonly origin: TypeOrigin;
+  /** The field holding the type expression. Not used by `assigned`. */
+  readonly typeField?: string;
+  /** The field holding the bound name. */
+  readonly nameField?: string;
+  /** The bound name counts only when its node is of this type (`variable_name`). */
+  readonly nameType?: string;
+  /** Names are read from each named child of this type (a property list), not from the node. */
+  readonly each?: string;
+  /** `assigned`: the field holding the value, which must be of `valueType`. */
+  readonly valueField?: string;
+  readonly valueType?: string;
+  /** `assigned`: the child types of the value that name the class created. */
+  readonly createdTypes?: readonly string[];
 }
 
 /** Tags treated as callable when a mapping does not say otherwise. */
@@ -154,7 +203,52 @@ export function validateMapping(raw: unknown, source = 'mapping'): LanguageMappi
     ...(raw.importRules === undefined
       ? {}
       : { importRules: validateRules(raw.importRules, 'importRules', at, validateImportRule) }),
+    ...(raw.typeRules === undefined ? {} : { typeRules: validateTypeRules(raw.typeRules, at) }),
   };
+}
+
+function validateTypeRules(raw: unknown, at: Fail): TypeRules {
+  if (!isRecord(raw)) return at('typeRules', 'expected an object');
+  const classTypes = requireStringArray(raw.classTypes, 'typeRules.classTypes', at);
+  const nonClasses = requireStringArray(raw.nonClasses, 'typeRules.nonClasses', at);
+  if (!Array.isArray(raw.bindings)) return at('typeRules.bindings', 'expected an array');
+  const bindings = raw.bindings.map((entry, index): TypeBinding => {
+    const where = `typeRules.bindings[${index}]`;
+    if (!isRecord(entry)) return at(where, 'expected an object');
+    const node = optionalString(entry, 'node', where, at);
+    if (node === undefined) return at(`${where}.node`, 'expected a syntax node type');
+    const origin = entry.origin;
+    if (typeof origin !== 'string' || !(TYPE_ORIGINS as readonly string[]).includes(origin)) {
+      return at(`${where}.origin`, `expected one of ${TYPE_ORIGINS.join(', ')}`);
+    }
+    const fields: Record<string, string> = {};
+    for (const key of ['typeField', 'nameField', 'nameType', 'each', 'valueField', 'valueType']) {
+      const value = optionalString(entry, key, where, at);
+      if (value !== undefined) fields[key] = value;
+    }
+    const createdTypes =
+      entry.createdTypes === undefined
+        ? undefined
+        : requireStringArray(entry.createdTypes, `${where}.createdTypes`, at);
+    if (origin === 'assigned') {
+      for (const key of ['nameField', 'valueField', 'valueType']) {
+        if (fields[key] === undefined) at(`${where}.${key}`, 'an assigned binding needs it');
+      }
+      if (!createdTypes) at(`${where}.createdTypes`, 'an assigned binding needs it');
+    } else {
+      if (fields.typeField === undefined) at(`${where}.typeField`, 'needed to read the type');
+      if (origin !== 'return' && fields.nameField === undefined) {
+        at(`${where}.nameField`, 'needed to read the bound name');
+      }
+    }
+    return {
+      node,
+      origin: origin as TypeOrigin,
+      ...fields,
+      ...(createdTypes ? { createdTypes } : {}),
+    };
+  });
+  return { classTypes, nonClasses, bindings };
 }
 
 type Fail = (location: string, problem: string) => never;
@@ -340,9 +434,12 @@ export class MappingRegistry {
     return [...this.#byLanguage.keys()];
   }
 
-  /** Every structural tag any registered mapping declares, across every language. */
+  /**
+   * Every structural tag any registered mapping declares, across every language, and every tag the
+   * engine writes itself: a query is about what an outline can hold, not only about mappings.
+   */
   knownTags(): ReadonlySet<string> {
-    const tags = new Set<string>();
+    const tags = new Set<string>(syntheticTags());
     for (const compiled of this.#byName.values()) {
       for (const tag of compiled.mapping.structuralTags) tags.add(tag);
     }

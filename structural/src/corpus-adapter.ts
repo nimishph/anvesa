@@ -101,6 +101,10 @@ export const docblockAnnotationAdapter = new DocblockAnnotationCorpusAdapter();
 const LARAVEL_ROUTE_REGEX =
   /\bRoute::(get|post|put|delete|patch|options|any)\(\s*['"]([^'"]+)['"](?:\s*,\s*([^)]+))?/gi;
 
+/** Regex finding Lumen routes on the injected router: $router->get('/path', ...) */
+const LUMEN_ROUTE_REGEX =
+  /\$router->(get|post|put|delete|patch|options|any|fallback)\(\s*['"]([^'"]+)['"](?:\s*,\s*([^)]+))?/gi;
+
 /** Regex finding Express/Node routes: app.get('/path', ...) or router.post('/path', ...) */
 const EXPRESS_ROUTE_REGEX =
   /\b(?:app|router)\.(get|post|put|delete|patch|all)\(\s*['"]([^'"]+)['"](?:\s*,\s*([^)]+))?/gi;
@@ -130,6 +134,7 @@ export class RouteEndpointCorpusAdapter implements CorpusAdapter {
     }
     return (
       ctx.content.includes('Route::') ||
+      ctx.content.includes('$router->') ||
       ctx.content.includes('router.') ||
       ctx.content.includes('app.') ||
       NEXTJS_ROUTE_FILE_REGEX.test(ctx.path)
@@ -171,25 +176,27 @@ export class RouteEndpointCorpusAdapter implements CorpusAdapter {
         continue;
       }
 
-      // Laravel
-      for (const match of line.matchAll(LARAVEL_ROUTE_REGEX)) {
-        const method = (match[1] as string).toUpperCase();
-        const routePath = match[2] as string;
-        const handlerRaw = (match[3] ?? '').trim().replace(/;$/, '');
-        const handler = cleanHandler(handlerRaw) || 'closure';
-        records.push({
-          id: `${ctx.path}:L${lineNum}:${method}:${routePath}`,
-          path: ctx.path,
-          attrs: {
-            type: 'endpoint',
-            method,
-            route: routePath.startsWith('/') ? routePath : `/${routePath}`,
-            handler,
-            line: String(lineNum),
-            framework: 'laravel',
-          },
-          text: `${method} ${routePath} -> ${handler}`,
-        });
+      // Laravel's Route:: facade, and Lumen's injected $router
+      for (const pattern of [LARAVEL_ROUTE_REGEX, LUMEN_ROUTE_REGEX]) {
+        for (const match of line.matchAll(pattern)) {
+          const method = (match[1] as string).toUpperCase();
+          const routePath = match[2] as string;
+          const handlerRaw = (match[3] ?? '').trim().replace(/;$/, '');
+          const handler = cleanHandler(handlerRaw) || 'closure';
+          records.push({
+            id: `${ctx.path}:L${lineNum}:${method}:${routePath}`,
+            path: ctx.path,
+            attrs: {
+              type: 'endpoint',
+              method,
+              route: routePath.startsWith('/') ? routePath : `/${routePath}`,
+              handler,
+              line: String(lineNum),
+              framework: 'laravel',
+            },
+            text: `${method} ${routePath} -> ${handler}`,
+          });
+        }
       }
 
       // Express / Koa

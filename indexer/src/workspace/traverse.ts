@@ -151,7 +151,7 @@ export class Traversal implements AsyncIterable<DirectoryVisit> {
     }
 
     const kept: TraversedEntry[] = [];
-    const descend: { entry: TraversedEntry; nested: boolean }[] = [];
+    const subdirectories: TraversedEntry[] = [];
     for (const dirent of names) {
       const childPath = path === '' ? dirent.name : `${path}/${dirent.name}`;
       let kind: EntryKind | undefined;
@@ -172,10 +172,16 @@ export class Traversal implements AsyncIterable<DirectoryVisit> {
       }
       const entry: TraversedEntry = { name: dirent.name, path: childPath, kind };
       kept.push(entry);
-      if (kind === 'directory') {
-        descend.push({ entry, nested: await this.#hasOwnRepo(join(absolute, dirent.name)) });
-      }
+      if (kind === 'directory') subdirectories.push(entry);
     }
+    // Asked of every subdirectory at once rather than one after another.
+    const nestedness = await Promise.all(
+      subdirectories.map((entry) => this.#hasOwnRepo(join(absolute, entry.name))),
+    );
+    const descend = subdirectories.map((entry, index) => ({
+      entry,
+      nested: nestedness[index] === true,
+    }));
 
     this.report.directories += 1;
     yield { path, repo, entries: kept };

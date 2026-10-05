@@ -134,7 +134,7 @@ Bundled mappings: TypeScript/JS/Vue, Python, PHP, Go, Rust, Java, Ruby, C, C++.
 anvesa mapping list                          # list active mappings and tiers (bundled, project, user)
 anvesa mapping audit <language>              # inspect codebase and report unmapped syntax node types
 anvesa mapping refine <language>             # automatically learn and install unmapped node rules
-anvesa mapping train <language> --samples <dir> # learn a complete mapping from scratch
+anvesa mapping train <language> --samples <dir> [dir...] # learn from code; extends the mapping in effect (--replace: from scratch)
 ```
 
 ### 9. Channels & Patterns

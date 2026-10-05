@@ -72,3 +72,15 @@ export class NotIndexedError extends RetrieverSubsystemError {
     });
   }
 }
+
+/** The assistant asked about undecided syntax (a language model) could not be used. */
+export class AssistError extends RetrieverSubsystemError {
+  readonly code = 'RETRIEVER_ASSIST';
+
+  constructor(problem: string, init: ErrorInit = {}) {
+    super(`The training assistant failed: ${problem}`, {
+      ...init,
+      context: { problem, ...init.context },
+    });
+  }
+}

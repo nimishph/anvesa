@@ -1,10 +1,14 @@
 import { afterAll, describe, expect, test } from 'bun:test';
 import { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/anvesa-syntax';
 import { MappingTrainingError } from './errors.ts';
-import { builtinMappings, MappingRegistry } from './mapping.ts';
+import { builtinMappings, type LanguageMapping, MappingRegistry } from './mapping.ts';
 import {
+  type AssistCandidate,
+  applySuggestions,
+  assistCandidates,
   checkGolden,
   deduceMapping,
+  extendMapping,
   inspectTopology,
   synthesizeGolden,
   type TrainingSample,
@@ -303,6 +307,188 @@ func main() {
     expect(loose.mapping.nodeTypeMap.function_definition).toBeDefined();
     expect(strict.mapping.nodeTypeMap.function_definition).toBeUndefined();
     expect(strict.issues.map((i) => i.code)).toContain('NO_DECLARATIONS');
+  });
+});
+
+const GENERATORS = ['g1.py', 'g2.py', 'g3.py'].map((path) =>
+  sample(
+    path,
+    `def numbers(path):
+    yield 1
+    yield 2
+    with open(path) as handle:
+        pass
+    return [x for x in range(3) if x]
+`,
+  ),
+);
+const shippedPython = () =>
+  builtinMappings().find((entry) => entry.mapping.name === 'python')?.mapping as LanguageMapping;
+
+describe('extending a base mapping', () => {
+  test('a clause carrying its parent’s tag is not tagged again', async () => {
+    const topology = await inspectTopology(runtime, 'python', GENERATORS);
+    const learned = deduceMapping(topology, { extensions: ['.py'] });
+    expect(learned.mapping.nodeTypeMap.with_statement).toBe('with');
+    expect(learned.mapping.nodeTypeMap.with_clause).toBeUndefined();
+  });
+
+  test('what the base maps stays; only what it lacks is added, and never inside its constructs', async () => {
+    const base = shippedPython();
+    const report = await trainMapping(runtime, 'python', GENERATORS, {
+      extensions: ['.py'],
+      base,
+      minFiles: 3,
+    });
+    for (const [type, tag] of Object.entries(base.nodeTypeMap)) {
+      expect(report.mapping.nodeTypeMap[type]).toBe(tag);
+    }
+    expect(report.mapping.nameExtractors).toMatchObject(base.nameExtractors);
+    expect(report.mapping.name).toBe('python');
+    expect(report.extension?.added.map((d) => d.type)).toEqual(['yield']);
+    expect(report.mapping.nodeTypeMap.yield).toBe('yield');
+    // Comprehension clauses are the base's to describe: a learned `for` there would change `//for`.
+    for (const type of ['for_in_clause', 'if_clause', 'with_clause']) {
+      expect(report.mapping.nodeTypeMap[type]).toBeUndefined();
+    }
+    const skipped = report.extension?.skipped.find((s) => s.type === 'for_in_clause');
+    expect(skipped?.reason).toContain('already maps');
+    expect(report.verification.tags.every((t) => t.found === t.expected)).toBe(true);
+  });
+
+  test('a node type in too few distinct files is not added, however often it occurs there', async () => {
+    const base = shippedPython();
+    const topology = await inspectTopology(runtime, 'python', GENERATORS);
+    expect(topology.types.get('yield')?.files).toBe(3);
+    const strict = extendMapping(base, deduceMapping(topology, { extensions: ['.py'] }), topology, {
+      extensions: ['.py'],
+      minFiles: 4,
+    });
+    expect(strict.mapping.nodeTypeMap.yield).toBeUndefined();
+    expect(strict.extension?.added).toEqual([]);
+    expect(strict.extension?.skipped.find((s) => s.type === 'yield')?.reason).toContain(
+      'in 3 files',
+    );
+  });
+
+  test('too few samples is said, so the caller can refuse to trust it', async () => {
+    const few = await trainMapping(runtime, 'python', GENERATORS, {
+      extensions: ['.py'],
+      minSamples: 5,
+    });
+    expect(few.issues.map((i) => i.code)).toContain('TOO_FEW_SAMPLES');
+    const enough = await trainMapping(runtime, 'python', GENERATORS, {
+      extensions: ['.py'],
+      minSamples: 3,
+    });
+    expect(enough.issues.map((i) => i.code)).not.toContain('TOO_FEW_SAMPLES');
+  });
+});
+
+describe('asking an assistant about what is left', () => {
+  test('it is asked only about unmapped types outside what the base describes, by statistics alone', async () => {
+    const topology = await inspectTopology(runtime, 'python', GENERATORS);
+    const candidates = assistCandidates(shippedPython(), topology);
+    const types = candidates.map((c) => c.type);
+    expect(types).toContain('yield');
+    // Mapped by the base, or inside something it maps: not asked.
+    for (const type of ['function_definition', 'for_in_clause', 'argument_list']) {
+      expect(types).not.toContain(type);
+    }
+    const sent = JSON.stringify(candidates);
+    expect(sent).not.toContain('numbers');
+    expect(sent).not.toContain('open(');
+  });
+
+  test('answers are checked against the samples; only what holds up is added', async () => {
+    const base = shippedPython();
+    const topology = await inspectTopology(runtime, 'python', GENERATORS);
+    const candidates = assistCandidates(base, topology);
+    const { mapping, outcome } = applySuggestions(
+      base,
+      topology,
+      candidates,
+      [
+        { type: 'yield', tag: 'yield' },
+        { type: 'yield', tag: 'return' },
+        { type: 'lambda_expression', tag: 'lambda' },
+        { type: 'expression_statement', tag: 'statement' },
+        { type: 'module', tag: 'module', nameChild: 'identifier' },
+        { type: 'with_item', tag: 'with' },
+        { type: 'as_pattern', tag: 'none' },
+      ],
+      'test-model',
+    );
+    expect(outcome.accepted.map((d) => [d.type, d.tag])).toEqual([['yield', 'yield']]);
+    expect(mapping.nodeTypeMap.yield).toBe('yield');
+    const why = Object.fromEntries(outcome.rejected.map((r) => [`${r.type}:${r.tag}`, r.reason]));
+    expect(why['yield:return']).toContain('answered twice');
+    expect(why['lambda_expression:lambda']).toContain('not asked about');
+    expect(why['expression_statement:statement']).toContain('not one of the tags');
+    expect(why['module:module']).toContain('never has');
+    expect(why['with_item:with']).toContain('count twice');
+    expect(outcome.declined).toBe(1);
+    for (const [type, tag] of Object.entries(base.nodeTypeMap)) {
+      expect(mapping.nodeTypeMap[type]).toBe(tag);
+    }
+  });
+
+  test('training with an assistant still checks the result against the samples', async () => {
+    let asked: readonly AssistCandidate[] = [];
+    const report = await trainMapping(runtime, 'python', GENERATORS, {
+      extensions: ['.py'],
+      base: shippedPython(),
+      assist: async (candidates) => {
+        asked = candidates;
+        return {
+          model: 'test-model',
+          suggestions: [
+            { type: 'with_item', tag: 'with' },
+            { type: 'invented_node', tag: 'class', nameChild: 'identifier' },
+          ],
+        };
+      },
+    });
+    expect(asked.length).toBeGreaterThan(0);
+    expect(report.assist?.model).toBe('test-model');
+    expect(report.assist?.accepted).toEqual([]);
+    expect(report.assist?.rejected.map((r) => r.type)).toEqual(['with_item', 'invented_node']);
+    expect(report.mapping.nodeTypeMap.invented_node).toBeUndefined();
+    expect(report.verification.tags.every((t) => t.found === t.expected)).toBe(true);
+  });
+});
+
+describe('starting from the grammar’s tags query', () => {
+  test('its definitions and calls are used where the samples bear them out', async () => {
+    const tags = [
+      '(function_definition name: (identifier) @name) @definition.function',
+      '(call function: (identifier) @name) @reference.call',
+      '(class_definition name: (identifier) @name) @definition.class',
+      '(module (expression_statement (assignment left: (identifier) @name) @definition.constant))',
+      '(with_statement name: (identifier) @name) @definition.module',
+    ].join('\n');
+    const report = await trainMapping(runtime, 'python', GENERATORS, { extensions: ['.py'], tags });
+    expect(report.tags?.applied.map((d) => [d.type, d.tag])).toEqual([
+      ['function_definition', 'function'],
+      ['call', 'call'],
+    ]);
+    const why = Object.fromEntries((report.tags?.skipped ?? []).map((s) => [s.type, s.reason]));
+    expect(why.class_definition).toContain('does not occur in the samples');
+    expect(why.assignment).toContain('only inside');
+    expect(why.with_statement).toContain('never show it with a identifier child');
+    expect(report.mapping.nodeTypeMap.function_definition).toBe('function');
+    expect(report.mapping.nameExtractors.function_definition).toBe('identifier');
+    expect(report.verification.tags.every((t) => t.found === t.expected)).toBe(true);
+
+    // Extending a base keeps the record of what the query said, and the base still has the last word.
+    const based = await trainMapping(runtime, 'python', GENERATORS, {
+      extensions: ['.py'],
+      tags,
+      base: shippedPython(),
+    });
+    expect(based.tags?.applied.length).toBe(2);
+    expect(based.extension).toBeDefined();
+    expect(based.mapping.nodeTypeMap.call).toBe(shippedPython().nodeTypeMap.call);
   });
 });
 

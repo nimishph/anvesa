@@ -30,6 +30,7 @@
     "eval:retrieval": "bun run eval/src/retrieval-run.ts",
     "golden": "bun run eval/src/golden-run.ts",
     "package": "bun run tooling/package-release.ts",
+    "native:build": "bun run tooling/build-native.ts",
     "stress": "bun run tooling/stress/cli.ts",
     "smoke": "bun run tooling/smoke-package.ts && bun run tooling/smoke-npm.ts",
     "changelog": "git-cliff -o CHANGELOG.md",

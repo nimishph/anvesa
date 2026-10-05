@@ -48,12 +48,28 @@ function age(root: string, path = ''): void {
 /** An extractor that counts, and can be told to fail. */
 class CountingExtractor extends FactExtractor {
   extracted: string[] = [];
+  batches: number[] = [];
   failWith: ((path: string) => Error | undefined) | undefined;
   override async extractWithStructure(...args: Parameters<FactExtractor['extractWithStructure']>) {
     const failure = this.failWith?.(args[0]);
     if (failure) throw failure;
     this.extracted.push(args[0]);
     return super.extractWithStructure(...args);
+  }
+  /** The indexer extracts a window at a time: each file is counted, or failed, as it would be alone. */
+  override async extractManyWithStructure(
+    ...[files, options]: Parameters<FactExtractor['extractManyWithStructure']>
+  ) {
+    this.batches.push(files.length);
+    const failures = files.map((file) => this.failWith?.(file.path));
+    const passing = files.filter((_, index) => failures[index] === undefined);
+    for (const file of passing) this.extracted.push(file.path);
+    const results = await super.extractManyWithStructure(passing, options);
+    let next = 0;
+    return files.map((_, index) => {
+      const failure = failures[index];
+      return failure ? { failure } : (results[next++] as (typeof results)[number]);
+    });
   }
 }
 
@@ -66,14 +82,17 @@ interface Setup {
 
 async function setup(
   files: Record<string, string>,
-  options: Partial<IndexerOptions> & { store?: IndexStore; root?: string } = {},
+  options: Partial<IndexerOptions> & { store?: IndexStore; root?: string; native?: boolean } = {},
 ): Promise<Setup> {
   const root = options.root ?? makeTree(files);
   if (!options.root) age(root);
   const workspace = await Workspace.open({ root, config: defaultConfig() });
   const store = options.store ?? new MemoryIndexStore();
-  const extractor = new CountingExtractor(new StructuralEngine({ runtime: newRuntime() }));
-  const indexer = new Indexer({ workspace, store, extractor, ...options });
+  const { native, ...rest } = options;
+  const extractor = new CountingExtractor(
+    new StructuralEngine({ runtime: newRuntime(), ...(native === undefined ? {} : { native }) }),
+  );
+  const indexer = new Indexer({ workspace, store, extractor, ...rest });
   return { root, store, extractor, indexer };
 }
 
@@ -303,12 +322,17 @@ describe('incremental runs', () => {
 });
 
 describe('failure isolation', () => {
+  // Where the addon is built, Go is parsed natively. On web-tree-sitter this runtime has no Go
+  // grammar, which is the failure these two tests need.
   test('a file that cannot be indexed is quarantined with the reason, and the rest carry on', async () => {
-    const { indexer, store } = await setup({
-      ...project,
-      'bin.ts': 'export const x = 1;\0\0\0',
-      'main.go': 'package main\nfunc main() {}\n',
-    });
+    const { indexer, store } = await setup(
+      {
+        ...project,
+        'bin.ts': 'export const x = 1;\0\0\0',
+        'main.go': 'package main\nfunc main() {}\n',
+      },
+      { native: false },
+    );
     const report = await indexer.index();
     const byPath = Object.fromEntries(report.quarantined.map((q) => [q.path, q.reason]));
     expect(byPath['bin.ts']).toBe('binary');
@@ -322,7 +346,10 @@ describe('failure isolation', () => {
   });
 
   test('a quarantined file is left alone until it changes, or is retried on request', async () => {
-    const { indexer, extractor, root } = await setup({ ...project, 'main.go': 'package main\n' });
+    const { indexer, extractor, root } = await setup(
+      { ...project, 'main.go': 'package main\n' },
+      { native: false },
+    );
     await indexer.index();
     const second = await indexer.index();
     expect(second.files.stillQuarantined).toBe(1);
@@ -343,6 +370,59 @@ describe('failure isolation', () => {
     expect(report.quarantined).toMatchObject([{ path: 'src/lone.ts', reason: 'extract-failed' }]);
     expect(await store.facts('src/lone.ts')).toBeUndefined();
     expect((await store.fileState('src/lone.ts'))?.status).toBe('quarantined');
+  });
+});
+
+describe('many files at once', () => {
+  const many = Object.fromEntries(
+    Array.from({ length: 150 }, (_, i) => {
+      const name = `m${String(i).padStart(3, '0')}`;
+      return [
+        `src/${name}.ts`,
+        `export function ${name}() { return ${i}; }
+`,
+      ];
+    }),
+  );
+
+  test('are extracted a window at a time and applied in the order of the walk', async () => {
+    const { indexer, extractor, store } = await setup(many);
+    const files: string[] = [];
+    const report = await indexer.index({
+      onEvent: (event) => {
+        if (event.kind === 'file') files.push(event.path);
+      },
+    });
+    expect(report.files.added).toBe(150);
+    expect(files).toEqual(Object.keys(many).sort());
+    expect(extractor.batches.length).toBeGreaterThan(1);
+    expect(Math.max(...extractor.batches)).toBeLessThanOrEqual(64);
+    expect((await store.findSymbols({ path: 'src/m149.ts' })).items.map((s) => s.name)).toEqual([
+      'm149',
+    ]);
+  });
+
+  test('one file that fails is quarantined alone; the rest of its window is indexed', async () => {
+    const { indexer, extractor, store } = await setup(many);
+    class ExtractorBroke extends Error {}
+    extractor.failWith = (path) =>
+      path === 'src/m070.ts' ? new ExtractorBroke('boom') : undefined;
+    const report = await indexer.index();
+    expect(report.quarantined.map((q) => q.path)).toEqual(['src/m070.ts']);
+    expect(report.files.added).toBe(149);
+    expect((await store.fileState('src/m069.ts'))?.status).toBe('indexed');
+    expect((await store.fileState('src/m071.ts'))?.status).toBe('indexed');
+  });
+
+  test('a second run reads nothing that did not change', async () => {
+    const { indexer, extractor } = await setup(many);
+    await indexer.index();
+    extractor.extracted = [];
+    extractor.batches = [];
+    const report = await indexer.index();
+    expect(report.files.unchanged).toBe(150);
+    expect(extractor.extracted).toEqual([]);
+    expect(extractor.batches).toEqual([]);
   });
 });
 

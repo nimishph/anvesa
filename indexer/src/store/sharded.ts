@@ -230,11 +230,34 @@ export class ShardedIndexStore implements IndexStore {
   }
 
   #of(path: string): IndexStore {
-    return this.#shards.get(this.#assigner.assign(path));
+    return this.#grouped(this.#shards.get(this.#assigner.assign(path)));
   }
 
   #each(): readonly { readonly id: string; readonly store: IndexStore }[] {
-    return this.#shards.existing().map((id) => ({ id, store: this.#shards.get(id) }));
+    return this.#shards
+      .existing()
+      .map((id) => ({ id, store: this.#grouped(this.#shards.get(id)) }));
+  }
+
+  /** While writes are grouped, each shard joins the group the first time it is used. */
+  #group: Map<IndexStore, () => void> | undefined;
+
+  #grouped(store: IndexStore): IndexStore {
+    if (this.#group && !this.#group.has(store)) {
+      this.#group.set(store, store.groupWrites?.() ?? (() => undefined));
+    }
+    return store;
+  }
+
+  groupWrites(): () => void {
+    if (this.#group) return () => undefined;
+    this.#group = new Map();
+    this.#grouped(this.#meta);
+    return () => {
+      const ends = [...(this.#group?.values() ?? [])];
+      this.#group = undefined;
+      for (const end of ends) end();
+    };
   }
 
   /** The routed shard's answer, or, when it has none, whatever another shard holds. */
@@ -243,7 +266,7 @@ export class ShardedIndexStore implements IndexStore {
     ask: (store: IndexStore) => Promise<T | undefined>,
   ): Promise<T | undefined> {
     const routed = this.#assigner.assign(path);
-    const direct = await ask(this.#shards.get(routed));
+    const direct = await ask(this.#grouped(this.#shards.get(routed)));
     if (direct !== undefined) return direct;
     for (const { id, store } of this.#each()) {
       if (id === routed) continue;

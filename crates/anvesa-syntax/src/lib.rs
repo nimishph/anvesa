@@ -1,3 +1,7 @@
+pub mod facts;
+pub mod outline;
+pub mod topology;
+
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use tree_sitter::{Node, Parser};
@@ -47,9 +51,36 @@ pub fn get_tree_sitter_language(lang: &str) -> Option<tree_sitter::Language> {
         "python" | "py" => Some(tree_sitter_python::LANGUAGE.into()),
         "rust" | "rs" => Some(tree_sitter_rust::LANGUAGE.into()),
         "go" => Some(tree_sitter_go::LANGUAGE.into()),
+        // A Vue component's script is parsed as TSX, after everything else is blanked out.
+        "vue" => Some(tree_sitter_typescript::LANGUAGE_TSX.into()),
+        "css" => Some(tree_sitter_css::LANGUAGE.into()),
+        "java" => Some(tree_sitter_java::LANGUAGE.into()),
+        "c" => Some(tree_sitter_c::LANGUAGE.into()),
+        "cpp" => Some(tree_sitter_cpp::LANGUAGE.into()),
+        "ruby" | "rb" => Some(tree_sitter_ruby::LANGUAGE.into()),
+        "csharp" | "c_sharp" | "cs" => Some(tree_sitter_c_sharp::LANGUAGE.into()),
+        "php" => Some(tree_sitter_php::LANGUAGE_PHP.into()),
         _ => None,
     }
 }
+
+/// The language keys (as the TypeScript registry names them) that have a grammar compiled in.
+pub const NATIVE_LANGUAGES: [&str; 14] = [
+    "javascript",
+    "typescript",
+    "tsx",
+    "vue",
+    "css",
+    "python",
+    "go",
+    "rust",
+    "java",
+    "c",
+    "cpp",
+    "ruby",
+    "csharp",
+    "php",
+];
 
 pub fn extract_file_outline(path: &str, lang_key: &str, source: &str) -> NativeFileOutline {
     let language = match get_tree_sitter_language(lang_key) {
@@ -99,7 +130,14 @@ pub fn extract_file_outline(path: &str, lang_key: &str, source: &str) -> NativeF
     let mut imports = Vec::new();
 
     let bytes = source.as_bytes();
-    walk_ast(root, bytes, lang_key, &mut symbols, &mut calls, &mut imports);
+    walk_ast(
+        root,
+        bytes,
+        lang_key,
+        &mut symbols,
+        &mut calls,
+        &mut imports,
+    );
 
     NativeFileOutline {
         path: path.to_string(),
@@ -135,71 +173,237 @@ fn walk_ast(
     let end_line = (node.end_position().row + 1) as u32;
 
     match lang {
-        "typescript" | "tsx" | "javascript" | "js" | "jsx" | "mjs" | "cjs" => {
-            match kind {
-                "function_declaration" | "function" => {
-                    if let Some(name_node) = node.child_by_field_name("name") {
-                        let name = node_text(name_node, source).to_string();
-                        let is_exported = is_ts_exported(node);
-                        symbols.push(NativeSymbol {
+        "typescript" | "tsx" | "javascript" | "js" | "jsx" | "mjs" | "cjs" => match kind {
+            "function_declaration" | "function" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = node_text(name_node, source).to_string();
+                    let is_exported = is_ts_exported(node);
+                    symbols.push(NativeSymbol {
+                        name,
+                        kind: "function".to_string(),
+                        start_line,
+                        end_line,
+                        signature: None,
+                        doc: extract_preceding_doc(node, source),
+                        exported: is_exported,
+                    });
+                }
+            }
+            "method_definition" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = node_text(name_node, source).to_string();
+                    symbols.push(NativeSymbol {
+                        name,
+                        kind: "method".to_string(),
+                        start_line,
+                        end_line,
+                        signature: None,
+                        doc: extract_preceding_doc(node, source),
+                        exported: false,
+                    });
+                }
+            }
+            "class_declaration" | "class" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = node_text(name_node, source).to_string();
+                    let is_exported = is_ts_exported(node);
+                    symbols.push(NativeSymbol {
+                        name,
+                        kind: "class".to_string(),
+                        start_line,
+                        end_line,
+                        signature: None,
+                        doc: extract_preceding_doc(node, source),
+                        exported: is_exported,
+                    });
+                }
+            }
+            "interface_declaration" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = node_text(name_node, source).to_string();
+                    let is_exported = is_ts_exported(node);
+                    symbols.push(NativeSymbol {
+                        name,
+                        kind: "interface".to_string(),
+                        start_line,
+                        end_line,
+                        signature: None,
+                        doc: extract_preceding_doc(node, source),
+                        exported: is_exported,
+                    });
+                }
+            }
+            "type_alias_declaration" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = node_text(name_node, source).to_string();
+                    let is_exported = is_ts_exported(node);
+                    symbols.push(NativeSymbol {
+                        name,
+                        kind: "type".to_string(),
+                        start_line,
+                        end_line,
+                        signature: None,
+                        doc: extract_preceding_doc(node, source),
+                        exported: is_exported,
+                    });
+                }
+            }
+            "call_expression" => {
+                if let Some(fn_node) = node.child_by_field_name("function") {
+                    let name = extract_call_name(fn_node, source);
+                    if !name.is_empty() {
+                        calls.push(NativeCall {
                             name,
-                            kind: "function".to_string(),
-                            start_line,
-                            end_line,
-                            signature: None,
-                            doc: extract_preceding_doc(node, source),
-                            exported: is_exported,
+                            line: start_line,
+                            kind: "call".to_string(),
                         });
                     }
                 }
-                "method_definition" => {
-                    if let Some(name_node) = node.child_by_field_name("name") {
-                        let name = node_text(name_node, source).to_string();
-                        symbols.push(NativeSymbol {
+            }
+            "new_expression" => {
+                if let Some(ctor_node) = node.child_by_field_name("constructor") {
+                    let name = extract_call_name(ctor_node, source);
+                    if !name.is_empty() {
+                        calls.push(NativeCall {
                             name,
-                            kind: "method".to_string(),
-                            start_line,
-                            end_line,
-                            signature: None,
-                            doc: extract_preceding_doc(node, source),
-                            exported: false,
+                            line: start_line,
+                            kind: "new".to_string(),
                         });
                     }
                 }
-                "class_declaration" | "class" => {
-                    if let Some(name_node) = node.child_by_field_name("name") {
-                        let name = node_text(name_node, source).to_string();
-                        let is_exported = is_ts_exported(node);
-                        symbols.push(NativeSymbol {
+            }
+            "import_statement" => {
+                if let Some(src_node) = node.child_by_field_name("source") {
+                    let raw = node_text(src_node, source);
+                    let clean = raw.trim_matches(|c| c == '\'' || c == '"').to_string();
+                    imports.push(NativeImport {
+                        specifier: clean,
+                        kind: "static".to_string(),
+                        line: start_line,
+                    });
+                }
+            }
+            _ => {}
+        },
+        "python" | "py" => match kind {
+            "function_definition" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = node_text(name_node, source).to_string();
+                    let exported = !name.starts_with('_');
+                    symbols.push(NativeSymbol {
+                        name,
+                        kind: "function".to_string(),
+                        start_line,
+                        end_line,
+                        signature: None,
+                        doc: extract_python_docstring(node, source),
+                        exported,
+                    });
+                }
+            }
+            "class_definition" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = node_text(name_node, source).to_string();
+                    let exported = !name.starts_with('_');
+                    symbols.push(NativeSymbol {
+                        name,
+                        kind: "class".to_string(),
+                        start_line,
+                        end_line,
+                        signature: None,
+                        doc: extract_python_docstring(node, source),
+                        exported,
+                    });
+                }
+            }
+            "call" => {
+                if let Some(fn_node) = node.child_by_field_name("function") {
+                    let name = extract_call_name(fn_node, source);
+                    if !name.is_empty() {
+                        calls.push(NativeCall {
                             name,
-                            kind: "class".to_string(),
-                            start_line,
-                            end_line,
-                            signature: None,
-                            doc: extract_preceding_doc(node, source),
-                            exported: is_exported,
+                            line: start_line,
+                            kind: "call".to_string(),
                         });
                     }
                 }
-                "interface_declaration" => {
-                    if let Some(name_node) = node.child_by_field_name("name") {
-                        let name = node_text(name_node, source).to_string();
-                        let is_exported = is_ts_exported(node);
-                        symbols.push(NativeSymbol {
+            }
+            "import_statement" | "import_from_statement" => {
+                let text = node_text(node, source);
+                imports.push(NativeImport {
+                    specifier: text.to_string(),
+                    kind: "static".to_string(),
+                    line: start_line,
+                });
+            }
+            _ => {}
+        },
+        "rust" | "rs" => match kind {
+            "function_item" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = node_text(name_node, source).to_string();
+                    let is_pub = has_child_kind(node, "visibility_modifier");
+                    symbols.push(NativeSymbol {
+                        name,
+                        kind: "function".to_string(),
+                        start_line,
+                        end_line,
+                        signature: None,
+                        doc: extract_preceding_doc(node, source),
+                        exported: is_pub,
+                    });
+                }
+            }
+            "struct_item" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = node_text(name_node, source).to_string();
+                    let is_pub = has_child_kind(node, "visibility_modifier");
+                    symbols.push(NativeSymbol {
+                        name,
+                        kind: "class".to_string(),
+                        start_line,
+                        end_line,
+                        signature: None,
+                        doc: extract_preceding_doc(node, source),
+                        exported: is_pub,
+                    });
+                }
+            }
+            "call_expression" => {
+                if let Some(fn_node) = node.child_by_field_name("function") {
+                    let name = extract_call_name(fn_node, source);
+                    if !name.is_empty() {
+                        calls.push(NativeCall {
                             name,
-                            kind: "interface".to_string(),
-                            start_line,
-                            end_line,
-                            signature: None,
-                            doc: extract_preceding_doc(node, source),
-                            exported: is_exported,
+                            line: start_line,
+                            kind: "call".to_string(),
                         });
                     }
                 }
-                "type_alias_declaration" => {
-                    if let Some(name_node) = node.child_by_field_name("name") {
+            }
+            _ => {}
+        },
+        "go" => match kind {
+            "function_declaration" | "method_declaration" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    let name = node_text(name_node, source).to_string();
+                    let exported = name.chars().next().map_or(false, |c| c.is_uppercase());
+                    symbols.push(NativeSymbol {
+                        name,
+                        kind: "function".to_string(),
+                        start_line,
+                        end_line,
+                        signature: None,
+                        doc: extract_preceding_doc(node, source),
+                        exported,
+                    });
+                }
+            }
+            "type_declaration" => {
+                if let Some(spec) = node.child(1) {
+                    if let Some(name_node) = spec.child_by_field_name("name") {
                         let name = node_text(name_node, source).to_string();
-                        let is_exported = is_ts_exported(node);
+                        let exported = name.chars().next().map_or(false, |c| c.is_uppercase());
                         symbols.push(NativeSymbol {
                             name,
                             kind: "type".to_string(),
@@ -207,199 +411,25 @@ fn walk_ast(
                             end_line,
                             signature: None,
                             doc: extract_preceding_doc(node, source),
-                            exported: is_exported,
+                            exported,
                         });
                     }
                 }
-                "call_expression" => {
-                    if let Some(fn_node) = node.child_by_field_name("function") {
-                        let name = extract_call_name(fn_node, source);
-                        if !name.is_empty() {
-                            calls.push(NativeCall {
-                                name,
-                                line: start_line,
-                                kind: "call".to_string(),
-                            });
-                        }
-                    }
-                }
-                "new_expression" => {
-                    if let Some(ctor_node) = node.child_by_field_name("constructor") {
-                        let name = extract_call_name(ctor_node, source);
-                        if !name.is_empty() {
-                            calls.push(NativeCall {
-                                name,
-                                line: start_line,
-                                kind: "new".to_string(),
-                            });
-                        }
-                    }
-                }
-                "import_statement" => {
-                    if let Some(src_node) = node.child_by_field_name("source") {
-                        let raw = node_text(src_node, source);
-                        let clean = raw.trim_matches(|c| c == '\'' || c == '"').to_string();
-                        imports.push(NativeImport {
-                            specifier: clean,
-                            kind: "static".to_string(),
+            }
+            "call_expression" => {
+                if let Some(fn_node) = node.child_by_field_name("function") {
+                    let name = extract_call_name(fn_node, source);
+                    if !name.is_empty() {
+                        calls.push(NativeCall {
+                            name,
                             line: start_line,
+                            kind: "call".to_string(),
                         });
                     }
                 }
-                _ => {}
             }
-        }
-        "python" | "py" => {
-            match kind {
-                "function_definition" => {
-                    if let Some(name_node) = node.child_by_field_name("name") {
-                        let name = node_text(name_node, source).to_string();
-                        let exported = !name.starts_with('_');
-                        symbols.push(NativeSymbol {
-                            name,
-                            kind: "function".to_string(),
-                            start_line,
-                            end_line,
-                            signature: None,
-                            doc: extract_python_docstring(node, source),
-                            exported,
-                        });
-                    }
-                }
-                "class_definition" => {
-                    if let Some(name_node) = node.child_by_field_name("name") {
-                        let name = node_text(name_node, source).to_string();
-                        let exported = !name.starts_with('_');
-                        symbols.push(NativeSymbol {
-                            name,
-                            kind: "class".to_string(),
-                            start_line,
-                            end_line,
-                            signature: None,
-                            doc: extract_python_docstring(node, source),
-                            exported,
-                        });
-                    }
-                }
-                "call" => {
-                    if let Some(fn_node) = node.child_by_field_name("function") {
-                        let name = extract_call_name(fn_node, source);
-                        if !name.is_empty() {
-                            calls.push(NativeCall {
-                                name,
-                                line: start_line,
-                                kind: "call".to_string(),
-                            });
-                        }
-                    }
-                }
-                "import_statement" | "import_from_statement" => {
-                    let text = node_text(node, source);
-                    imports.push(NativeImport {
-                        specifier: text.to_string(),
-                        kind: "static".to_string(),
-                        line: start_line,
-                    });
-                }
-                _ => {}
-            }
-        }
-        "rust" | "rs" => {
-            match kind {
-                "function_item" => {
-                    if let Some(name_node) = node.child_by_field_name("name") {
-                        let name = node_text(name_node, source).to_string();
-                        let is_pub = has_child_kind(node, "visibility_modifier");
-                        symbols.push(NativeSymbol {
-                            name,
-                            kind: "function".to_string(),
-                            start_line,
-                            end_line,
-                            signature: None,
-                            doc: extract_preceding_doc(node, source),
-                            exported: is_pub,
-                        });
-                    }
-                }
-                "struct_item" => {
-                    if let Some(name_node) = node.child_by_field_name("name") {
-                        let name = node_text(name_node, source).to_string();
-                        let is_pub = has_child_kind(node, "visibility_modifier");
-                        symbols.push(NativeSymbol {
-                            name,
-                            kind: "class".to_string(),
-                            start_line,
-                            end_line,
-                            signature: None,
-                            doc: extract_preceding_doc(node, source),
-                            exported: is_pub,
-                        });
-                    }
-                }
-                "call_expression" => {
-                    if let Some(fn_node) = node.child_by_field_name("function") {
-                        let name = extract_call_name(fn_node, source);
-                        if !name.is_empty() {
-                            calls.push(NativeCall {
-                                name,
-                                line: start_line,
-                                kind: "call".to_string(),
-                            });
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-        "go" => {
-            match kind {
-                "function_declaration" | "method_declaration" => {
-                    if let Some(name_node) = node.child_by_field_name("name") {
-                        let name = node_text(name_node, source).to_string();
-                        let exported = name.chars().next().map_or(false, |c| c.is_uppercase());
-                        symbols.push(NativeSymbol {
-                            name,
-                            kind: "function".to_string(),
-                            start_line,
-                            end_line,
-                            signature: None,
-                            doc: extract_preceding_doc(node, source),
-                            exported,
-                        });
-                    }
-                }
-                "type_declaration" => {
-                    if let Some(spec) = node.child(1) {
-                        if let Some(name_node) = spec.child_by_field_name("name") {
-                            let name = node_text(name_node, source).to_string();
-                            let exported = name.chars().next().map_or(false, |c| c.is_uppercase());
-                            symbols.push(NativeSymbol {
-                                name,
-                                kind: "type".to_string(),
-                                start_line,
-                                end_line,
-                                signature: None,
-                                doc: extract_preceding_doc(node, source),
-                                exported,
-                            });
-                        }
-                    }
-                }
-                "call_expression" => {
-                    if let Some(fn_node) = node.child_by_field_name("function") {
-                        let name = extract_call_name(fn_node, source);
-                        if !name.is_empty() {
-                            calls.push(NativeCall {
-                                name,
-                                line: start_line,
-                                kind: "call".to_string(),
-                            });
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
+            _ => {}
+        },
         _ => {}
     }
 
@@ -432,7 +462,8 @@ fn extract_call_name(fn_node: Node, source: &[u8]) -> String {
     match fn_node.kind() {
         "identifier" => node_text(fn_node, source).to_string(),
         "member_expression" | "field_expression" | "selector_expression" => {
-            if let Some(prop) = fn_node.child_by_field_name("property")
+            if let Some(prop) = fn_node
+                .child_by_field_name("property")
                 .or_else(|| fn_node.child_by_field_name("field"))
             {
                 node_text(prop, source).to_string()
@@ -548,9 +579,21 @@ class MathEngine:
 
     #[test]
     fn test_parse_files_batch_parallel() {
-        let f1 = ("a.ts".to_string(), "typescript".to_string(), "export function a() {}".to_string());
-        let f2 = ("b.py".to_string(), "python".to_string(), "def b(): pass".to_string());
-        let f3 = ("c.rs".to_string(), "rust".to_string(), "pub fn c() {}".to_string());
+        let f1 = (
+            "a.ts".to_string(),
+            "typescript".to_string(),
+            "export function a() {}".to_string(),
+        );
+        let f2 = (
+            "b.py".to_string(),
+            "python".to_string(),
+            "def b(): pass".to_string(),
+        );
+        let f3 = (
+            "c.rs".to_string(),
+            "rust".to_string(),
+            "pub fn c() {}".to_string(),
+        );
 
         let results = parse_files_batch(vec![f1, f2, f3]);
         assert_eq!(results.len(), 3);
@@ -558,4 +601,31 @@ class MathEngine:
         assert_eq!(results[1].symbols[0].name, "b");
         assert_eq!(results[2].symbols[0].name, "c");
     }
+}
+
+/// One file to encode: its path, language key and text.
+pub struct OutlineInput {
+    pub path: String,
+    pub language: String,
+    pub source: String,
+}
+
+/// Encode many files at once on every core. Each language's mapping is looked up by key; a file
+/// whose language has no mapping or no compiled grammar comes back as `None`.
+pub fn encode_files_batch(
+    files: &[OutlineInput],
+    mappings: &std::collections::HashMap<String, outline::LanguageMapping>,
+    options: &outline::EncodeOptions,
+) -> Vec<Option<outline::EncodedFile>> {
+    files
+        .par_iter()
+        .map(|file| {
+            let mapping = mappings.get(&file.language)?;
+            let options = outline::EncodeOptions {
+                path: Some(file.path.clone()),
+                ..options.clone()
+            };
+            outline::encode_source(&file.source, &file.language, mapping, &options)
+        })
+        .collect()
 }

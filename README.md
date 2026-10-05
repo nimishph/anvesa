@@ -39,8 +39,11 @@ anvesa-<version>-<platform>/
   runtime/          ONNX runtime and its native library
 ```
 
-The program carries the JavaScript, TypeScript and TSX grammars. Everything else is installed on
-demand and works offline:
+Parsing is native: the program's addon has the grammars of JavaScript, TypeScript, TSX, Vue, CSS,
+Python, Go, Rust, Java, C, C++, Ruby, C# and PHP compiled in, so those need no download
+(`anvesa grammar list` shows them as `native`). A language without a compiled grammar is parsed from a
+WebAssembly grammar instead, installed on demand; so is everything where the native addon cannot run.
+Models and wasm grammars work offline once installed:
 
 ```sh
 anvesa init                               # scaffolds, then proposes an encoder and parsers to download
@@ -117,22 +120,32 @@ what is missing.
 ### Teaching it a language
 
 A language becomes searchable by symbol once it has a *mapping*: which syntax nodes are declarations,
-imports, calls and control flow, and where each finds its name. TypeScript, JavaScript, Python, PHP,
-Go, Rust, Java and Ruby ship one (each was learned from real code with the trainer below, then checked).
-C, C++ and C# do not: their declarations hide the name in a nested declarator or a grammar that a
-mapping cannot describe, so a mapping for them would look right and be wrong. For any other language
-whose grammar is installed, learn one from code:
+imports, calls and control flow, and where each finds its name. TypeScript, JavaScript (and Vue,
+through the TypeScript mapping), Python, PHP, Go, Rust, Java and Ruby ship one (each was learned from
+real code with the trainer below, then checked). C and C++ ship a partial one: structs, classes,
+namespaces, includes and calls are named, but a function's name sits inside a nested declarator that a
+mapping cannot follow, so functions are found by `//function` and never by `[@name="..."]`. C# ships
+none. For C# or any other language whose grammar is available (compiled in, or installed as wasm),
+learn one from code:
 
 ```sh
-anvesa grammar install go --from ./tree-sitter-go.wasm
-anvesa mapping train go --samples ./some/go/code        # learns, checks, and keeps it in .anvesa/
-anvesa index --force                                     # Go files now have outlines and symbols
+anvesa mapping train csharp --samples ./src --samples ./tests   # learns, checks, keeps it in .anvesa/
+anvesa index --force                                          # C# files now have outlines and symbols
 ```
 
 Training reads how the grammar builds real code (a node with a `name` field and a body declares
 something; a node with `arguments` and a callee is a call), decides each node type's role, and shows
 its evidence. It then checks the result against the samples (every mapped syntax node must come out as
 its tag) and records what the mapping does to them, so a later edit can be compared with `mapping check`.
+
+For a language that already has a mapping, training **extends** it rather than replacing it: every
+node type the bundled (or user) mapping maps keeps its tag, and what is learned can only add node types
+it lacks, never ones inside a construct it already describes. An addition must turn up in at least 3
+distinct sample files (`--min-files`), and training on fewer than 10 files (`--min-samples`) is
+reported and not kept, so a narrow sample cannot skew the outline. `--replace` learns from scratch.
+Give several folders at once with `--samples app core tests`. Sample paths are relative to where you
+run the command, like any path on a command line, even with `--root`; `mapping audit` and
+`mapping refine` given no samples read the whole project at `--root`.
 What it cannot decide is reported, for example an `impl` block that has no name.
 
 Mappings are kept in the project (`.anvesa/mappings`, committed, so a team shares them) or per user

@@ -48,6 +48,21 @@ describe('encode', () => {
     expect(treesEqual(a.root, b.root)).toBe(true);
   });
 
+  test('names the component of a single-file component, which <script setup> never declares', async () => {
+    const encoded = await engine.encode(
+      ['<script setup lang="ts">', 'function click() {}', '</script>', '<template />'].join('\n'),
+      { path: 'components/chart-tooltip.vue' },
+    );
+    const component = encoded.root.children[0];
+    expect(component?.tag).toBe('component');
+    expect(component?.attrs.get('name')).toBe('ChartTooltip');
+    expect(component?.attrs.get('line')).toBe('1');
+    expect(component?.attrs.get('endLine')).toBe('3');
+    // A plain source file is left exactly as the grammar and mapping made it.
+    const plain = await engine.encode(source, { path: 'a.ts' });
+    expect(plain.root.children.some((child) => child.tag === 'component')).toBe(false);
+  });
+
   test('never leaves a syntax tree undisposed, on success or failure', async () => {
     await engine.encode(source, { path: 'a.ts' });
     await engine.encode('function (', { path: 'broken.ts' });

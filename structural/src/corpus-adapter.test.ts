@@ -48,6 +48,33 @@ describe('RouteEndpointCorpusAdapter', () => {
     expect(records[2]?.attrs.method).toBe('DELETE');
   });
 
+  test('extracts Lumen routes on the injected router', () => {
+    const content = `
+$router->get('/', function () use ($router) { return $router->app->version(); });
+$router->post('/login', 'AuthController@login');
+$router->group(['prefix' => 'api'], function () use ($router) {
+    $router->get('/users/{id}', 'UserController@show');
+});
+`;
+    const records = routeEndpointAdapter.extract({
+      path: 'routes/web.php',
+      content,
+    });
+
+    expect(records).toHaveLength(3);
+    expect(records[0]?.attrs.method).toBe('GET');
+    expect(records[0]?.attrs.route).toBe('/');
+    expect(records[0]?.attrs.framework).toBe('laravel');
+    expect(records[1]?.attrs.method).toBe('POST');
+    expect(records[1]?.attrs.handler).toBe('AuthController@login');
+    expect(records[2]?.attrs.route).toBe('/users/{id}');
+  });
+
+  test('claims a file with no path hint when it holds $router routes', () => {
+    expect(
+      routeEndpointAdapter.claim({ path: 'web.php', content: `$router->get('/', fn () => 1);` }),
+    ).toBe(true);
+  });
   test('extracts Express/Koa routes', () => {
     const content = `
     app.get('/users/:id', getUser);

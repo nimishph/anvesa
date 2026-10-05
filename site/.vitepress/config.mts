@@ -5,7 +5,7 @@ const base = '/anvesa/';
 
 export default defineConfig({
   base,
-  title: 'anvesa',
+  title: 'anveṣa',
   description:
     'Find code by meaning and by structure. Hybrid neural dense embeddings + AST Wildcard Query Language (WQL).',
   lang: 'en-US',
@@ -22,7 +22,7 @@ export default defineConfig({
 
   themeConfig: {
     logo: '/logo.svg',
-    siteTitle: 'anvesa',
+    siteTitle: 'anveṣa',
 
     socialLinks: [{ icon: 'github', link: repo }],
 

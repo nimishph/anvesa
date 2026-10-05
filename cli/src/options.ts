@@ -37,6 +37,13 @@ const OPTIONS = {
   name: { type: 'string' },
   'dry-run': { type: 'boolean' },
   'min-share': { type: 'string' },
+  'min-samples': { type: 'string' },
+  'min-files': { type: 'string' },
+  replace: { type: 'boolean' },
+  assist: { type: 'boolean' },
+  tags: { type: 'string' },
+  'assist-model': { type: 'string' },
+  'assist-refresh': { type: 'boolean' },
   'max-tokens': { type: 'string' },
   budget: { type: 'string' },
   method: { type: 'string' },
@@ -86,6 +93,13 @@ export interface Parsed {
     readonly name?: string;
     readonly 'dry-run'?: boolean;
     readonly 'min-share'?: string;
+    readonly 'min-samples'?: string;
+    readonly 'min-files'?: string;
+    readonly replace?: boolean;
+    readonly assist?: boolean;
+    readonly tags?: string;
+    readonly 'assist-model'?: string;
+    readonly 'assist-refresh'?: boolean;
     readonly 'max-tokens'?: string;
     readonly budget?: string;
     readonly method?: string;

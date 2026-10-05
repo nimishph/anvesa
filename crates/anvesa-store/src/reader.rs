@@ -1,7 +1,8 @@
-use std::path::Path;
-use rusqlite::{params, Connection, OpenFlags};
 use crate::errors::StoreError;
 use crate::models::{CallEdge, IndexStats, StoredHit, SymbolRow};
+use crate::scan::{scan_vectors, ScanError, ScanOptions};
+use rusqlite::{params, Connection, OpenFlags};
+use std::path::Path;
 
 pub struct IndexReader {
     conn: Connection,
@@ -45,8 +46,8 @@ impl IndexReader {
         &mut self.conn
     }
 
-    /// High-performance native vector scan directly over SQLite BLOB storage.
-    /// Evaluates all candidate vectors in native C memory via SIMD without row-by-row crossing into JS.
+    /// The best `limit` cards of a channel and model, best first, with their cards. Ranks exactly
+    /// as the TypeScript store does; see [`crate::scan`].
     pub fn search_vectors(
         &self,
         channel: &str,
@@ -54,75 +55,49 @@ impl IndexReader {
         query: &[f32],
         limit: usize,
     ) -> Result<Vec<StoredHit>, StoreError> {
-        let dims = query.len();
-        let byte_stride = dims * 4;
-
-        let mut stmt = self.conn.prepare(
-            "SELECT id, group_key, dims, vector, card FROM cards WHERE channel = ?1 AND model = ?2",
-        )?;
-
-        struct ScoredCandidate {
-            id: String,
-            group_key: String,
-            score: f64,
-            card_raw: String,
-        }
-
-        // Min-heap for bounded top-k
-        let mut candidates: Vec<ScoredCandidate> = Vec::new();
-
-        let mut rows = stmt.query(params![channel, model])?;
-        while let Some(row) = rows.next()? {
-            let row_dims: usize = row.get(2)?;
-            if row_dims != dims {
-                continue;
-            }
-
-            let blob: Vec<u8> = row.get(3)?;
-            if blob.len() != byte_stride {
-                continue;
-            }
-
-            let floats = unsafe {
-                std::slice::from_raw_parts(blob.as_ptr() as *const f32, dims)
-            };
-
-            let score = anvesa_core::dot_product_core(query, floats, dims) as f64;
-
-            let id: String = row.get(0)?;
-            let group_key: String = row.get(1)?;
-            let card_raw: String = row.get(4)?;
-
-            candidates.push(ScoredCandidate {
+        let scanned = scan_vectors(
+            &self.conn,
+            &ScanOptions {
+                channel,
+                model,
+                query,
+                limit,
+                collapse: false,
+                deadline: None,
+            },
+        )
+        .map_err(|failure| match failure {
+            ScanError::Store(error) => error,
+            ScanError::Corrupt {
                 id,
-                group_key,
-                score,
-                card_raw,
-            });
-        }
+                expected_bytes,
+                actual_bytes,
+            } => StoreError::Corrupt {
+                channel: channel.to_owned(),
+                id,
+                reason: format!("the stored vector has {actual_bytes} bytes, not {expected_bytes}"),
+            },
+            ScanError::DeadlineExpired => unreachable!("no deadline was set"),
+        })?;
 
-        // Sort descending by score
-        candidates.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-
-        // Take top `limit` and parse JSON cards
-        let mut hits = Vec::with_capacity(limit.min(candidates.len()));
-        for c in candidates.into_iter().take(limit) {
-            let card_json: serde_json::Value = serde_json::from_str(&c.card_raw)
-                .unwrap_or_else(|_| serde_json::Value::String(c.card_raw));
-
-            hits.push(StoredHit {
-                id: c.id,
-                score: c.score,
-                group_key: c.group_key,
-                card: card_json,
-            });
-        }
-
-        Ok(hits)
+        let mut card = self
+            .conn
+            .prepare("SELECT group_key, card FROM cards WHERE channel = ?1 AND id = ?2")?;
+        scanned
+            .into_iter()
+            .map(|hit| {
+                let (group_key, raw): (String, String) = card
+                    .query_row(params![channel, hit.id], |row| {
+                        Ok((row.get(0)?, row.get(1)?))
+                    })?;
+                Ok(StoredHit {
+                    card: serde_json::from_str(&raw)?,
+                    id: hit.id,
+                    score: hit.score,
+                    group_key,
+                })
+            })
+            .collect()
     }
 
     /// Finds symbol definitions by exact or prefix name.
@@ -254,8 +229,11 @@ mod tests {
             .execute_batch(
                 "CREATE TABLE cards (
                     channel TEXT, id TEXT, path TEXT, model TEXT,
-                    group_key TEXT, card TEXT, dims INTEGER, vector BLOB,
+                    group_key TEXT, card TEXT,
                     PRIMARY KEY (channel, id)
+                );
+                CREATE TABLE card_vectors (
+                    channel TEXT, id TEXT, model TEXT, group_key TEXT, dims INTEGER, vector BLOB
                 );
                 CREATE TABLE symbols (
                     path TEXT, seq INTEGER, id TEXT, name TEXT, base_name TEXT,
@@ -299,27 +277,26 @@ mod tests {
         let b2: Vec<u8> = v2.iter().flat_map(|f| f.to_ne_bytes()).collect();
         let b3: Vec<u8> = v3.iter().flat_map(|f| f.to_ne_bytes()).collect();
 
-        reader
-            .conn
-            .execute(
-                "INSERT INTO cards VALUES ('symbols', 'c1', 'a.ts', 'minilm', 'g1', '{\"text\":\"card1\"}', 4, ?1)",
-                params![b1],
-            )
-            .unwrap();
-        reader
-            .conn
-            .execute(
-                "INSERT INTO cards VALUES ('symbols', 'c2', 'b.ts', 'minilm', 'g2', '{\"text\":\"card2\"}', 4, ?1)",
-                params![b2],
-            )
-            .unwrap();
-        reader
-            .conn
-            .execute(
-                "INSERT INTO cards VALUES ('symbols', 'c3', 'c.ts', 'minilm', 'g3', '{\"text\":\"card3\"}', 4, ?1)",
-                params![b3],
-            )
-            .unwrap();
+        for (id, path, group, bytes) in [
+            ("c1", "a.ts", "g1", &b1),
+            ("c2", "b.ts", "g2", &b2),
+            ("c3", "c.ts", "g3", &b3),
+        ] {
+            reader
+                .conn
+                .execute(
+                    "INSERT INTO cards VALUES ('symbols', ?1, ?2, 'minilm', ?3, '{\"text\":\"card\"}')",
+                    params![id, path, group],
+                )
+                .unwrap();
+            reader
+                .conn
+                .execute(
+                    "INSERT INTO card_vectors VALUES ('symbols', ?1, 'minilm', ?2, 4, ?3)",
+                    params![id, group, bytes],
+                )
+                .unwrap();
+        }
 
         let query = vec![1.0f32, 0.0, 0.0, 0.0];
         let hits = reader

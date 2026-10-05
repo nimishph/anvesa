@@ -33,6 +33,9 @@ export const MEMORY_DATABASE = ':memory:';
  */
 export const DEFAULT_BUSY_TIMEOUT_MS = 5000;
 
+/** How long grouped writes wait before they are committed together; see `beginGroup`. */
+export const DEFAULT_GROUP_FLUSH_MS = 250;
+
 /** How long to wait between asks for WAL. Long enough for the other process to finish writing. */
 const WAL_RETRY_MS = 25;
 
@@ -83,6 +86,8 @@ export class StoreDatabase {
   readonly path: string;
   readonly #db: Database;
   readonly #backup: StoreBackup | undefined;
+  readonly #onClose = new Set<() => void>();
+  #group: { readonly flushMs: number; since: number } | undefined;
   #closed = false;
 
   private constructor(path: string, db: Database, backup: StoreBackup | undefined) {
@@ -170,11 +175,74 @@ export class StoreDatabase {
    */
   transaction<T>(operation: string, work: (db: Database) => T): T {
     const db = this.connection(operation);
+    let result: T;
     try {
-      return db.transaction(() => work(db)).immediate();
+      result = db.transaction(() => work(db)).immediate();
     } catch (failure) {
       throw asStoreError(operation, failure);
     }
+    this.#flushGroupIfDue(db);
+    return result;
+  }
+
+  /**
+   * Hold one write transaction open so the many small ones that follow become savepoints in it:
+   * each still lands whole or not at all, but they reach the disk together, every `flushMs` or so,
+   * instead of one commit each. A commit rewrites every index page a write touched, so on an index
+   * with many small files most of the time went to commits. Until {@link endGroup}.
+   *
+   * The write lock is held between commits, so another process's writer waits up to about
+   * `flushMs` longer than it did. A crash loses the writes since the last commit, as it would have
+   * lost the one in flight, and an index run that was cut short redoes what it did not finish.
+   * Nothing happens when a transaction is already open, or a group is.
+   */
+  beginGroup(flushMs = DEFAULT_GROUP_FLUSH_MS): void {
+    const db = this.connection('group writes');
+    if (this.#group || db.inTransaction) return;
+    try {
+      db.exec('BEGIN IMMEDIATE');
+    } catch (failure) {
+      throw asStoreError('group writes', failure);
+    }
+    this.#group = { flushMs, since: performance.now() };
+  }
+
+  /** Commit what the group holds and stop grouping. */
+  endGroup(): void {
+    if (!this.#group) return;
+    this.#group = undefined;
+    const db = this.connection('commit grouped writes');
+    if (!db.inTransaction) return;
+    try {
+      db.exec('COMMIT');
+    } catch (failure) {
+      throw asStoreError('commit grouped writes', failure);
+    }
+  }
+
+  /** Whether writes are being grouped, so some are not yet visible to other connections. */
+  get grouping(): boolean {
+    return this.#group !== undefined;
+  }
+
+  #flushGroupIfDue(db: Database): void {
+    const group = this.#group;
+    if (!group || performance.now() - group.since < group.flushMs) return;
+    try {
+      db.exec('COMMIT');
+      db.exec('BEGIN IMMEDIATE');
+    } catch (failure) {
+      // Without its transaction the group is over; what follows commits one at a time.
+      this.#group = undefined;
+      throw asStoreError('commit grouped writes', failure);
+    }
+    group.since = performance.now();
+  }
+
+  /** Run `release` when this database closes, to let go of what was opened alongside it. */
+  onClose(release: () => void): void {
+    if (this.#closed) release();
+    else this.#onClose.add(release);
   }
 
   /**
@@ -183,7 +251,11 @@ export class StoreDatabase {
    */
   close(): void {
     if (this.#closed) return;
+    // What a group holds was written by transactions that each completed: keep it.
+    if (this.#group) this.endGroup();
     this.#closed = true;
+    for (const release of this.#onClose) release();
+    this.#onClose.clear();
     try {
       this.#db.close(true);
     } catch (failure) {
@@ -420,6 +492,12 @@ function migrate(db: Database, path: string, readonly: boolean): StoreBackup | u
         });
       }
     }
+  }
+  // A migration that moves data out of a table leaves its old pages free; the file would keep that
+  // size until rewritten. VACUUM cannot run inside a transaction, so it follows the steps. A fresh
+  // index has nothing to give back.
+  if (current > 0 && path !== MEMORY_DATABASE && pending.some((migration) => migration.vacuum)) {
+    db.exec('VACUUM');
   }
   return backup;
 }

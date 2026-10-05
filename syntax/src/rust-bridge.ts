@@ -48,9 +48,75 @@ export interface FileInput {
   readonly source: string;
 }
 
+export interface NapiEncodeOptions {
+  readonly path?: string;
+  readonly docs?: boolean;
+  readonly positions?: boolean;
+  readonly maxDepth?: number;
+}
+
 export interface RustSyntaxBinding {
   extractFileOutlineNative(path: string, language: string, source: string): NapiFileOutline;
   parseFilesBatchNative(files: readonly FileInput[]): readonly NapiFileOutline[];
+  /**
+   * The outline a `LanguageMapping` (given as its JSON) makes of one file, as JSON; `null` when no
+   * grammar for the language is compiled in. Absent from addons built before it existed.
+   */
+  encodeOutlineNative?(
+    source: string,
+    language: string,
+    mappingJson: string,
+    options?: NapiEncodeOptions,
+  ): string | null;
+  /** Many files on every core; `mappingsJson` maps language keys to mappings. */
+  encodeOutlinesBatchNative?(
+    files: readonly FileInput[],
+    mappingsJson: string,
+    options?: NapiEncodeOptions,
+  ): (string | null)[];
+  /** The language keys with a grammar compiled into the addon. */
+  nativeLanguages?(): string[];
+  /** One parse: outline (docs and positions on) and indexing facts, as JSON. */
+  extractFactsNative?(
+    path: string,
+    language: string,
+    source: string,
+    mappingJson: string,
+  ): string | null;
+  /** Many files on every core. */
+  extractFactsBatchNative?(files: readonly FileInput[], mappingsJson: string): (string | null)[];
+  /**
+   * Many files on every core, off the JavaScript thread, one outcome per file in order: the facts
+   * as JSON, `unsupported` (read it another way), or that file's failure.
+   */
+  extractFactsManyNative?(
+    files: readonly FileInput[],
+    mappingsJson: string,
+  ): Promise<{ json?: string; unsupported?: boolean; error?: string }[]>;
+  /**
+   * As `extractFactsManyNative`, but ready for the index: each file's facts as JSON and its
+   * outline as W-expression text, without the attributes in `omit`.
+   */
+  extractForIndexManyNative?(
+    files: readonly FileInput[],
+    mappingsJson: string,
+    omit: readonly string[],
+  ): Promise<{ facts?: string; wexpr?: string; unsupported?: boolean; error?: string }[]>;
+  /** Node-type statistics of samples, for learning a mapping, as JSON. */
+  inspectTopologyNative?(language: string, files: readonly FileInput[]): string | null;
+}
+
+let nativeKeys: ReadonlySet<string> | undefined;
+
+/**
+ * The languages the native addon parses itself, with a grammar compiled in. Empty when the addon
+ * is not there, is turned off, or predates the list. Anything else is parsed on web-tree-sitter.
+ */
+export function nativeLanguageKeys(): ReadonlySet<string> {
+  const binding = loadRustSyntax();
+  if (!binding?.nativeLanguages) return new Set();
+  nativeKeys ??= new Set(binding.nativeLanguages());
+  return nativeKeys;
 }
 
 let nativeModule: RustSyntaxBinding | null = null;

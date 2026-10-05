@@ -50,7 +50,11 @@ usage: anvesa <command> [arguments] [options]
                             propose [--tier path|clusters] [--write]; the manifest is committed
   mapping list|show|train|audit|refine|fork|lock|remove|verify|check   how a language's syntax becomes an outline;
                             audit/refine <language> finds and adds unmapped syntax nodes from code;
-                            train <language> --samples <dir|file> learns one from code
+                            train <language> --samples <dir|file> [more...] learns from code and extends the
+                            mapping in effect (--replace learns from scratch; --min-samples N, default 10;
+                            --min-files N a new node type must occur in, default 3; --assist asks a
+                            language model about what is left, from OPENROUTER_API_KEY, checked before use;
+                            --tags <tags.scm> starts from the grammar's own definitions and calls)
   model list|install|verify|doctor       local embedding models; install <new-name> --from <dir|file.onnx>
                                          brings your own (--pooling, --max-tokens, --force)
   pattern list|run <name> [param=val...]  declarative structural patterns

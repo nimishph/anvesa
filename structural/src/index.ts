@@ -49,6 +49,9 @@ export type {
   RegisterOptions,
   SymbolKind,
   SymbolRule,
+  TypeBinding,
+  TypeOrigin,
+  TypeRules,
 } from './mapping.ts';
 export {
   builtinMappings,
@@ -63,6 +66,7 @@ export type {
   StoredMapping,
 } from './mapping-store.ts';
 export { MappingStore, mappingFileText } from './mapping-store.ts';
+export * from './native.ts';
 export type { LineRange, WalkEntry, WNode } from './node.ts';
 export {
   ATTR,
@@ -77,9 +81,11 @@ export {
 } from './node.ts';
 export * from './pattern/compiler.ts';
 export * from './pattern/schema.ts';
+export { attachSfcComponent, SFC_COMPONENT_TAG, syntheticTags } from './sfc.ts';
 export { Wql, WqlConstraint, WqlSpec } from './spec.ts';
 export type { OutlineSymbol } from './symbols.ts';
 export { outlineSymbols } from './symbols.ts';
+export { parseTagsQuery, type TagRule } from './tags.ts';
 export type { FormatOptions } from './text.ts';
 export {
   escapeValue,
@@ -89,11 +95,17 @@ export {
   WEXPR_FORMAT_VERSION,
 } from './text.ts';
 export type {
+  Assistant,
+  AssistCandidate,
+  AssistOutcome,
+  AssistSuggestion,
   Deduction,
+  Extension,
   Golden,
   GoldenDifference,
   GoldenSample,
   TagCheck,
+  TagsOutcome,
   Topology,
   TrainedMapping,
   TrainingIssue,
@@ -104,8 +116,13 @@ export type {
   Verification,
 } from './training.ts';
 export {
+  ASSIST_TAGS,
+  applySuggestions,
+  applyTagRules,
+  assistCandidates,
   checkGolden,
   deduceMapping,
+  extendMapping,
   inspectTopology,
   registryWith,
   synthesizeGolden,

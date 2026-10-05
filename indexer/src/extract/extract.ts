@@ -2,18 +2,26 @@ import { createHash } from 'node:crypto';
 import { type Deadline, InvariantViolationError } from '@cntxt-labs/anvesa-core';
 import {
   ATTR,
+  attachSfcComponent,
+  extractFactsNative,
+  extractFactsNativeMany,
+  extractForIndexNativeMany,
+  type NativeExtracted,
+  type NativeExtractInput,
   type OutlineSymbol,
   outlineSymbols,
+  SFC_COMPONENT_TAG,
   type StructuralEngine,
   serializeWExpr,
   WEXPR_FORMAT_VERSION,
+  type WNode,
 } from '@cntxt-labs/anvesa-structural';
-import type { SyntaxNode } from '@cntxt-labs/anvesa-syntax';
+import { extractVueScript, type SyntaxNode } from '@cntxt-labs/anvesa-syntax';
 import { CallCollector } from './calls.ts';
 import type { FileFacts, SymbolFact } from './facts.ts';
 import { importCollectorFor } from './imports.ts';
-import { PhpTypeCollector } from './php-types.ts';
 import { bySpan, NestingCursor, type Span } from './scope.ts';
+import { TypeCollector } from './types.ts';
 
 /**
  * How many syntax nodes are visited between checks of the deadline. This sets how promptly a
@@ -36,8 +44,9 @@ export interface Extracted {
  * Bump when what is extracted from the same outline changes (a new fact, a different rule), or
  * when the edges linked from the same facts do (4: every call edge keeps its own lines), so
  * indexes built before it are extracted and linked again instead of quietly lacking it.
+ * 5: a single-file component is a symbol of its own.
  */
-const FACTS_VERSION = 4;
+const FACTS_VERSION = 5;
 
 /** Offsets locate nodes in the source; a cached outline does not need them. */
 const CACHE_OMITS: ReadonlySet<string> = new Set([ATTR.startIndex, ATTR.endIndex]);
@@ -90,6 +99,143 @@ export class FactExtractor {
     source: string,
     options: ExtractOptions = {},
   ): Promise<Extracted> {
+    return this.#extractOne(path, source, options);
+  }
+
+  #extractOne(
+    path: string,
+    source: string,
+    options: ExtractOptions,
+  ): Promise<Extracted> | Extracted {
+    return (
+      this.#extractNatively(path, source, options) ?? this.#extractOnWasm(path, source, options)
+    );
+  }
+
+  /**
+   * `extractWithStructure` for many files, the ones the addon parses extracted together on every
+   * core and away from the JavaScript thread. One outcome per file, in order: what that file would
+   * have given alone, or what it would have thrown. Nothing is shared between files, so one that
+   * fails does not affect the others.
+   */
+  async extractManyWithStructure(
+    files: readonly { readonly path: string; readonly source: string }[],
+    options: ExtractOptions = {},
+  ): Promise<({ readonly extracted: Extracted } | { readonly failure: unknown })[]> {
+    options.deadline?.throwIfExpired(`extract facts from ${files.length} files`);
+    const outcomes: ({ extracted: Extracted } | { failure: unknown } | undefined)[] = files.map(
+      () => undefined,
+    );
+    type NativeFile = { index: number; path: string; language: string; source: string };
+    // A single-file component gains a symbol from its outline here, so it needs the outline as
+    // objects; every other file only needs it as the text the index caches, printed natively.
+    const printed: { file: NativeFile; input: NativeExtractInput }[] = [];
+    let outlined: { file: NativeFile; input: NativeExtractInput }[] = [];
+    for (const [index, file] of files.entries()) {
+      const input = this.#nativeInput(file.path, file.source);
+      if (!input) continue;
+      const entry = {
+        file: { index, path: file.path, language: input.language, source: file.source },
+        input,
+      };
+      if (input.language === 'vue') outlined.push(entry);
+      else printed.push(entry);
+    }
+    const fromText =
+      printed.length > 0
+        ? await extractForIndexNativeMany(
+            printed.map((entry) => entry.input),
+            [...CACHE_OMITS],
+          )
+        : [];
+    if (fromText === undefined) outlined = [...printed, ...outlined];
+    else {
+      for (const [at, result] of fromText.entries()) {
+        const file = printed[at]?.file;
+        if (!file || result === undefined) continue;
+        outcomes[file.index] =
+          result instanceof Error
+            ? { failure: result }
+            : { extracted: { facts: result.facts as FileFacts, wexpr: result.wexpr } };
+      }
+    }
+    const many =
+      outlined.length > 0
+        ? await extractFactsNativeMany(outlined.map((entry) => entry.input))
+        : undefined;
+    if (many) {
+      for (const [at, result] of many.entries()) {
+        const file = outlined[at]?.file;
+        if (!file || result === undefined) continue;
+        if (result instanceof Error) {
+          outcomes[file.index] = { failure: result };
+          continue;
+        }
+        try {
+          outcomes[file.index] = {
+            extracted: this.#finishNative(file.path, file.language, file.source, result),
+          };
+        } catch (failure) {
+          outcomes[file.index] = { failure };
+        }
+      }
+    }
+    // Whatever was not extracted together goes the way it would alone.
+    for (const [index, file] of files.entries()) {
+      if (outcomes[index] !== undefined) continue;
+      try {
+        outcomes[index] = { extracted: await this.#extractOne(file.path, file.source, options) };
+      } catch (failure) {
+        outcomes[index] = { failure };
+      }
+    }
+    return outcomes as ({ extracted: Extracted } | { failure: unknown })[];
+  }
+
+  /** What the addon needs to extract `path`, or `undefined` when it has no grammar or mapping. */
+  #nativeInput(path: string, source: string) {
+    const language = this.#engine.nativeLanguageOf({ path });
+    if (language === undefined) return undefined;
+    const mapping = this.#engine.mappings.mappingFor(language);
+    if (!mapping) return undefined;
+    const text = language === 'vue' ? extractVueScript(source) : source;
+    return { path, language, source: text, mapping };
+  }
+
+  /** The native result as `Extracted`: a single-file component's own symbol, and the cached text. */
+  #finishNative(
+    path: string,
+    language: string,
+    source: string,
+    extracted: NativeExtracted,
+  ): Extracted {
+    const withSfc = withSfcComponent(
+      path,
+      language,
+      source,
+      extracted.root,
+      extracted.facts as FileFacts,
+    );
+    return {
+      facts: withSfc.facts,
+      wexpr: serializeWExpr(withSfc.root, { omit: CACHE_OMITS }),
+    };
+  }
+
+  /**
+   * The same facts from one native parse, for a language the addon has a grammar for; `undefined`
+   * otherwise, and the file is read on web-tree-sitter instead.
+   */
+  #extractNatively(path: string, source: string, options: ExtractOptions): Extracted | undefined {
+    const input = this.#nativeInput(path, source);
+    if (!input) return undefined;
+    options.deadline?.throwIfExpired(`extract facts from ${path}`);
+    const extracted = extractFactsNative(path, input.language, input.source, input.mapping);
+    if (!extracted) return undefined;
+    return this.#finishNative(path, input.language, source, extracted);
+  }
+
+  async #extractOnWasm(path: string, source: string, options: ExtractOptions): Promise<Extracted> {
     const deadline = options.deadline;
     return this.#engine.withEncoded(
       source,
@@ -101,10 +247,10 @@ export class FactExtractor {
         const scope = new NestingCursor(placed);
         const calls = new CallCollector((position) => scope.at(position)?.id);
         const imports = importCollectorFor(encoded.language);
-        const types =
-          encoded.language === 'php'
-            ? new PhpTypeCollector((position) => scope.at(position)?.id)
-            : undefined;
+        const typeRules = this.#engine.mappings.mappingFor(encoded.language)?.typeRules;
+        const types = typeRules
+          ? new TypeCollector(typeRules, (position) => scope.at(position)?.id)
+          : undefined;
 
         let visited = 0;
         for (const node of preorder(tree.root)) {
@@ -141,7 +287,13 @@ export class FactExtractor {
           },
           ...(types === undefined || types.types.length === 0 ? {} : { types: types.types }),
         };
-        return { facts, wexpr: serializeWExpr(encoded.root, { omit: CACHE_OMITS }) };
+        // Symbols are read before the component joins the outline, so its own symbol is added
+        // here and nesting stays what the native side computed.
+        const withSfc = withSfcComponent(path, encoded.language, source, encoded.root, facts);
+        return {
+          facts: withSfc.facts,
+          wexpr: serializeWExpr(withSfc.root, { omit: CACHE_OMITS }),
+        };
       },
     );
   }
@@ -208,4 +360,34 @@ function symbolFacts(path: string, placed: readonly PlacedSymbol[]): SymbolFact[
 function lineAttr(symbol: OutlineSymbol, key: string): number {
   const value = Number.parseInt(symbol.node.attrs.get(key) ?? '', 10);
   return Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * A `.vue` file's component: on its outline, and among its symbols when none carries that name.
+ * `<script setup>` declares nothing by name, so without it a component is findable only by what
+ * it happens to declare inside itself.
+ *
+ * Both parse paths call this after their symbols are read and before the outline is written, so a
+ * native parse and a web-tree-sitter one agree: the same node in the same place, the same symbol
+ * first in the same list, with the same id.
+ */
+function withSfcComponent(
+  path: string,
+  language: string,
+  source: string,
+  root: WNode,
+  facts: FileFacts,
+): { readonly root: WNode; readonly facts: FileFacts } {
+  const attached = attachSfcComponent(language, path, source, root);
+  if (attached === undefined) return { root, facts };
+  const symbol = outlineSymbols(attached).find((entry) => entry.node.tag === SFC_COMPONENT_TAG);
+  if (symbol === undefined) return { root: attached, facts };
+  const placed = placeSymbols(path, [symbol])[0];
+  if (placed === undefined) return { root: attached, facts };
+  const taken = new Set(facts.symbols.map((entry) => entry.id));
+  let id = placed.id;
+  for (let count = 2; taken.has(id); count += 1) id = `${path}#${symbol.name}~${count}`;
+  const fact = symbolFacts(path, [placed.id === id ? placed : { ...placed, id }])[0];
+  if (fact === undefined) return { root: attached, facts };
+  return { root: attached, facts: { ...facts, symbols: [fact, ...facts.symbols] } };
 }

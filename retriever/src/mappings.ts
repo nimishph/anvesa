@@ -3,6 +3,7 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { type Deadline, InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import {
+  type Assistant,
   checkGolden,
   deduceMapping,
   type Golden,
@@ -104,9 +105,26 @@ export interface TrainOptions {
   readonly dryRun?: boolean;
   /** Keep it even if what was learned does not check out. */
   readonly force?: boolean;
+  /** Learn from scratch and replace the mapping beneath, rather than extend it. */
+  readonly replace?: boolean;
   readonly minShare?: number;
+  /** Fewest sample files to trust what was learned. {@link DEFAULT_MIN_SAMPLES} by default. */
+  readonly minSamples?: number;
+  /** Fewest distinct samples a node type must occur in to be added. {@link DEFAULT_MIN_FILES}. */
+  readonly minFiles?: number;
+  /** Asked about what the heuristics and the base leave undecided; see {@link chatAssistant}. */
+  readonly assist?: Assistant;
+  /** The text of the grammar's `queries/tags.scm`, read before the heuristics. */
+  readonly tags?: string;
   readonly deadline?: Deadline;
 }
+
+/** Below this many files, what was learned says more about the files than about the language. */
+export const DEFAULT_MIN_SAMPLES = 10;
+/** A node type has to turn up in this many files before it is added to a base mapping. */
+export const DEFAULT_MIN_FILES = 3;
+
+const TIER_RANK = { bundled: 0, user: 1, project: 2 } as const;
 
 export interface TrainedResult {
   readonly report: TrainingReport;
@@ -115,12 +133,17 @@ export interface TrainedResult {
   readonly stored: StoredMapping | undefined;
   /** Why it was not kept, when it was not. */
   readonly refused: string | undefined;
+  /** The base mapping already covers the samples: there was nothing to keep, and that is fine. */
+  readonly unchanged?: boolean;
 }
 
 /**
  * Learn a mapping for a language from code, check it against that code, and keep it (with a golden
- * record of what it does to the samples) in the project or for the user. A mapping that does not
- * check out, or that finds no declarations, is reported and not kept unless `force` says to.
+ * record of what it does to the samples) in the project or for the user. When a mapping for the
+ * language is in effect beneath the tier being written (a bundled one, or the user's under the
+ * project's), what is learned extends it and cannot change what it already maps; `replace` learns
+ * from scratch instead. Too few samples, a mapping that does not check out, or one that finds no
+ * declarations is reported and not kept unless `force` says to.
  */
 export async function trainLanguage(
   root: string,
@@ -140,31 +163,63 @@ export async function trainLanguage(
         options.samples.join(', '),
       );
     }
+    const tier = options.user ? 'user' : 'project';
+    const store = mappingStoreFor(root, host);
+    // The mapping in effect beneath the tier being written: the one this training extends.
+    const base = options.replace
+      ? undefined
+      : (await store.list())
+          .filter(
+            (entry) =>
+              entry.languages.includes(options.language) && TIER_RANK[entry.tier] < TIER_RANK[tier],
+          )
+          .sort((a, b) => TIER_RANK[a.tier] - TIER_RANK[b.tier])
+          .at(-1)?.mapping;
     const report = await trainMapping(runtime, options.language, samples, {
       extensions: language.extensions,
+      minSamples: options.minSamples ?? DEFAULT_MIN_SAMPLES,
+      ...(base ? { base, minFiles: options.minFiles ?? DEFAULT_MIN_FILES } : {}),
       ...(options.name ? { name: options.name } : {}),
       ...(options.minShare === undefined ? {} : { minShare: options.minShare }),
+      ...(options.assist ? { assist: options.assist } : {}),
+      ...(options.tags === undefined ? {} : { tags: options.tags }),
       ...(options.deadline ? { deadline: options.deadline } : {}),
     });
 
     const blocking = report.issues.filter(
-      (issue) => issue.code === 'ROUND_TRIP' || issue.code === 'NO_DECLARATIONS',
+      (issue) =>
+        issue.code === 'ROUND_TRIP' ||
+        issue.code === 'NO_DECLARATIONS' ||
+        issue.code === 'TOO_FEW_SAMPLES',
     );
+    const unchanged =
+      report.extension !== undefined &&
+      report.extension.added.length === 0 &&
+      (report.tags?.applied.length ?? 0) === 0 &&
+      (report.assist?.accepted.length ?? 0) === 0;
     let refused: string | undefined;
     if (options.dryRun) refused = 'this was a dry run';
     else if (blocking.length > 0 && !options.force) {
       refused = `${blocking.map((issue) => issue.message).join('; ')}. Use --force to keep it anyway`;
+    } else if (unchanged && !options.force) {
+      refused = `nothing to add: ${report.extension?.base} already maps every construct the samples hold`;
     }
     const stored =
       refused === undefined
-        ? await mappingStoreFor(root, host).install(report.mapping, {
-            tier: options.user ? 'user' : 'project',
+        ? await store.install(report.mapping, {
+            tier,
             languages: [options.language],
             golden: report.golden,
             ...(options.force ? { force: true } : {}),
           })
         : undefined;
-    return { report, samples: samples.length, stored, refused };
+    return {
+      report,
+      samples: samples.length,
+      stored,
+      refused,
+      ...(unchanged ? { unchanged: true } : {}),
+    };
   } finally {
     await runtime.dispose();
   }

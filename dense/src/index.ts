@@ -45,6 +45,8 @@ export type {
   NapiFusedResult,
   NapiLane,
   NapiLaneHit,
+  NapiScanHit,
+  NapiScanResult,
   RustDenseBinding,
   ScoredIndex,
 } from './rust-bridge.ts';

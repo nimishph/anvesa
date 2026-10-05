@@ -158,6 +158,12 @@ export interface IndexStats {
  * (by path, then position in the file), so the same query gives the same answer every time.
  */
 export interface IndexStore {
+  /**
+   * Let the writes that follow reach the disk together rather than one commit each, until the
+   * returned function is called. Each write still lands whole or not at all. Optional: a store
+   * without commits to save has nothing to do.
+   */
+  groupWrites?(): () => void;
   /** What is known of a file, indexed or quarantined; `undefined` if it has never been seen. */
   fileState(path: string): Promise<FileState | undefined>;
   files(query?: FileListQuery): Promise<Page<FileState>>;

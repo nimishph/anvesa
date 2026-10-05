@@ -21,7 +21,8 @@ export type {
   TrainingIssue,
   TrainingReport,
 } from '@cntxt-labs/anvesa-structural';
-export { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/anvesa-syntax';
+export { nativeLanguageKeys, npmPackageSource, SyntaxRuntime } from '@cntxt-labs/anvesa-syntax';
+export * from './assist.ts';
 export {
   type LoadedChannel,
   loadChannelModule,

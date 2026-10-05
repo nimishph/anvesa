@@ -7,6 +7,8 @@ export interface Migration {
   readonly version: number;
   readonly description: string;
   readonly sql: string;
+  /** Rewrite the file once this has been applied, to give back the pages it freed. */
+  readonly vacuum?: boolean;
 }
 
 export const MIGRATIONS: readonly Migration[] = [
@@ -225,6 +227,34 @@ export const MIGRATIONS: readonly Migration[] = [
     sql: `
       UPDATE cards SET group_key = path || '#' || group_key;
     `,
+  },
+  {
+    version: 9,
+    description:
+      'vectors in a table of their own, so a search reads only vectors and not every card',
+    // A `WITHOUT ROWID` row keeps about 1 KB on its page and spills the rest, so a card with its
+    // vector took a page and an overflow page, and a search read both for every card. A rowid
+    // table keeps up to ~4 KB on the page: a 384- or 768-float vector and its keys fit, and a scan
+    // reads vectors packed together. Cards are read back only for the winners.
+    sql: `
+      CREATE TABLE card_vectors (
+        channel TEXT NOT NULL,
+        id TEXT NOT NULL,
+        model TEXT NOT NULL,
+        group_key TEXT NOT NULL,
+        dims INTEGER NOT NULL,
+        vector BLOB NOT NULL,
+        FOREIGN KEY (channel, id) REFERENCES cards(channel, id) ON DELETE CASCADE
+      );
+      CREATE UNIQUE INDEX card_vectors_card ON card_vectors(channel, id);
+      CREATE INDEX card_vectors_scan ON card_vectors(channel, model);
+      INSERT INTO card_vectors (channel, id, model, group_key, dims, vector)
+        SELECT channel, id, model, group_key, dims, vector FROM cards ORDER BY channel, model, id;
+      DROP INDEX cards_scan;
+      ALTER TABLE cards DROP COLUMN vector;
+      ALTER TABLE cards DROP COLUMN dims;
+    `,
+    vacuum: true,
   },
 ];
 

@@ -1,16 +1,16 @@
 ---
 layout: home
-title: anvesa
+title: anveṣa
 titleTemplate: Hybrid dense + structural code retrieval
 hero:
-  name: anvesa
+  name: anveṣa
   text: Find code by meaning and structure
   tagline: >-
     Local, offline-first code intelligence. Neural embeddings combined with AST Tree-sitter
     queries through Reciprocal Rank Fusion (RRF). Single-binary native speed.
   image:
     src: /logo.svg
-    alt: anvesa
+    alt: anveṣa
   actions:
     - theme: brand
       text: Get Started
@@ -48,6 +48,13 @@ features:
       Micro-topics (25-40 lines each) designed specifically for LLM context frugality.
       Agents load only the exact concept they need without blowing prompt budgets.
 ---
+
+## The name
+
+**anveṣa** (अन्वेष). *anv-eṣa* (m.), also *anveṣaṇa* (n.): “seeking for, searching, investigating”, from *anu* + √*iṣ*, to seek after.
+Monier-Williams, *A Sanskrit-English Dictionary* (1899), p. 47: [see the entry in the Cologne Digital Sanskrit Dictionaries](https://www.sanskrit-lexicon.uni-koeln.de/scans/MWScan/2020/web/webtc/getword.php?key=anveza&filter=roman&noLit=off&transLit=slp1).
+
+Anveṣa is a search that follows a trail. This tool follows code by what it means and by how it is built.
 
 ## Quick Start
 

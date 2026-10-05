@@ -117,5 +117,68 @@
     "namespace_definition": "name",
     "namespace_declaration": "name",
     "use_declaration": "qualified_name"
+  },
+  "typeRules": {
+    "classTypes": ["named_type"],
+    "nonClasses": [
+      "null",
+      "void",
+      "never",
+      "mixed",
+      "iterable",
+      "callable",
+      "object",
+      "array",
+      "string",
+      "int",
+      "float",
+      "bool",
+      "boolean",
+      "false",
+      "true"
+    ],
+    "bindings": [
+      {
+        "node": "simple_parameter",
+        "origin": "param",
+        "typeField": "type",
+        "nameField": "name",
+        "nameType": "variable_name"
+      },
+      {
+        "node": "property_promotion_parameter",
+        "origin": "promoted",
+        "typeField": "type",
+        "nameField": "name",
+        "nameType": "variable_name"
+      },
+      {
+        "node": "property_declaration",
+        "origin": "property",
+        "typeField": "type",
+        "each": "property_element",
+        "nameField": "name",
+        "nameType": "variable_name"
+      },
+      {
+        "node": "method_declaration",
+        "origin": "return",
+        "typeField": "return_type"
+      },
+      {
+        "node": "function_definition",
+        "origin": "return",
+        "typeField": "return_type"
+      },
+      {
+        "node": "assignment_expression",
+        "origin": "assigned",
+        "nameField": "left",
+        "nameType": "variable_name",
+        "valueField": "right",
+        "valueType": "object_creation_expression",
+        "createdTypes": ["name", "qualified_name"]
+      }
+    ]
   }
 }

@@ -1,6 +1,7 @@
 import { stat } from 'node:fs/promises';
 import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import { Workspace, walkSources } from '@cntxt-labs/anvesa-indexer';
+import type { MappingRegistry } from '@cntxt-labs/anvesa-structural';
 import {
   GrammarLock,
   type InstallResult,
@@ -8,6 +9,7 @@ import {
   installGrammar,
   LanguageRegistry,
   type LanguageStatus,
+  nativeLanguageKeys,
   SyntaxRuntime,
   standardLayout,
 } from '@cntxt-labs/anvesa-syntax';
@@ -54,15 +56,27 @@ export interface GrammarRow {
   readonly state: 'ready' | 'missing' | 'corrupt';
   /** Where it was found, or what was searched. */
   readonly detail: string;
+  /**
+   * Whether a mapping serves this language, so a parse of its files becomes an outline and they
+   * can be indexed. A grammar alone parses; without a mapping the files are quarantined. Absent
+   * when the caller did not supply the mappings in effect.
+   */
+  readonly mapped?: boolean;
 }
 
-const describe = (status: LanguageStatus): GrammarRow => {
+const describe = (status: LanguageStatus, mappings?: MappingRegistry): GrammarRow => {
   const { language, grammar } = status;
+  const mapped = mappings?.has(language.key);
   const base = {
     language: language.key,
     extensions: language.extensions,
     grammar: language.grammar.id,
+    ...(mapped === undefined ? {} : { mapped }),
   };
+  // Parsed by the native addon with a grammar compiled in: no wasm file is needed.
+  if (nativeLanguageKeys().has(language.key)) {
+    return { ...base, state: 'ready', detail: 'native (compiled into the addon)' };
+  }
   if (grammar.state === 'ready') {
     return {
       ...base,
@@ -84,14 +98,15 @@ const describe = (status: LanguageStatus): GrammarRow => {
   };
 };
 
-/** Every language medha knows and whether its grammar can be loaded right now. */
+/** Every language medha knows, its grammar, and whether a mapping can serve it right now. */
 export async function listGrammars(
   root: string,
   host: GrammarHost = {},
+  mappings?: MappingRegistry,
 ): Promise<readonly GrammarRow[]> {
   const runtime = await createRuntime(root, host);
   try {
-    return (await runtime.status()).map(describe);
+    return (await runtime.status()).map((status) => describe(status, mappings));
   } finally {
     await runtime.dispose();
   }

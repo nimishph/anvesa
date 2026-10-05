@@ -5,6 +5,7 @@ import {
   collapseKey,
   DimensionMismatchError,
   dot,
+  loadRustDense,
   normalize,
   type QuarantinedCard,
   type ScoredId,
@@ -16,7 +17,7 @@ import {
   type VectorStore,
 } from '@cntxt-labs/anvesa-dense';
 import { StoreCorruptError } from '../errors.ts';
-import { allRows, getRow, type StoreDatabase } from './database.ts';
+import { allRows, getRow, MEMORY_DATABASE, type StoreDatabase } from './database.ts';
 
 /** How often a scan checks its deadline. A pacing interval, not a limit on what is searched. */
 const DEADLINE_CHECK_EVERY = 1024;
@@ -37,7 +38,8 @@ interface Scored extends ScoredId {
 
 /**
  * Card vectors on SQLite. Search is exact: every stored vector of the channel and model is
- * compared, one row at a time, and only the winners' cards are read back.
+ * compared, one row at a time, and only the winners' cards are read back. Vectors live in
+ * `card_vectors`, apart from the cards, so a scan reads vector pages and nothing else.
  *
  * Vectors are stored already normalised, so a cosine similarity is one dot product.
  *
@@ -50,6 +52,7 @@ interface Scored extends ScoredId {
  */
 export class SqliteVectorStore implements VectorStore {
   readonly #database: StoreDatabase;
+  #nativeOpened = false;
 
   constructor(database: StoreDatabase) {
     this.#database = database;
@@ -99,17 +102,28 @@ export class SqliteVectorStore implements VectorStore {
       }
 
       const insertCard = db.query(
-        `INSERT INTO cards (channel, id, path, model, group_key, card, dims, vector)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO cards (channel, id, path, model, group_key, card)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      );
+      const insertVector = db.query(
+        `INSERT INTO card_vectors (channel, id, model, group_key, dims, vector)
+         VALUES (?, ?, ?, ?, ?, ?)`,
       );
       for (const { card, unit } of prepared) {
+        const group = collapseKey(card);
         insertCard.run(
           update.channel,
           card.id,
           update.path,
           update.model,
-          collapseKey(card),
+          group,
           JSON.stringify(card),
+        );
+        insertVector.run(
+          update.channel,
+          card.id,
+          update.model,
+          group,
           unit.length,
           Buffer.from(unit.buffer, unit.byteOffset, unit.byteLength),
         );
@@ -178,7 +192,7 @@ export class SqliteVectorStore implements VectorStore {
         throw new DimensionMismatchError(options.channel, options.model, stored, query.length);
       }
       const unit = normalize(query);
-      const best = this.#scan(db, unit, stored, options);
+      const best = this.#scanNative(unit, options) ?? this.#scan(db, unit, stored, options);
 
       return best.map((entry): SearchHit => {
         const row = getRow(
@@ -195,13 +209,78 @@ export class SqliteVectorStore implements VectorStore {
     });
   }
 
+  /**
+   * The same scan in the native addon, which reads the file on its own read-only connection so no
+   * row crosses into JavaScript. `undefined` when it cannot stand in for {@link #scan}: no addon (or
+   * one built before the scan existed), an in-memory database it cannot see, writes still grouped
+   * in an open transaction, a `filter` that only
+   * JavaScript can run, or a file it could not open or read. It ranks exactly as `#scan` does, and
+   * refuses a corrupt vector and an expired deadline the same way.
+   */
+  #scanNative(unit: Float32Array, options: SearchOptions): Scored[] | undefined {
+    const native = loadRustDense();
+    const path = this.#database.path;
+    // Grouped writes are not committed yet, so another connection would not see them.
+    if (
+      !native?.scanVectorsNative ||
+      options.filter ||
+      path === MEMORY_DATABASE ||
+      this.#database.grouping
+    ) {
+      return undefined;
+    }
+    options.deadline?.throwIfExpired('search the vector store');
+    const remaining = options.deadline?.remainingMs() ?? null;
+    if (!this.#nativeOpened) {
+      // The addon keeps a connection to the file between searches; it goes when this one does.
+      this.#nativeOpened = true;
+      this.#database.onClose(() => native.releaseVectorScan?.(path));
+    }
+    let result: ReturnType<NonNullable<typeof native.scanVectorsNative>>;
+    try {
+      result = native.scanVectorsNative(
+        path,
+        options.channel,
+        options.model,
+        unit,
+        options.limit,
+        options.collapse === true,
+        ...(remaining === null ? [] : [remaining]),
+      );
+    } catch {
+      // Could not open or read the file natively (locked, unreadable, an older schema): the
+      // JavaScript scan reads it through the store's own connection instead.
+      return undefined;
+    }
+    if (result.corrupt) {
+      throw new StoreCorruptError(
+        'cards',
+        result.corrupt.id,
+        'the stored vector has the wrong length',
+        {
+          context: {
+            expectedBytes: result.corrupt.expectedBytes,
+            actualBytes: result.corrupt.actualBytes,
+          },
+        },
+      );
+    }
+    if (result.expired) {
+      options.deadline?.throwIfExpired('search the vector store');
+    }
+    // `group` is only read while scanning; the native scan has already collapsed.
+    return (result.hits ?? []).map((hit) => ({ id: hit.id, score: hit.score, group: '' }));
+  }
+
   /** The best `limit` (id, score) pairs, streaming over the channel's vectors. */
   #scan(db: Database, unit: Float32Array, dims: number, options: SearchOptions): Scored[] {
     const scratch = new Float32Array(dims);
     const scratchBytes = new Uint8Array(scratch.buffer);
     const select = options.filter
-      ? 'SELECT id, group_key, dims, vector, card FROM cards WHERE channel = ? AND model = ?'
-      : 'SELECT id, group_key, dims, vector FROM cards WHERE channel = ? AND model = ?';
+      ? `SELECT v.id, v.group_key, v.dims, v.vector, c.card
+           FROM card_vectors v JOIN cards c ON c.channel = v.channel AND c.id = v.id
+          WHERE v.channel = ? AND v.model = ?`
+      : 'SELECT id, group_key, dims, vector FROM card_vectors WHERE channel = ? AND model = ?';
 
     const collector = new TopKCollector<Scored>(options.limit);
     const groups = new Map<string, Scored>();

@@ -1,6 +1,6 @@
 import { Database } from 'bun:sqlite';
 import { afterAll, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Deadline, InvalidArgumentError, OperationAbortedError } from '@cntxt-labs/anvesa-core';
@@ -732,6 +732,127 @@ describe('vector store specifics', () => {
         deadline: Deadline.of({ signal: controller.signal }),
       }),
     ).rejects.toBeInstanceOf(OperationAbortedError);
+    store.database.close();
+  });
+
+  test('the native scan ranks exactly as the JavaScript scan, ties and groups included', async () => {
+    const store = new SqliteVectorStore(StoreDatabase.open(join(makeTree({}), 'p.db')));
+    let seed = 7;
+    const random = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff - 0.5;
+    };
+    for (let file = 0; file < 40; file += 1) {
+      const path = `f${file}.md`;
+      await store.replaceSource(
+        update(
+          path,
+          Array.from({ length: 30 }, (_, i) => ({
+            // Every third card repeats a vector, so equal scores have to be broken by id.
+            card: makeCard(transformer, inputFile(path, String(i)), {
+              key: `k${i}`,
+              text: `k${i}`,
+              group: `g${i % 4}`,
+            }),
+            vector:
+              i % 3 === 0
+                ? new Float32Array([1, 2, 3, 4])
+                : Float32Array.from({ length: 4 }, random),
+          })),
+        ),
+      );
+    }
+    const query = new Float32Array([0.3, -0.2, 0.9, 0.1]);
+    for (const collapse of [false, true]) {
+      for (const limit of [1, 25, 5000]) {
+        const options = { channel: 'demo', model: 'm', limit, collapse };
+        const native = await store.search(query, options);
+        // A filter is JavaScript, so it always takes the JavaScript scan.
+        const script = await store.search(query, { ...options, filter: () => true });
+        expect(native.map((h) => [h.card.id, h.score])).toEqual(
+          script.map((h) => [h.card.id, h.score]),
+        );
+      }
+    }
+    store.database.close();
+  });
+
+  test('a stored vector of the wrong length is corruption, on either scan', async () => {
+    const database = StoreDatabase.open(join(makeTree({}), 'x.db'));
+    const store = new SqliteVectorStore(database);
+    await store.replaceSource(
+      update('a.md', [{ card: cardOf('a.md', 'one'), vector: new Float32Array([1, 0, 0]) }]),
+    );
+    database.connection('test').query("UPDATE card_vectors SET vector = x'0000'").run();
+    const options = { channel: 'demo', model: 'm', limit: 5 };
+    await expect(store.search(new Float32Array([1, 0, 0]), options)).rejects.toBeInstanceOf(
+      StoreCorruptError,
+    );
+    await expect(
+      store.search(new Float32Array([1, 0, 0]), { ...options, filter: () => true }),
+    ).rejects.toBeInstanceOf(StoreCorruptError);
+    database.close();
+  });
+
+  test('closing the store lets go of the file, so it can be deleted', async () => {
+    const path = join(makeTree({}), 'd.db');
+    const store = new SqliteVectorStore(StoreDatabase.open(path));
+    await store.replaceSource(
+      update('a.md', [{ card: cardOf('a.md', 'one'), vector: new Float32Array([1, 0, 0]) }]),
+    );
+    await store.search(new Float32Array([1, 0, 0]), { channel: 'demo', model: 'm', limit: 5 });
+    store.database.close();
+    for (const file of [path, `${path}-wal`, `${path}-shm`]) {
+      if (existsSync(file)) rmSync(file);
+    }
+    expect(existsSync(path)).toBe(false);
+  });
+
+  test('an index from before vectors had their own table keeps its cards and is compacted', async () => {
+    const path = dbPath();
+    mkdirSync(dirname(path), { recursive: true });
+    const raw = new Database(path, { create: true });
+    raw.exec('PRAGMA journal_mode = WAL');
+    for (const migration of MIGRATIONS.filter((m) => m.version <= 8)) raw.exec(migration.sql);
+    raw.exec('PRAGMA user_version = 8');
+    const vector = new Float32Array([0.6, 0.8]);
+    const card = cardOf('a.md', 'one');
+    raw
+      .query(
+        `INSERT INTO vector_sources (channel, path, model, content_hash, transformer_version, cards, quarantined)
+         VALUES ('demo', 'a.md', 'm', 'h', '1', 1, 0)`,
+      )
+      .run();
+    raw.query("INSERT INTO vector_dims (channel, model, dims) VALUES ('demo', 'm', 2)").run();
+    raw
+      .query(
+        `INSERT INTO cards (channel, id, path, model, group_key, card, dims, vector)
+         VALUES ('demo', ?, 'a.md', 'm', 'a.md#one', ?, 2, ?)`,
+      )
+      .run(card.id, JSON.stringify(card), Buffer.from(vector.buffer));
+    raw.close();
+
+    const store = new SqliteVectorStore(StoreDatabase.open(path));
+    expect(schemaVersionOf(path)).toBe(SCHEMA_VERSION);
+    const hits = await store.search(new Float32Array([0.6, 0.8]), {
+      channel: 'demo',
+      model: 'm',
+      limit: 5,
+    });
+    expect(hits.map((h) => h.card.id)).toEqual([card.id]);
+    expect(hits[0]?.score).toBeCloseTo(1, 5);
+    const columns = store.database
+      .connection('test')
+      .query("SELECT name FROM pragma_table_info('cards')")
+      .all() as { name: string }[];
+    expect(columns.map((c) => c.name)).not.toContain('vector');
+    // Removing the source still takes its vector with it.
+    await store.removeSource('demo', 'a.md');
+    const left = store.database
+      .connection('test')
+      .query('SELECT count(*) AS n FROM card_vectors')
+      .get();
+    expect(left).toEqual({ n: 0 });
     store.database.close();
   });
 

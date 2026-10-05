@@ -326,6 +326,12 @@ export class SqliteIndexStore implements IndexStore {
     return this.#database;
   }
 
+  groupWrites(): () => void {
+    if (this.#database.grouping) return () => undefined;
+    this.#database.beginGroup();
+    return () => this.#database.endGroup();
+  }
+
   async fileState(path: string): Promise<FileState | undefined> {
     return this.#database.guard('read a file state', (db) => {
       const row = getRow(

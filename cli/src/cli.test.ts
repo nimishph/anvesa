@@ -1,5 +1,5 @@
 import { Database } from 'bun:sqlite';
-import { afterAll, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   copyFileSync,
   existsSync,
@@ -11,7 +11,12 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { type Embedder, npmPackageSource, SyntaxRuntime } from '@cntxt-labs/anvesa-retriever';
+import {
+  type Embedder,
+  nativeLanguageKeys,
+  npmPackageSource,
+  SyntaxRuntime,
+} from '@cntxt-labs/anvesa-retriever';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { runCli } from './cli.ts';
@@ -90,6 +95,23 @@ async function cli(root: string, ...argv: string[]): Promise<Ran> {
   return cliWith({}, root, ...argv);
 }
 
+/**
+ * Every registered language is parsed natively where the addon is built, so nothing would be
+ * missing. These tests are about fetching and pinning wasm grammars, which is what a machine
+ * without the addon does: they run with it turned off.
+ */
+function onWasmOnly(): void {
+  let before: string | undefined;
+  beforeEach(() => {
+    before = process.env.ANVESA_DISABLE_NATIVE;
+    process.env.ANVESA_DISABLE_NATIVE = '1';
+  });
+  afterEach(() => {
+    if (before === undefined) delete process.env.ANVESA_DISABLE_NATIVE;
+    else process.env.ANVESA_DISABLE_NATIVE = before;
+  });
+}
+
 async function cliWith(
   overrides: Partial<Environment>,
   root: string,
@@ -144,6 +166,7 @@ describe('command line', () => {
   });
 
   describe('init offers what this machine and project need', () => {
+    onWasmOnly();
     /** A parser the fake registry serves: the smallest thing that is a WebAssembly module. */
     const WASM = new Uint8Array([0, 0x61, 0x73, 0x6d, 1, 0, 0, 0]);
     const served: string[] = [];
@@ -714,7 +737,56 @@ describe('command line', () => {
   });
 });
 
+describe('native grammars', () => {
+  test.skipIf(!nativeLanguageKeys().has('python'))(
+    'a language compiled into the addon is ready without any wasm file',
+    async () => {
+      const root = mkdtempSync(join(tmpdir(), 'anvesa-native-'));
+      const listed = await cliWith(
+        { grammars: { npmFrom: import.meta.filename, home: join(root, 'home') } },
+        root,
+        'grammar',
+        'list',
+        '--json',
+      );
+      expect(listed.code).toBe(0);
+      const rows = json(listed) as {
+        language: string;
+        state: string;
+        detail: string;
+        mapped?: boolean;
+      }[];
+      for (const language of ['python', 'go', 'rust', 'java', 'php', 'ruby', 'cpp']) {
+        expect(rows.find((row) => row.language === language)).toMatchObject({
+          state: 'ready',
+          detail: 'native (compiled into the addon)',
+          mapped: true,
+        });
+      }
+      // Compiled in, and parseable, but nothing turns its parses into outlines yet: say so
+      // rather than claiming it can be indexed.
+      expect(rows.find((row) => row.language === 'csharp')).toMatchObject({
+        state: 'ready',
+        detail: 'native (compiled into the addon)',
+        mapped: false,
+      });
+
+      const rendered = await cliWith(
+        { grammars: { npmFrom: import.meta.filename, home: join(root, 'home') } },
+        root,
+        'grammar',
+        'list',
+      );
+      expect(rendered.out).toContain('* python');
+      expect(rendered.out).toContain('no structural mapping: cannot be indexed');
+      expect(rendered.out).not.toContain('* csharp');
+      rmSync(root, { recursive: true, force: true });
+    },
+  );
+});
+
 describe('grammars', () => {
+  onWasmOnly();
   const wasm = Bun.resolveSync(
     'tree-sitter-typescript/tree-sitter-typescript.wasm',
     import.meta.dir,
@@ -924,6 +996,8 @@ public interface IThing { void Run(); }
       'csharp',
       '--samples',
       'server',
+      '--min-samples',
+      '1',
       '--dry-run',
       '--json',
     );
@@ -939,6 +1013,8 @@ public interface IThing { void Run(); }
       'csharp',
       '--samples',
       'server',
+      '--min-samples',
+      '1',
     );
     expect(trained.code).toBe(0);
     expect(trained.out).toContain('method_declaration');
@@ -970,10 +1046,131 @@ public interface IThing { void Run(); }
     expect(JSON.parse(shown.out).nodeTypeMap.class_declaration).toBe('class');
   });
 
+  test('every path after --samples is a sample, and too few samples is refused', async () => {
+    const root = csharpProject();
+    const options = own(root);
+    const both = await cliWith(
+      options,
+      root,
+      'mapping',
+      'train',
+      'csharp',
+      '--samples',
+      'server/Server.cs',
+      'server/Config.cs',
+      '--min-samples',
+      '1',
+      '--dry-run',
+      '--json',
+    );
+    expect(both.code).toBe(0);
+    expect(json(both).samples).toBe(2);
+
+    const few = await cliWith(options, root, 'mapping', 'train', 'csharp', '--samples', 'server');
+    expect(few.code).toBe(1);
+    expect(few.err).toContain('too few to trust');
+    expect(existsSync(join(root, '.anvesa', 'mappings', 'csharp.json'))).toBe(false);
+  });
+
+  test('--assist asks a model with the key from the environment, and reports what it rejected', async () => {
+    const root = csharpProject();
+    const train = ['mapping', 'train', 'csharp', '--samples', 'server', '--min-samples', '1'];
+    const missing = await cliWith(own(root), root, ...train, '--assist');
+    expect(missing.code).toBe(2);
+    expect(missing.err).toContain('OPENROUTER_API_KEY');
+    const offline = await cliWith(
+      { ...own(root), env: { OPENROUTER_API_KEY: 'k', ANVESA_NO_NETWORK: '1' } },
+      root,
+      ...train,
+      '--assist',
+    );
+    expect(offline.code).toBe(2);
+
+    let authorization = '';
+    const fakeFetch = (async (_url: string, init: RequestInit) => {
+      authorization = (init.headers as Record<string, string>).authorization ?? '';
+      const prompt: string = JSON.parse(String(init.body)).messages.at(-1).content;
+      const lastLine = prompt.split(String.fromCharCode(10)).at(-1) ?? '[]';
+      const asked = JSON.parse(lastLine) as { type: string }[];
+      const suggestions = [
+        { type: asked[0]?.type, tag: 'none' },
+        { type: 'invented_node', tag: 'class', nameChild: 'identifier' },
+      ];
+      const content = JSON.stringify({ suggestions });
+      return new Response(
+        JSON.stringify({ model: 'vendor/model-a', choices: [{ message: { content } }] }),
+      );
+    }) as unknown as typeof fetch;
+    const ran = await cliWith(
+      { ...own(root), env: { OPENROUTER_API_KEY: 'secret-test-key' }, fetch: fakeFetch },
+      root,
+      ...train,
+      '--assist',
+      '--dry-run',
+    );
+    expect(ran.code).toBe(0);
+    expect(authorization).toBe('Bearer secret-test-key');
+    expect(ran.out).toContain('assistant vendor/model-a: asked about');
+    expect(ran.out).toContain('invented_node');
+    const kept = readFileSync(join(root, '.anvesa', 'assist', 'csharp.json'), 'utf8');
+    expect(kept).not.toContain('secret-test-key');
+  });
+
+  test('--tags reads the grammar’s own definitions before the heuristics', async () => {
+    const root = csharpProject();
+    const query = [
+      '(class_declaration name: (identifier) @name) @definition.class',
+      '(method_declaration name: (identifier) @name) @definition.method',
+      '(struct_declaration name: (identifier) @name) @definition.struct',
+    ].join('\n');
+    writeFileSync(join(root, 'tags.scm'), query);
+    const ran = await cliWith(
+      own(root),
+      root,
+      'mapping',
+      'train',
+      'csharp',
+      '--samples',
+      'server',
+      '--min-samples',
+      '1',
+      '--tags',
+      'tags.scm',
+    );
+    expect(ran.code).toBe(0);
+    expect(ran.out).toContain('tags.scm: 3 rules; 2 used');
+    expect(ran.out).toContain('struct_declaration');
+    expect(ran.out).toContain('does not occur in the samples');
+    const shown = JSON.parse((await cliWith(own(root), root, 'mapping', 'show', 'csharp')).out);
+    expect(shown.nodeTypeMap.method_declaration).toBe('method');
+    const missing = await cliWith(
+      own(root),
+      root,
+      'mapping',
+      'train',
+      'csharp',
+      '--samples',
+      'server',
+      '--tags',
+      'nope.scm',
+    );
+    expect(missing.code).toBe(2);
+  });
+
   test('a mapping that was changed after it was recorded stops everything, until it is recorded again', async () => {
     const root = csharpProject();
     const options = own(root);
-    await cliWith(options, root, 'mapping', 'train', 'csharp', '--samples', 'server');
+    await cliWith(
+      options,
+      root,
+      'mapping',
+      'train',
+      'csharp',
+      '--samples',
+      'server',
+      '--min-samples',
+      '1',
+    );
     const path = join(root, '.anvesa', 'mappings', 'csharp.json');
     writeFileSync(path, readFileSync(path, 'utf8').replaceAll('"method"', '"func"'));
 
@@ -1546,6 +1743,45 @@ describe('declarative patterns', () => {
     );
   });
 
+  test('renderIndex suggests mapping train when files are quarantined for want of a mapping', () => {
+    const report = {
+      complete: true as const,
+      resumedAfterInterruption: false,
+      reextracted: false,
+      files: {
+        seen: 1,
+        unchanged: 0,
+        touched: 0,
+        added: 1,
+        modified: 0,
+        quarantined: 1,
+        stillQuarantined: 0,
+        removed: 0,
+        skippedLanguage: 0,
+        unsupported: new Map<string, number>(),
+        outOfScope: 0,
+        unreadable: [],
+        ignored: 0,
+      },
+      quarantined: [
+        {
+          path: 'Button.cs',
+          reason: 'parse-failed' as const,
+          message: 'No W-expression mapping is registered for language "csharp"',
+        },
+      ],
+      link: undefined,
+      relinked: 0,
+      dense: undefined,
+      elapsedMs: 120,
+    };
+    const rendered = renderIndex({ report, synced: [] });
+    expect(rendered).toContain(
+      "advice: 1 file quarantined because 'csharp' has no structural mapping. Run: anvesa mapping train csharp --samples <dir>",
+    );
+    expect(rendered).not.toContain('grammar install csharp');
+  });
+
   test('repomap, routes, issue, and mapping audit work end to end', async () => {
     const root = makeProject();
     writeFileSync(
@@ -1600,5 +1836,97 @@ app.post('/api/checkout', (req, res) => res.json({ ok: true }));
     const auditData = json(auditRan);
     expect(auditData.language).toBe('typescript');
     expect(auditData.mappedCount).toBeGreaterThan(0);
+  });
+
+  test('mapping refine with no samples looks over --root, not cwd', async () => {
+    const root = makeProject();
+    const elsewhere = mkdtempSync(join(tmpdir(), 'anvesa-cwd-'));
+    roots.push(elsewhere);
+    const ran = await cliWith(
+      { cwd: elsewhere },
+      elsewhere,
+      'mapping',
+      'refine',
+      'typescript',
+      '--root',
+      root,
+      '--dry-run',
+      '--json',
+    );
+    expect(ran.err).toBe('');
+    expect(ran.code).toBe(0);
+    expect(json(ran).language).toBe('typescript');
+  });
+
+  test('renderIndex counts files that are not source, most common first', () => {
+    const rendered = renderIndex({
+      report: {
+        complete: true as const,
+        resumedAfterInterruption: false,
+        reextracted: false,
+        files: {
+          seen: 0,
+          unchanged: 0,
+          touched: 0,
+          added: 0,
+          modified: 0,
+          quarantined: 0,
+          stillQuarantined: 0,
+          removed: 0,
+          skippedLanguage: 0,
+          unsupported: new Map([
+            ['', 1],
+            ['.md', 4],
+          ]),
+          outOfScope: 0,
+          unreadable: [],
+          ignored: 0,
+        },
+        quarantined: [],
+        link: undefined,
+        relinked: 0,
+        dense: undefined,
+        elapsedMs: 1,
+      },
+      synced: [],
+    });
+    expect(rendered).toContain('not source: 4 .md, 1 with no extension');
+  });
+
+  test('renderIndex names the eight most common kinds of non-source file and sums the rest', () => {
+    const unsupported = new Map(
+      Array.from({ length: 11 }, (_, i) => [`.x${String(i).padStart(2, '0')}`, 20 - i]),
+    );
+    const rendered = renderIndex({
+      report: {
+        complete: true as const,
+        resumedAfterInterruption: false,
+        reextracted: false,
+        files: {
+          seen: 0,
+          unchanged: 0,
+          touched: 0,
+          added: 0,
+          modified: 0,
+          quarantined: 0,
+          stillQuarantined: 0,
+          removed: 0,
+          skippedLanguage: 0,
+          unsupported,
+          outOfScope: 0,
+          unreadable: [],
+          ignored: 0,
+        },
+        quarantined: [],
+        link: undefined,
+        relinked: 0,
+        dense: undefined,
+        elapsedMs: 1,
+      },
+      synced: [],
+    });
+    expect(rendered).toContain(
+      'not source: 20 .x00, 19 .x01, 18 .x02, 17 .x03, 16 .x04, 15 .x05, 14 .x06, 13 .x07, 33 more in 3 other kinds',
+    );
   });
 });

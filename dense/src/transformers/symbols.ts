@@ -24,7 +24,7 @@ export function symbolsTransformer(options: SymbolsOptions = {}): Transformer {
   const languages = options.languages ?? new LanguageRegistry();
   return defineTransformer({
     name: options.name ?? 'symbols',
-    version: '1',
+    version: '2', // bump when the cards this makes would change, so they are rebuilt
     channel: options.channel ?? 'symbols',
     categoryId: 'code.symbol',
     categoryLabel: 'Code symbol',

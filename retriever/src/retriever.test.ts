@@ -431,6 +431,24 @@ describe('structural queries', () => {
     });
   });
 
+  test('a single-file component is found by the name of its file', async () => {
+    const r = await indexed({
+      'package.json': '{"name":"app"}',
+      'src/components/chart-tooltip.vue': `<script setup lang="ts">
+const label = defineModel<string>();
+function show() {}
+</script>
+<template><span @mouseenter="show">{{ label }}</span></template>
+`,
+    });
+    const page = await r.query('//component[@name="ChartTooltip"]');
+    expect(page.items.map((hit) => hit.path)).toEqual(['src/components/chart-tooltip.vue']);
+    // The tag the engine writes itself is queryable, though no mapping declares it.
+    expect((await r.query('//component')).items).toHaveLength(1);
+    // Its own symbol is in the index too, so it can be found by name without a query.
+    expect((await r.query('//function[@name="show"]')).items).toHaveLength(1);
+  });
+
   test('follow the index when a file changes', async () => {
     const root = makeProject();
     const r = await retriever(root);

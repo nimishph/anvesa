@@ -13,6 +13,7 @@ const SYMBOL_TAGS: ReadonlySet<string> = new Set([
   'module',
   'namespace',
   'constant',
+  'component',
 ]);
 
 /**

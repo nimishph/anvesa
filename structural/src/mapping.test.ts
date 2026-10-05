@@ -128,6 +128,13 @@ describe('MappingRegistry', () => {
     }
   });
 
+  test('known tags are what a query may use: mappings declare them, the engine writes some', () => {
+    const tags = new MappingRegistry().knownTags();
+    expect(tags.has('class')).toBe(true);
+    expect(tags.has('component')).toBe(true);
+    expect(tags.has('bogus_tag')).toBe(false);
+  });
+
   test('registering a duplicate name or language is a conflict, and changes nothing', () => {
     const registry = new MappingRegistry();
     const before = registry.languages().length;

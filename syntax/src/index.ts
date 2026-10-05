@@ -31,3 +31,4 @@ export {
 } from './sources.ts';
 export type { Point, Range, SyntaxIssue, SyntaxNode } from './tree.ts';
 export { SyntaxTree } from './tree.ts';
+export { extractVueScript } from './vue.ts';

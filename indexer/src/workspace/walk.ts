@@ -88,6 +88,9 @@ export class SourceWalk implements AsyncIterable<SourceEntry> {
   async *[Symbol.asyncIterator](): AsyncGenerator<SourceEntry> {
     const languages = this.#options.languages ?? new LanguageRegistry();
     for await (const visit of this.#traversal) {
+      // Decide every file of the directory first, then stat the ones that are wanted together:
+      // awaited one at a time, the stats were most of a walk's time on a large tree.
+      const wanted: { path: string; language: string }[] = [];
       for (const entry of visit.entries) {
         if (entry.kind !== 'file') continue;
         const registered = languages.forPath(entry.path);
@@ -106,22 +109,28 @@ export class SourceWalk implements AsyncIterable<SourceEntry> {
           this.summary.outOfScope += 1;
           continue;
         }
-        let info: Awaited<ReturnType<typeof stat>>;
-        try {
-          info = await stat(join(this.#workspace.root, entry.path));
-        } catch (failure) {
+        wanted.push({ path: entry.path, language: language.key });
+      }
+      const stats = await statAll(
+        this.#workspace.root,
+        wanted.map((file) => file.path),
+      );
+      // In the directory's order, so a walk stays deterministic.
+      for (const [index, file] of wanted.entries()) {
+        const info = stats[index] as StatOutcome;
+        if ('failure' in info) {
           this.summary.unreadable.push({
-            path: entry.path,
-            error: new SourceReadError(entry.path, {
-              cause: toCodeLensError(failure, `stat ${entry.path}`),
+            path: file.path,
+            error: new SourceReadError(file.path, {
+              cause: toCodeLensError(info.failure, `stat ${file.path}`),
             }),
           });
           continue;
         }
-        const owner = this.#workspace.packageOf(entry.path);
+        const owner = this.#workspace.packageOf(file.path);
         const source: SourceEntry = {
-          path: entry.path,
-          language: language.key,
+          path: file.path,
+          language: file.language,
           package: owner,
           repo: visit.repo,
           size: info.size,
@@ -129,12 +138,38 @@ export class SourceWalk implements AsyncIterable<SourceEntry> {
         };
         this.summary.files += 1;
         this.summary.bytes += info.size;
-        bump(this.summary.byLanguage, language.key);
+        bump(this.summary.byLanguage, file.language);
         bump(this.summary.byPackage, owner?.root ?? '');
         yield source;
       }
     }
   }
+}
+
+type StatOutcome =
+  | { readonly size: number; readonly mtimeMs: number }
+  | { readonly failure: unknown };
+
+/** How many stats are in flight at once: enough to keep the I/O pool busy, few enough to be fair. */
+const STAT_CONCURRENCY = 64;
+
+/** Stat every path under `root`, a few dozen at a time; a failure is kept, not thrown. */
+async function statAll(root: string, paths: readonly string[]): Promise<StatOutcome[]> {
+  const outcomes: StatOutcome[] = new Array(paths.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    for (let index = next++; index < paths.length; index = next++) {
+      const path = paths[index] as string;
+      try {
+        const info = await stat(join(root, path));
+        outcomes[index] = { size: info.size, mtimeMs: info.mtimeMs };
+      } catch (failure) {
+        outcomes[index] = { failure };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(STAT_CONCURRENCY, paths.length) }, worker));
+  return outcomes;
 }
 
 export function walkSources(workspace: Workspace, options: WalkOptions = {}): SourceWalk {

@@ -375,6 +375,19 @@ export function renderChannel(channel: ChannelInfo): string {
   );
 }
 
+/** The most common kinds of file that are not source, by count; the long tail is summed up. */
+function notSource(unsupported: ReadonlyMap<string, number>): string {
+  const shown = 8;
+  const kinds = [...unsupported].sort(([a, x], [b, y]) => y - x || a.localeCompare(b));
+  const listed = kinds.slice(0, shown).map(([ext, n]) => `${n} ${ext || 'with no extension'}`);
+  const rest = kinds.slice(shown);
+  if (rest.length > 0) {
+    const files = rest.reduce((sum, [, n]) => sum + n, 0);
+    listed.push(`${files} more in ${rest.length} other kind${rest.length === 1 ? '' : 's'}`);
+  }
+  return `not source: ${listed.join(', ')}`;
+}
+
 export function renderIndex(result: {
   report: IndexReport;
   synced: readonly { channel: string; reports: readonly unknown[]; removed: readonly string[] }[];
@@ -383,22 +396,33 @@ export function renderIndex(result: {
   const f = report.files;
 
   const missingGrammars = new Map<string, number>();
+  const missingMappings = new Map<string, number>();
   for (const q of report.quarantined) {
-    const match = q.message.match(/No grammar available for "([^"]+)"/i);
-    if (match?.[1]) {
-      missingGrammars.set(match[1], (missingGrammars.get(match[1]) ?? 0) + 1);
+    const grammar = q.message.match(/No grammar available for "([^"]+)"/i);
+    if (grammar?.[1]) {
+      missingGrammars.set(grammar[1], (missingGrammars.get(grammar[1]) ?? 0) + 1);
+    }
+    const mapping = q.message.match(/No W-expression mapping is registered for language "([^"]+)"/);
+    if (mapping?.[1]) {
+      missingMappings.set(mapping[1], (missingMappings.get(mapping[1]) ?? 0) + 1);
     }
   }
-  const grammarAdvice = [...missingGrammars.entries()].map(
-    ([lang, count]) =>
-      `advice: ${count} file${count === 1 ? '' : 's'} quarantined because '${lang}' grammar is missing. Run: anvesa grammar install ${lang} --download`,
-  );
+  // Each blocker has its own fix: a missing grammar is downloaded, a missing mapping is taught.
+  const advice: string[] = [];
+  for (const [language, count] of missingGrammars) {
+    advice.push(
+      `advice: ${count} file${count === 1 ? '' : 's'} quarantined because '${language}' grammar is missing. Run: anvesa grammar install ${language} --download`,
+    );
+  }
+  for (const [language, count] of missingMappings) {
+    advice.push(
+      `advice: ${count} file${count === 1 ? '' : 's'} quarantined because '${language}' has no structural mapping. Run: anvesa mapping train ${language} --samples <dir>`,
+    );
+  }
   return lines(
     `indexed in ${(report.elapsedMs / 1000).toFixed(2)} s${report.resumedAfterInterruption ? ' (after an interrupted run)' : ''}${report.reextracted ? ' (extraction changed: every file read again)' : ''}`,
     `files: ${f.added} added, ${f.modified} modified, ${f.unchanged} unchanged, ${f.touched} re-stamped, ${f.removed} removed, ${f.quarantined + f.stillQuarantined} quarantined`,
-    f.unsupported.size > 0
-      ? `not source: ${[...f.unsupported].map(([ext, n]) => `${ext || '(none)'} ${n}`).join(', ')}`
-      : undefined,
+    f.unsupported.size > 0 ? notSource(f.unsupported) : undefined,
     report.link
       ? `linked ${report.relinked} files: ${report.link.calls.resolved} calls resolved, ${report.link.imports.dangling} imports dangling`
       : undefined,
@@ -406,7 +430,7 @@ export function renderIndex(result: {
       ? `dense: ${report.dense.ingested} files embedded (${report.dense.cards} cards), ${report.dense.current} current, ${report.dense.quarantinedCards} cards quarantined, ${report.dense.failed.length} failed`
       : undefined,
     ...report.quarantined.map((q) => `quarantined ${q.path} (${q.reason}): ${q.message}`),
-    ...grammarAdvice,
+    ...advice,
     ...(report.warnings ?? []).map((w) => `warning: ${w}`),
     ...(report.dense?.failed ?? []).map((d) => `failed ${d.path} in ${d.channel}: ${d.message}`),
     ...result.synced.map(
@@ -532,11 +556,13 @@ export function renderDoctor(d: ModelDoctor): string {
 
 export function renderGrammars(rows: readonly GrammarRow[]): string {
   return lines(
-    ...rows.map(
-      (r) =>
-        `${r.state === 'ready' ? '*' : ' '} ${r.language.padEnd(12)} ${r.extensions.join(' ').padEnd(24)} ${r.state}: ${r.detail}`,
-    ),
-    '* usable',
+    ...rows.map((r) => {
+      // Usable means what indexing needs: a parser and a mapping to turn its parse into an outline.
+      const usable = r.state === 'ready' && r.mapped !== false;
+      const unmapped = r.mapped === false ? ', no structural mapping: cannot be indexed' : '';
+      return `${usable ? '*' : ' '} ${r.language.padEnd(12)} ${r.extensions.join(' ').padEnd(24)} ${r.state}: ${r.detail}${unmapped}`;
+    }),
+    '* usable: parses and can be indexed',
   );
 }
 
@@ -566,10 +592,47 @@ export function renderTraining(result: TrainedResult): string {
     (t) =>
       `  ${t.tag.padEnd(12)} ${t.found}/${t.expected}${t.found === t.expected ? '' : '  MISMATCH'}`,
   );
+  const extension = report.extension;
+  const extended = extension
+    ? [
+        `extending ${extension.base}: what it maps stays; ${extension.added.length} node type${extension.added.length === 1 ? '' : 's'} added`,
+        ...extension.added.map(
+          (d) =>
+            `  + ${d.type.padEnd(34)} -> ${d.tag.padEnd(10)} seen ${d.occurrences} in ${report.topology.types.get(d.type)?.files ?? 0} files`,
+        ),
+        ...extension.skipped.map((s) => `  - ${s.type.padEnd(34)} not added: ${s.reason}`),
+      ]
+    : [];
+  const tagged = report.tags
+    ? [
+        `tags.scm: ${report.tags.rules} rules; ${report.tags.applied.length} used`,
+        ...report.tags.applied.map(
+          (d) =>
+            `  = ${d.type.padEnd(34)} -> ${d.tag.padEnd(10)} seen ${d.occurrences}${d.nameChild ? `, named by ${d.nameChild}` : ''}`,
+        ),
+        ...report.tags.skipped.map((s) => `  - ${s.type.padEnd(34)} not used: ${s.reason}`),
+      ]
+    : [];
+  const assist = report.assist;
+  const assisted = assist
+    ? [
+        assist.asked === 0
+          ? 'assistant: nothing left undecided to ask about'
+          : `assistant ${assist.model}: asked about ${assist.asked} undecided node types; ${assist.accepted.length} accepted, ${assist.rejected.length} rejected, ${assist.declined} left as they are`,
+        ...assist.accepted.map(
+          (d) =>
+            `  + ${d.type.padEnd(34)} -> ${d.tag.padEnd(10)} seen ${d.occurrences}${d.nameChild ? `, named by ${d.nameChild}` : ''}`,
+        ),
+        ...assist.rejected.map((r) => `  x ${r.type.padEnd(34)} ${r.tag}: ${r.reason}`),
+      ]
+    : [];
   return lines(
     `learned ${report.mapping.name} from ${result.samples} files, ${report.topology.nodes} syntax nodes`,
     'what each node type was taken to be:',
     ...rows,
+    ...tagged,
+    ...extended,
+    ...assisted,
     'checked against the samples (outline nodes / syntax nodes):',
     ...checks,
     `${report.verification.symbols} named symbols in the outlines`,

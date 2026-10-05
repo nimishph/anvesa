@@ -3,7 +3,9 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { InvalidArgumentError, type PageRequest } from '@cntxt-labs/anvesa-core';
 import {
+  type Assistant,
   auditMapping,
+  chatAssistant,
   checkMapping,
   doctorModels,
   type Embedder,
@@ -712,7 +714,8 @@ export async function grammarCommand(ctx: Context): Promise<void> {
   const host = ctx.environment.grammars ?? {};
   switch (sub) {
     case 'list': {
-      const rows = await listGrammars(root(ctx), host);
+      const mappings = await mappingStoreFor(root(ctx), host).registry();
+      const rows = await listGrammars(root(ctx), host, mappings);
       emit(ctx, rows, () => show.renderGrammars(rows));
       return;
     }
@@ -885,6 +888,52 @@ export async function fragmentsCommand(ctx: Context): Promise<void> {
 
 // --- mapping ---------------------------------------------------------------------------------
 
+/**
+ * `--samples` takes one value per flag, so `--samples app core tests` leaves `core` and `tests` as
+ * positionals after the language. They are samples too, not something to drop without a word.
+ */
+function samplesOf(inner: Context): string[] {
+  return [...(inner.parsed.values.samples ?? []), ...inner.parsed.positionals.slice(1)];
+}
+
+/**
+ * The language model `train --assist` asks, from the environment: the key is read here and passed
+ * on, never stored. Any OpenAI-compatible endpoint works; OpenRouter is the default.
+ */
+function assistantFor(ctx: Context, language: string): Assistant {
+  const env = ctx.environment.env;
+  if (ctx.parsed.values['no-network'] === true || env.ANVESA_NO_NETWORK === '1') {
+    throw new InvalidArgumentError('--assist', 'network access (it asks a language model)', 'off');
+  }
+  const apiKey = env.ANVESA_ASSIST_API_KEY ?? env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    throw new InvalidArgumentError(
+      '--assist',
+      'an API key in OPENROUTER_API_KEY (or ANVESA_ASSIST_API_KEY)',
+      'none set',
+    );
+  }
+  const model = ctx.parsed.values['assist-model'] ?? env.ANVESA_ASSIST_MODEL;
+  return chatAssistant({
+    apiKey,
+    language,
+    cacheFile: join(root(ctx), '.anvesa', 'assist', `${language}.json`),
+    ...(model ? { model } : {}),
+    ...(env.ANVESA_ASSIST_BASE_URL ? { baseUrl: env.ANVESA_ASSIST_BASE_URL } : {}),
+    ...(ctx.parsed.values['assist-refresh'] ? { refresh: true } : {}),
+    ...(ctx.environment.fetch ? { fetch: ctx.environment.fetch } : {}),
+  });
+}
+
+function countOption(value: string | undefined, flag: string): number | undefined {
+  if (value === undefined) return undefined;
+  const count = Number(value);
+  if (!Number.isSafeInteger(count) || count < 1) {
+    throw new InvalidArgumentError(flag, 'a whole number of at least 1', value);
+  }
+  return count;
+}
+
 export async function mappingCommand(ctx: Context): Promise<void> {
   const [sub, ...names] = ctx.parsed.positionals;
   const inner: Context = { ...ctx, parsed: { ...ctx.parsed, positionals: names } };
@@ -915,8 +964,8 @@ export async function mappingCommand(ctx: Context): Promise<void> {
     }
     case 'train': {
       const language = need(inner, 0, 'language');
-      const samples = ctx.parsed.values.samples;
-      if (!samples || samples.length === 0) {
+      const samples = samplesOf(inner);
+      if (samples.length === 0) {
         throw new InvalidArgumentError(
           '--samples',
           'a file or folder of code to learn from',
@@ -924,6 +973,18 @@ export async function mappingCommand(ctx: Context): Promise<void> {
         );
       }
       const minShare = ctx.parsed.values['min-share'];
+      const minSamples = countOption(ctx.parsed.values['min-samples'], '--min-samples');
+      const minFiles = countOption(ctx.parsed.values['min-files'], '--min-files');
+      const assist = ctx.parsed.values.assist ? assistantFor(ctx, language) : undefined;
+      const tagsPath = ctx.parsed.values.tags;
+      const tags =
+        tagsPath === undefined
+          ? undefined
+          : await readFile(resolve(ctx.environment.cwd, tagsPath), 'utf8').catch((failure) => {
+              throw new InvalidArgumentError('--tags', 'a readable tags.scm file', tagsPath, {
+                cause: failure,
+              });
+            });
       const result = await trainLanguage(
         root(ctx),
         {
@@ -933,24 +994,29 @@ export async function mappingCommand(ctx: Context): Promise<void> {
           ...(ctx.parsed.values.user ? { user: true } : {}),
           ...(ctx.parsed.values['dry-run'] ? { dryRun: true } : {}),
           ...(ctx.parsed.values.force ? { force: true } : {}),
+          ...(ctx.parsed.values.replace ? { replace: true } : {}),
           ...(minShare === undefined ? {} : { minShare: Number(minShare) }),
+          ...(minSamples === undefined ? {} : { minSamples }),
+          ...(minFiles === undefined ? {} : { minFiles }),
+          ...(assist ? { assist } : {}),
+          ...(tags === undefined ? {} : { tags }),
         },
         host,
       );
       emit(ctx, result, () => show.renderTraining(result));
-      if (result.refused !== undefined && !ctx.parsed.values['dry-run']) {
+      if (result.refused !== undefined && !ctx.parsed.values['dry-run'] && !result.unchanged) {
         throw new CommandFailedError('mapping train', result.refused);
       }
       return;
     }
     case 'audit': {
       const language = need(inner, 0, 'language');
-      const samples = ctx.parsed.values.samples;
+      const samples = samplesOf(inner);
       const report = await auditMapping(
         root(ctx),
         {
           language,
-          ...(samples && samples.length > 0
+          ...(samples.length > 0
             ? { samples: samples.map((sample) => resolve(ctx.environment.cwd, sample)) }
             : {}),
         },
@@ -961,12 +1027,16 @@ export async function mappingCommand(ctx: Context): Promise<void> {
     }
     case 'refine': {
       const language = need(inner, 0, 'language');
-      const samples = ctx.parsed.values.samples;
+      const samples = samplesOf(inner);
       const result = await refineMapping(
         root(ctx),
         {
           language,
-          samples: samples ? samples.map((sample) => resolve(ctx.environment.cwd, sample)) : ['.'],
+          // Paths typed on the command line are the shell's, so they resolve against cwd; with
+          // none, the library looks over the project root, which is not cwd under --root.
+          ...(samples.length > 0
+            ? { samples: samples.map((sample) => resolve(ctx.environment.cwd, sample)) }
+            : {}),
           ...(ctx.parsed.values.name ? { name: ctx.parsed.values.name } : {}),
           ...(ctx.parsed.values.user ? { user: true } : {}),
           ...(ctx.parsed.values['dry-run'] ? { dryRun: true } : {}),

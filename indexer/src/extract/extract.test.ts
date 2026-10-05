@@ -376,7 +376,18 @@ function handleClick() {
       { specifier: './utils', line: 7 },
       { specifier: '../types', line: 8 },
     ]);
+    // The component itself: <script setup> declares nothing by name, so the file is the symbol.
+    const component = facts.symbols[0];
+    expect(component?.name).toBe('Button');
+    expect(component?.kind).toBe('component');
+    expect(component?.id).toBe('components/Button.vue#Button');
+    expect(component?.startLine).toBe(5);
+    expect(component?.parentId).toBeUndefined();
     expect(facts.symbols.map((s) => s.name)).toContain('handleClick');
     expect(facts.calls.map((c) => c.name)).toContain('formatName');
+
+    const { wexpr } = await extractor.extractWithStructure('components/Button.vue', vueSource);
+    expect(wexpr).toContain('(component name="Button"');
+    expect(wexpr.indexOf('(component')).toBeLessThan(wexpr.indexOf('(function'));
   });
 });

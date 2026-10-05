@@ -28,12 +28,14 @@ const isHidden = (codePoint: number) =>
 
 const workspace = join(import.meta.dir, '..');
 const SOURCE = /\.(ts|json|cjs|grit|md)$/;
+const SKIPPED = new Set(['node_modules', 'probe', 'target', 'dist', '.git']);
 
 function sourceFiles(directory: string): string[] {
   const files: string[] = [];
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    if (entry.name === 'node_modules' || entry.name === 'probe' || entry.name.startsWith('__'))
-      continue;
+    // Dependencies and build output (Cargo's `target/` holds thousands of `.json` fingerprints)
+    // are not this workspace's source, and reading them made the test slow enough to time out.
+    if (SKIPPED.has(entry.name) || entry.name.startsWith('__')) continue;
     const path = join(directory, entry.name);
     if (entry.isDirectory()) files.push(...sourceFiles(path));
     else if (SOURCE.test(entry.name)) files.push(path);

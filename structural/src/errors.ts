@@ -100,7 +100,7 @@ export class MappingNotFoundError extends StructuralSubsystemError {
 
   constructor(language: string, known: readonly string[], init: ErrorInit = {}) {
     super(`No W-expression mapping is registered for language "${language}"`, {
-      hint: 'Register a mapping for this language, or use a language that has one.',
+      hint: `Teach it with \`anvesa mapping train ${language} --samples <dir>\`, or use a language that has one.`,
       ...init,
       context: { language, known, ...init.context },
     });
@@ -176,6 +176,18 @@ export class MappingLockError extends StructuralSubsystemError {
 
   constructor(path: string, problem: string, init: ErrorInit = {}) {
     super(`Mapping lockfile ${path} is unusable: ${problem}`, {
+      ...init,
+      context: { path, problem, ...init.context },
+    });
+  }
+}
+
+/** The native addon could not extract a file's facts (it failed on that file, not on all). */
+export class NativeExtractionError extends StructuralSubsystemError {
+  readonly code = 'STRUCTURAL_NATIVE_EXTRACTION';
+
+  constructor(path: string, problem: string, init: ErrorInit = {}) {
+    super(`Cannot extract the facts of ${path || 'a file'} natively: ${problem}`, {
       ...init,
       context: { path, problem, ...init.context },
     });
