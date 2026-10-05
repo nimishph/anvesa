@@ -202,21 +202,35 @@ export function refuseTextAddedTokens(json: HfTokenizerJson, source: string): vo
   }
 }
 
-/** The id that pads a batch: the file's own padding entry, else a token named as a pad token. */
+/** Names a pad token goes by, tried in order when the file has no `padding` entry. */
+const PAD_NAMES = ['<pad>', '[PAD]', '<|pad|>', '<|padding|>'] as const;
+
+/**
+ * The id that pads a batch: the file's own padding entry, else a token named as a pad token, else
+ * the one special token the file declares whose name says it pads (ModernBERT's `<|padding|>`).
+ * Padded positions are masked out, so any declared pad token is a sound choice; two candidates are
+ * refused rather than guessed between.
+ */
 export function padIdOf(
   json: HfTokenizerJson,
   idOf: (token: string) => number | undefined,
   source: string,
 ): number {
   if (typeof json.padding?.pad_id === 'number') return json.padding.pad_id;
-  for (const name of [json.padding?.pad_token, '<pad>', '[PAD]', '<|pad|>']) {
+  for (const name of [json.padding?.pad_token, ...PAD_NAMES]) {
     if (name === undefined) continue;
     const id = idOf(name);
     if (id !== undefined) return id;
   }
+  const declared = (json.added_tokens ?? []).filter(
+    (token) => token.special !== false && /pad/i.test(token.content),
+  );
+  if (declared.length === 1) return (declared[0] as { id: number }).id;
   throw new TokenizerInvalidError(
     source,
     'padding',
-    'it names no padding token, and none of <pad>, [PAD] is in the vocabulary',
+    declared.length > 1
+      ? `it names no padding token, and several special tokens could be one (${declared.map((t) => t.content).join(', ')})`
+      : `it names no padding token, and none of ${PAD_NAMES.join(', ')} is in the vocabulary or declared as a special token`,
   );
 }

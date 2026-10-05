@@ -150,6 +150,37 @@ describe('byte-level BPE and SentencePiece unigram against the reference impleme
     expect(unigram.vocabSize).toBeGreaterThan(100);
   });
 
+  test('a pad token the file only declares as special is found, as ModernBERT spells it', () => {
+    /** The BPE fixture with its `<pad>` (id 1) renamed, in the vocabulary and in added_tokens. */
+    const renamed = (to: string, extra: object[] = []) => {
+      const json = JSON.parse(fixture('bpe.tokenizer.json'));
+      const vocab = json.model.vocab as Record<string, number>;
+      delete vocab['<pad>'];
+      vocab[to] = 1;
+      json.added_tokens = [
+        ...json.added_tokens.map((t: { content: string }) =>
+          t.content === '<pad>' ? { ...t, content: to } : t,
+        ),
+        ...extra,
+      ];
+      return JSON.stringify(json);
+    };
+    expect(tokenizerFromJson(renamed('<|padding|>'), 'modernbert').padId).toBe(1);
+    expect(tokenizerFromJson(renamed('[MY_PAD]'), 'own name').padId).toBe(1);
+
+    const special = {
+      single_word: false,
+      lstrip: false,
+      rstrip: false,
+      normalized: false,
+      special: true,
+    };
+    expect(() =>
+      tokenizerFromJson(renamed('[PAD_A]', [{ ...special, id: 4, content: '[PAD_B]' }]), 'two'),
+    ).toThrow(/several special tokens could be one \(\[PAD_A\], \[PAD_B\]\)/);
+    expect(() => tokenizerFromJson(renamed('[NOTHING]'), 'none')).toThrow(TokenizerInvalidError);
+  });
+
   test('a very long word with no spaces is merged without quadratic work', () => {
     const bpe = tokenizerFromJson(fixture('bpe.tokenizer.json'), 'bpe');
     const started = performance.now();
