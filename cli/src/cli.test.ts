@@ -406,6 +406,22 @@ describe('command line', () => {
     ).toBeNull();
   });
 
+  test('run from a subdirectory, a command finds the nearest project above it', async () => {
+    const root = makeProject();
+    expect((await cli(root, 'index')).code).toBe(0);
+    const inside = join(root, 'src');
+    const status = await cliWith({ cwd: inside }, inside, 'status', '--json');
+    expect(status.code).toBe(0);
+    expect(json(status).root).toBe(root);
+    expect(existsSync(join(inside, '.anvesa'))).toBe(false);
+
+    // --root still names the project exactly; init scaffolds where it is run, not above.
+    const named = await cliWith({ cwd: inside }, inside, 'status', '--root', '.', '--json');
+    expect(json(named).root).toBe(inside);
+    expect((await cliWith({ cwd: inside }, inside, 'init', '--no-download')).code).toBe(0);
+    expect(existsSync(join(inside, '.anvesa', 'config.json'))).toBe(true);
+  });
+
   test('an index that cannot be upgraded names the copy it took first', async () => {
     const root = makeProject();
     expect((await cli(root, 'index')).code).toBe(0);

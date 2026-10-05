@@ -62,8 +62,12 @@ usage: anvesa <command> [arguments] [options]
   pattern list|run <name> [param=val...]  declarative structural patterns
   primer [topic]            token-frugal guidance on Anvesa architecture and concepts (--compact)
   issue [title]             raise an issue on GitHub with sanitized diagnostics
-  mcp serve                 run as an MCP server on stdio, for --root (default: current directory)
+  mcp serve                 run as an MCP server on stdio, for the project (see --root below)
   --version                 print the version
+
+project: the nearest directory, here or above, with a .anvesa/ project in it (config.json,
+         workspace.json or an index), the way git finds .git; none found, the current directory.
+         --root <dir> names it instead. init always scaffolds in the current directory (or --root).
 
 options: --root <dir>  --json  --limit N  --cursor <token>  --channel <name>  --no-embed (or --no-dense)
          --no-network (or ANVESA_NO_NETWORK=1)  audit mode: block every outbound connection, report attempts
