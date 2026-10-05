@@ -360,6 +360,17 @@ function isDuplicateObject(failure: unknown): boolean {
   return /\balready exists\b/i.test(message);
 }
 
+/** Whether the index holds anything an upgrade could lose: files, cards, or recorded state. */
+function holdsData(db: Database): boolean {
+  return (
+    getRow(
+      db,
+      `SELECT 1 WHERE EXISTS (SELECT 1 FROM files) OR EXISTS (SELECT 1 FROM cards)
+                   OR EXISTS (SELECT 1 FROM meta)`,
+    ) !== null
+  );
+}
+
 function userVersion(db: Database): number {
   const row = getRow(db, 'PRAGMA user_version') as { user_version: number } | null;
   return row?.user_version ?? 0;
@@ -469,9 +480,14 @@ function migrate(db: Database, path: string, readonly: boolean): StoreBackup | u
       `it is at schema version ${current} and needs ${SCHEMA_VERSION}, which needs a writable open`,
     );
   }
-  // An index that is not there yet has nothing to lose, so only an existing one is copied.
+  // An index that is not there yet has nothing to lose, so only an existing one is copied, and
+  // only if it holds something: a process that finds a new index part-way created is looking at
+  // another process creating it at that moment, and copying (or clearing old copies beside) a
+  // file another process is still writing breaks that process's open.
   const backup =
-    path === MEMORY_DATABASE || current === 0 ? undefined : takeBackup(db, path, current);
+    path === MEMORY_DATABASE || current === 0 || !holdsData(db)
+      ? undefined
+      : takeBackup(db, path, current);
   // Set only by a migration this process applied itself, and that had data to move.
   let vacuum = false;
   for (const migration of pending) {

@@ -130,6 +130,8 @@ function firstReleaseIndex(path: string): void {
   const raw = new Database(path, { create: true });
   raw.exec('PRAGMA journal_mode = WAL');
   raw.exec(MIGRATIONS[0]?.sql ?? '');
+  // Something to lose, as an index in use has: an empty one is not copied before an upgrade.
+  raw.exec("INSERT INTO meta (key, value) VALUES ('index.started', '0')");
   raw.exec('PRAGMA user_version = 1');
   raw.close();
 }

@@ -181,6 +181,8 @@ function olderSchemaIndex(journal: 'wal' | 'delete' = 'wal'): string {
   const raw = new Database(path, { create: true });
   if (journal === 'wal') raw.exec('PRAGMA journal_mode = WAL');
   raw.exec(MIGRATIONS[0]?.sql ?? '');
+  // Something to lose, as an index in use has: an empty one is not copied before an upgrade.
+  raw.exec("INSERT INTO meta (key, value) VALUES ('index.started', '0')");
   raw.exec('PRAGMA user_version = 1');
   raw.close();
   return path;
@@ -387,6 +389,22 @@ describe('copying an index before it is upgraded', () => {
     expect(schemaVersionOf(path)).toBe(SCHEMA_VERSION);
     // The copy is the index as it was, whole, not a record of what the upgrade did.
     expect(schemaVersionOf(backup?.backupPath ?? path)).toBe(1);
+    database.close();
+  });
+
+  test('an older index that holds nothing is upgraded without a copy', () => {
+    // What a process sees when another is creating the same index at that moment.
+    const path = dbPath();
+    mkdirSync(dirname(path), { recursive: true });
+    const raw = new Database(path, { create: true });
+    raw.exec('PRAGMA journal_mode = WAL');
+    raw.exec(MIGRATIONS[0]?.sql ?? '');
+    raw.exec('PRAGMA user_version = 1');
+    raw.close();
+    const database = StoreDatabase.open(path);
+    expect(database.backup).toBeUndefined();
+    expect(copiesOf(path)).toEqual([]);
+    expect(schemaVersionOf(path)).toBe(SCHEMA_VERSION);
     database.close();
   });
 
