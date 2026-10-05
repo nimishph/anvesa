@@ -338,6 +338,17 @@ describe('searching', () => {
     const r = await indexed();
     const bare = await retriever(r.root, { embedder: null });
     await expect(bare.search('parse the config')).rejects.toBeInstanceOf(EmbedderUnavailableError);
+    // Leaving a lane out does not change the cause: the dense lanes were never there to leave.
+    await expect(bare.search('parse the config', { exclude: ['docs'] })).rejects.toBeInstanceOf(
+      EmbedderUnavailableError,
+    );
+    await expect(bare.search('parse the config', { weights: { docs: 0 } })).rejects.toBeInstanceOf(
+      EmbedderUnavailableError,
+    );
+    // Leaving out the one lane a structural query had is still the caller's doing.
+    await expect(
+      bare.search('//function[@name="validate"]', { exclude: ['structural'] }),
+    ).rejects.toThrow(/at least one lane/);
     // Structural queries work without one.
     expect((await bare.search('//function[@name="validate"]')).items.length).toBeGreaterThan(0);
   });
