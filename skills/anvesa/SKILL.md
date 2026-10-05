@@ -1,7 +1,7 @@
 ---
 name: anvesa
 description: Find code by meaning and structure using anvesa (@cntxt-labs/anvesa). Use when searching a codebase for concepts, finding declarations, tracing callers/callees/dependents, querying AST structure with WQL, or running named query patterns. Prefer anvesa over grep for semantic intent, symbol relationships, and structural invariants.
-version: "0.5.0"
+version: "0.6.0"
 ---
 
 # anvesa: Semantic & Structural Code Retrieval
@@ -32,7 +32,7 @@ version: "0.5.0"
 ```bash
 anvesa index                     # incremental (only changed files read)
 anvesa index --force             # rebuild full index from scratch
-anvesa index --no-dense          # structural & graph only (no embedding pass)
+anvesa index --no-embed          # structural & graph only (no embedding pass)
 ```
 
 ### 2. Search by Meaning & Name (Dense + Structural Fusion)
@@ -129,6 +129,9 @@ anvesa issue "Describe bug or request"                   # open pre-filled GitHu
 ### 8. Language Mappings (Bundled, Auditing & Refinement)
 
 Bundled mappings: TypeScript/JS/Vue, Python, PHP, Go, Rust, Java, Ruby, C, C++.
+C and C++ are partial: types (struct, class, namespace) come out, functions do not, because their
+names sit in nested declarators. Use text search or `mapping train` for C/C++ functions. C# has
+no bundled mapping.
 
 ```bash
 anvesa mapping list                          # list active mappings and tiers (bundled, project, user)

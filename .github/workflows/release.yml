@@ -225,6 +225,7 @@ jobs:
           }
           for folder in staged/*/; do stage "${folder%/}"; done
           cp README.md LICENSE cli/
+          cp -r skills cli/   # the agent skill has one source, skills/ at the repository root
           stage ./cli
 
       - name: List what needs approval

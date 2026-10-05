@@ -1,0 +1,20 @@
+{
+  "name": "anvesa",
+  "displayName": "anvesa",
+  "version": "0.6.0",
+  "description": "Find code by meaning and by structure: semantic search, WQL structural queries and the call graph, offline, over MCP and the CLI. Prefer it to grep for intent, symbols and relationships.",
+  "author": {
+    "name": "nimishph",
+    "url": "https://github.com/nimishph"
+  },
+  "homepage": "https://github.com/nimishph/anvesa#readme",
+  "repository": "https://github.com/nimishph/anvesa",
+  "license": "MIT",
+  "keywords": ["code-search", "semantic-search", "mcp", "tree-sitter", "call-graph", "wql"],
+  "mcpServers": {
+    "anvesa": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/plugin/mcp-server.cjs", "--root", "${CLAUDE_PROJECT_DIR}"]
+    }
+  }
+}
