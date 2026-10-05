@@ -12,7 +12,7 @@ The following flags can be passed to any Anvesa command:
 | :--- | :--- |
 | `--format <mode>` | Output presentation: `compact` (concise tokens), `pretty` (ANSI colors), `locations` (quickfix list), or `json` (machine readable). |
 | `--json` | Shorthand for `--format json`. |
-| `--root <dir>` | Path to repository root (defaults to current working directory). |
+| `--root <dir>` | Path to repository root. Without it, the nearest directory at or above the current one whose `.anvesa/` holds a project (`config.json`, `workspace.json` or an index), the way git finds `.git`; none found, the current directory. `init` always scaffolds in the current directory. |
 | `--limit <N>` | Maximum number of results or records to return. |
 | `--cursor <token>` | Pagination cursor for subsequent result pages. |
 | `--no-network` | Audit mode: strictly blocks outbound HTTP connections (`ANVESA_NO_NETWORK=1`). |

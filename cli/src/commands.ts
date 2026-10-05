@@ -35,6 +35,7 @@ import { CommandFailedError } from './errors.ts';
 import { renderSetup, setupProject } from './init.ts';
 import { integerOption, type Parsed } from './options.ts';
 import { getPrimer, renderPrimer } from './primer.ts';
+import { findProjectRoot } from './project-root.ts';
 import * as show from './render.ts';
 import { VERSION } from './version.ts';
 
@@ -49,7 +50,15 @@ interface Session {
   close(): Promise<void>;
 }
 
-const root = (ctx: Context): string => resolve(ctx.environment.cwd, ctx.parsed.values.root ?? '.');
+/** Where `init` scaffolds: `--root`, else the current directory. It never walks up. */
+const startDirectory = (ctx: Context): string =>
+  resolve(ctx.environment.cwd, ctx.parsed.values.root ?? '.');
+
+/** The project: `--root` exactly as given, else the nearest enclosing one (see findProjectRoot). */
+const root = (ctx: Context): string =>
+  ctx.parsed.values.root === undefined
+    ? findProjectRoot(ctx.environment.cwd, ctx.environment.env)
+    : startDirectory(ctx);
 
 export function modelCache(ctx: Context): ModelCache {
   return new ModelCache(
@@ -276,7 +285,7 @@ export function resolveFormat(ctx: Context): show.FormatMode {
 
 export const COMMANDS: Readonly<Record<string, Handler>> = {
   init: async (ctx) => {
-    const projectRoot = root(ctx);
+    const projectRoot = startDirectory(ctx);
     const created: string[] = [];
     const kept: string[] = [];
     for (const file of scaffoldFiles()) {
