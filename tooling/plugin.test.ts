@@ -144,6 +144,7 @@ const hook = createRequire(import.meta.url)('../plugin/session-start.cjs') as {
     isAlive: (pid: number) => boolean;
   }): { note?: string; start: boolean };
   stateDir(env: Record<string, string>, root: string): string;
+  hasIndex(root: string): boolean;
   STALE_RUN_MS: number;
 };
 
@@ -155,6 +156,16 @@ describe('SessionStart index refresh', () => {
     const decided = hook.plan({ hasIndex: false, status: undefined, now, isAlive: alive });
     expect(decided.start).toBe(false);
     expect(decided.note).toContain('no index yet');
+  });
+
+  test('a project only set up by `anvesa init` has no index; one with an index file or shards does', () => {
+    const initialised = folder('hook-init', '.anvesa');
+    writeFileSync(join(initialised, 'config.json'), '{}');
+    expect(hook.hasIndex(join(initialised, '..'))).toBe(false);
+    writeFileSync(join(initialised, 'index.db'), '');
+    expect(hook.hasIndex(join(initialised, '..'))).toBe(true);
+    folder('hook-shards', '.anvesa', 'shards');
+    expect(hook.hasIndex(folder('hook-shards'))).toBe(true);
   });
 
   test('an indexed project refreshes, silently', () => {

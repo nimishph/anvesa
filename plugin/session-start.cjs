@@ -75,6 +75,15 @@ function why(dir) {
 }
 
 /**
+ * Whether the project has been indexed: one index file, or a folder of shards. `.anvesa/` alone
+ * is not enough, since `anvesa init` makes it (with the config) before anything is indexed.
+ */
+function hasIndex(root) {
+  const folder = path.join(root, '.anvesa');
+  return existsSync(path.join(folder, 'index.db')) || existsSync(path.join(folder, 'shards'));
+}
+
+/**
  * What to tell Claude and whether to start a refresh, from the project's state. Pure, for tests.
  */
 function plan({ hasIndex, status, now, isAlive }) {
@@ -100,7 +109,7 @@ function main() {
   const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
   const dir = stateDir(process.env, root);
   const decided = plan({
-    hasIndex: existsSync(path.join(root, '.anvesa')),
+    hasIndex: hasIndex(root),
     status: readStatus(dir),
     now: Date.now(),
     isAlive: alive,
@@ -157,7 +166,7 @@ function run(root, dir) {
   });
 }
 
-module.exports = { plan, stateDir, STALE_RUN_MS };
+module.exports = { hasIndex, plan, stateDir, STALE_RUN_MS };
 
 if (require.main === module) {
   try {
