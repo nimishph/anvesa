@@ -397,7 +397,7 @@ export class Indexer {
         }
 
         if (this.#ingester) {
-          await this.#ingest(entry.path, content.content, entry.language, dense, {
+          await this.#ingest(entry.path, content.content, entry.language, dense, emit, {
             deadline,
             force: options.force === true,
           });
@@ -546,11 +546,19 @@ export class Indexer {
     content: string,
     language: string,
     report: DenseReport,
+    emit: (event: IndexEvent) => void,
     options: { deadline: Deadline; force: boolean },
   ): Promise<void> {
     const ingester = this.#ingester as Ingester;
+    emit({ kind: 'embedding', path });
     const reports = await ingester.ingest(inputFile(path, content, { language }), options);
+    let rebuilt = false;
+    let cards = 0;
     for (const entry of reports) {
+      if (entry.outcome !== 'failed' && entry.outcome !== 'unchanged') {
+        rebuilt = true;
+        cards += entry.indexed;
+      }
       if (entry.outcome === 'failed') {
         report.failed.push({
           path,
@@ -565,6 +573,7 @@ export class Indexer {
         report.quarantinedCards += entry.quarantined.length;
       }
     }
+    if (rebuilt) emit({ kind: 'embedded', path, cards });
   }
 
   /** Forget files that are indexed but no longer on disk (or no longer visible). */

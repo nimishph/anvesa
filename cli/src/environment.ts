@@ -15,6 +15,8 @@ export interface Environment {
   readonly fetch?: typeof fetch | undefined;
   /** Whether stderr is an interactive terminal, so progress can overwrite its own line. */
   readonly isTTY?: boolean | undefined;
+  /** How often a run not on a terminal reports that it is still working. Tests shorten it. */
+  readonly progressIntervalMs?: number | undefined;
   /**
    * Ask the person a question and return their answer, or `undefined` when nobody can answer
    * (input is not a terminal). Tests supply scripted answers.
