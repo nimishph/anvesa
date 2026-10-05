@@ -372,14 +372,6 @@ function hasTables(db: Database): boolean {
   return (row?.n ?? 0) > 0;
 }
 
-/** At least a quarter of the file is free pages: worth rewriting to give them back. */
-function mostlyFree(db: Database): boolean {
-  const free = (getRow(db, 'PRAGMA freelist_count') as { freelist_count: number } | null)
-    ?.freelist_count;
-  const total = (getRow(db, 'PRAGMA page_count') as { page_count: number } | null)?.page_count;
-  return free !== undefined && total !== undefined && total > 0 && free * 4 >= total;
-}
-
 function journalMode(db: Database): string {
   const row = getRow(db, 'PRAGMA journal_mode') as { journal_mode: string } | null;
   return row?.journal_mode ?? '';
@@ -480,8 +472,11 @@ function migrate(db: Database, path: string, readonly: boolean): StoreBackup | u
   // An index that is not there yet has nothing to lose, so only an existing one is copied.
   const backup =
     path === MEMORY_DATABASE || current === 0 ? undefined : takeBackup(db, path, current);
+  // Set only by a migration this process applied itself, and that had data to move.
+  let vacuum = false;
   for (const migration of pending) {
     for (let attempt = 0; ; attempt += 1) {
+      let appliedHere = false;
       try {
         db.transaction(() => {
           // Re-read under the write lock, which is where the version is settled. Two processes
@@ -495,7 +490,15 @@ function migrate(db: Database, path: string, readonly: boolean): StoreBackup | u
           if (now >= migration.version) return;
           db.exec(migration.sql);
           db.exec(`PRAGMA user_version = ${migration.version}`);
+          appliedHere = true;
         }).immediate();
+        if (
+          appliedHere &&
+          migration.vacuumIf !== undefined &&
+          getRow(db, migration.vacuumIf) !== null
+        ) {
+          vacuum = true;
+        }
         break;
       } catch (failure) {
         if (failure instanceof CodeLensError) throw failure;
@@ -533,15 +536,16 @@ function migrate(db: Database, path: string, readonly: boolean): StoreBackup | u
   }
   // A migration that moves data out of a table leaves its old pages free; the file would keep that
   // size until rewritten. VACUUM cannot run inside a transaction, so it follows the steps. It runs
-  // only when there is real space to give back: an index another process is creating at the same
-  // moment has none, and rewriting a file another process is opening breaks that open.
-  if (
-    current > 0 &&
-    path !== MEMORY_DATABASE &&
-    pending.some((migration) => migration.vacuum) &&
-    mostlyFree(db)
-  ) {
-    db.exec('VACUUM');
+  // only in the process that applied such a migration to an index with data in it: never for a new
+  // index, which several processes may be creating at the same moment, since rewriting a file
+  // another process is opening breaks that open. If another process holds the lock, it is skipped:
+  // the free pages are used again by later writes.
+  if (vacuum) {
+    try {
+      db.exec('VACUUM');
+    } catch (failure) {
+      if (!isLocked(failure)) throw asStoreError('give back the space the upgrade freed', failure);
+    }
   }
   return backup;
 }

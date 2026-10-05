@@ -7,8 +7,11 @@ export interface Migration {
   readonly version: number;
   readonly description: string;
   readonly sql: string;
-  /** Rewrite the file once this has been applied, to give back the pages it freed. */
-  readonly vacuum?: boolean;
+  /**
+   * Rewrite the file after this migration, to give back the pages it freed, when this query
+   * returns a row: when there was data to move, not when the index is new.
+   */
+  readonly vacuumIf?: string;
 }
 
 export const MIGRATIONS: readonly Migration[] = [
@@ -254,7 +257,7 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE cards DROP COLUMN vector;
       ALTER TABLE cards DROP COLUMN dims;
     `,
-    vacuum: true,
+    vacuumIf: 'SELECT 1 FROM card_vectors LIMIT 1',
   },
 ];
 
