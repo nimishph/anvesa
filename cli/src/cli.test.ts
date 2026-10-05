@@ -550,6 +550,29 @@ describe('command line', () => {
     expect(broken.out).toContain('(invalid:');
   });
 
+  test('a slow model is never mistaken for a stall: progress names the file being embedded', async () => {
+    const root = makeProject();
+    const slow: Embedder = {
+      ...embedder,
+      embed: async (texts) => {
+        await Bun.sleep(40);
+        return embedder.embed(texts);
+      },
+    };
+    const piped = await cliWith(
+      { isTTY: false, embedder: slow, progressIntervalMs: 15 },
+      root,
+      'index',
+    );
+    expect(piped.code).toBe(0);
+    expect(piped.err).toMatch(/— embedding (src|docs)\/\S+ \(\d+ s on it\), \d+ s in\n/);
+    // The last line before linking says how much was embedded.
+    expect(piped.err).toMatch(/embedded \(\d+ cards\) — linking\n/);
+
+    const tty = await cliWith({ isTTY: true, embedder: slow }, root, 'index', '--force');
+    expect(tty.err).toMatch(/\d+ embedded \(\d+ cards\)/);
+  });
+
   test('an index that cannot be upgraded names the copy it took first', async () => {
     const root = makeProject();
     expect((await cli(root, 'index')).code).toBe(0);

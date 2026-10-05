@@ -77,9 +77,6 @@ describe('loading', () => {
         'no-pre.json',
       ),
     ).toThrow(/byte-level/);
-    expect(() =>
-      tokenizerFromJson(bpe({ added_tokens: [{ id: 1, content: 'x', special: false }] }), 'b'),
-    ).toThrow(/added_tokens/);
   });
 
   test('invalid JSON keeps its cause', () => {
@@ -141,6 +138,29 @@ describe('byte-level BPE and SentencePiece unigram against the reference impleme
     });
   }
 
+  // The same tokenizers with ordinary added tokens on them, as ModernBERT ships placeholders and
+  // runs of spaces (scripts/make-added-token-fixtures.py): found in text, leftmost and longest,
+  // with single_word, lstrip, rstrip, normalized content and Metaspace "first" as the reference has them.
+  for (const name of ['bpe-added', 'bpe-added-prefix', 'unigram-added', 'unigram-added-first']) {
+    const tokenizer = tokenizerFromJson(fixture(`${name}.tokenizer.json`), `${name} fixture`);
+    const rows = JSON.parse(fixture(`${name}.golden.json`)) as {
+      text: string;
+      ids: number[];
+      bare: number;
+    }[];
+    test(`${name}: added tokens are found in text exactly as the reference finds them`, () => {
+      const wrong = rows
+        .filter(
+          (row) =>
+            JSON.stringify(tokenizer.encode(row.text)) !== JSON.stringify(row.ids) ||
+            tokenizer.count(row.text) !== row.bare,
+        )
+        .map((row) => ({ text: row.text, want: row.ids, got: tokenizer.encode(row.text) }));
+      expect(wrong).toEqual([]);
+      expect(rows.length).toBeGreaterThan(10);
+    });
+  }
+
   test('the frame around a text is what the post-processor says, and padding is found', () => {
     const bpe = tokenizerFromJson(fixture('bpe.tokenizer.json'), 'bpe');
     expect(bpe.specialTokens).toBe(2);
@@ -148,6 +168,37 @@ describe('byte-level BPE and SentencePiece unigram against the reference impleme
     const unigram = tokenizerFromJson(fixture('unigram.tokenizer.json'), 'unigram');
     expect(unigram.encode('').length).toBe(2);
     expect(unigram.vocabSize).toBeGreaterThan(100);
+  });
+
+  test('a pad token the file only declares as special is found, as ModernBERT spells it', () => {
+    /** The BPE fixture with its `<pad>` (id 1) renamed, in the vocabulary and in added_tokens. */
+    const renamed = (to: string, extra: object[] = []) => {
+      const json = JSON.parse(fixture('bpe.tokenizer.json'));
+      const vocab = json.model.vocab as Record<string, number>;
+      delete vocab['<pad>'];
+      vocab[to] = 1;
+      json.added_tokens = [
+        ...json.added_tokens.map((t: { content: string }) =>
+          t.content === '<pad>' ? { ...t, content: to } : t,
+        ),
+        ...extra,
+      ];
+      return JSON.stringify(json);
+    };
+    expect(tokenizerFromJson(renamed('<|padding|>'), 'modernbert').padId).toBe(1);
+    expect(tokenizerFromJson(renamed('[MY_PAD]'), 'own name').padId).toBe(1);
+
+    const special = {
+      single_word: false,
+      lstrip: false,
+      rstrip: false,
+      normalized: false,
+      special: true,
+    };
+    expect(() =>
+      tokenizerFromJson(renamed('[PAD_A]', [{ ...special, id: 4, content: '[PAD_B]' }]), 'two'),
+    ).toThrow(/several special tokens could be one \(\[PAD_A\], \[PAD_B\]\)/);
+    expect(() => tokenizerFromJson(renamed('[NOTHING]'), 'none')).toThrow(TokenizerInvalidError);
   });
 
   test('a very long word with no spaces is merged without quadratic work', () => {

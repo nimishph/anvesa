@@ -1,5 +1,6 @@
 import { TokenizerInvalidError } from './errors.ts';
 import {
+  addedTokenSplitter,
   buildFrame,
   buildNormalizer,
   type Frame,
@@ -7,7 +8,7 @@ import {
   type HfTokenizerJson,
   type Normalize,
   padIdOf,
-  refuseTextAddedTokens,
+  type Segment,
   specialTokenIds,
 } from './tokenizer-hf.ts';
 import type { Tokenizer } from './tokenizer-types.ts';
@@ -22,7 +23,10 @@ export interface UnigramOptions {
   readonly unknownId: number;
   readonly normalize: Normalize;
   /** Splits a normalised text into the parts that are segmented independently. */
-  readonly split: (text: string) => readonly string[];
+  /** Finds the file's non-special added tokens; normalizes the text between them. */
+  readonly segments: (text: string) => readonly Segment[];
+  /** `start`: the text begins the original input, for a Metaspace that prepends only there. */
+  readonly split: (text: string, start: boolean) => readonly string[];
   readonly frame: Frame;
   readonly padId: number;
   readonly source: string;
@@ -66,8 +70,14 @@ export class UnigramTokenizer implements Tokenizer {
 
   tokenize(text: string): number[] {
     const ids: number[] = [];
-    for (const part of this.#options.split(this.#options.normalize(text))) {
-      this.#segment([...part], ids);
+    for (const segment of this.#options.segments(text)) {
+      if ('id' in segment) {
+        ids.push(segment.id);
+        continue;
+      }
+      for (const part of this.#options.split(segment.text, segment.start)) {
+        this.#segment([...part], ids);
+      }
     }
     return ids;
   }
@@ -139,13 +149,18 @@ const WHITESPACE_RUN = /\s+/u;
 function buildSplit(
   spec: HfComponent | null | undefined,
   source: string,
-): (text: string) => readonly string[] {
+): (text: string, start: boolean) => readonly string[] {
   if (spec === null || spec === undefined) return (text) => [text];
   if (spec.type === 'Sequence') {
     const steps = ((spec.pretokenizers as HfComponent[]) ?? []).map((part) =>
       buildSplit(part, source),
     );
-    return (text) => steps.reduce<readonly string[]>((parts, step) => parts.flatMap(step), [text]);
+    // Only the first part of a run that begins the input still begins it.
+    return (text, start) =>
+      steps.reduce<readonly string[]>(
+        (parts, step) => parts.flatMap((part, index) => step(part, start && index === 0)),
+        [text],
+      );
   }
   if (spec.type === 'WhitespaceSplit') {
     return (text) => text.split(WHITESPACE_RUN).filter((part) => part !== '');
@@ -163,10 +178,11 @@ function buildSplit(
       );
     }
     const splitting = spec.split !== false;
-    return (text) => {
+    return (text, start) => {
       if (text === '') return [];
       let replaced = text.replaceAll(' ', replacement);
-      if (scheme !== 'never' && !replaced.startsWith(replacement)) {
+      const prepend = scheme === 'always' || (scheme === 'first' && start);
+      if (prepend && !replaced.startsWith(replacement)) {
         replaced = replacement + replaced;
       }
       if (!splitting) return [replaced];
@@ -194,7 +210,6 @@ function buildSplit(
 /** The SentencePiece unigram tokenizer a `tokenizer.json` describes. */
 export function unigramFromJson(json: HfTokenizerJson, source: string): UnigramTokenizer {
   const model = json.model as HfComponent;
-  refuseTextAddedTokens(json, source);
   const pieces = model.vocab as readonly (readonly [string, number])[] | undefined;
   if (!Array.isArray(pieces)) {
     throw new TokenizerInvalidError(source, 'model.vocab', 'a unigram model needs scored pieces');
@@ -214,11 +229,13 @@ export function unigramFromJson(json: HfTokenizerJson, source: string): UnigramT
     if (!ids.has(piece)) ids.set(piece, id);
   });
   const idOf = (token: string) => ids.get(token);
+  const normalize = buildNormalizer(json.normalizer, source);
   return new UnigramTokenizer({
     pieces,
     reserved: specialTokenIds(json),
     unknownId: model.unk_id,
-    normalize: buildNormalizer(json.normalizer, source),
+    normalize,
+    segments: addedTokenSplitter(json, normalize),
     split: buildSplit(json.pre_tokenizer, source),
     frame: buildFrame(json.post_processor, idOf, source),
     padId: padIdOf(json, idOf, source),

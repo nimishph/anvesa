@@ -219,17 +219,45 @@ function scaffoldFiles(): readonly ScaffoldFile[] {
 /**
  * Live progress for `index`, on stderr so it never mixes with --json (or the text summary, both
  * on stdout). On a terminal, one line is rewritten in place; otherwise (piped, logged, tests) a
- * plain line is appended periodically, since overwriting one line only makes sense on a screen.
+ * plain line is appended every 500 files and, so a slow model is never mistaken for a stall, on a
+ * timer while a run is in progress, naming the file being embedded and for how long.
  */
-function indexProgress(ctx: Context): (event: IndexEvent) => void {
+function indexProgress(ctx: Context): {
+  readonly onEvent: (event: IndexEvent) => void;
+  stop(): void;
+} {
   const interactive = ctx.environment.isTTY === true;
   const showWalk = ctx.parsed.values['show-walk'] === true;
-  const counts = { seen: 0, added: 0, modified: 0, quarantined: 0 };
+  const counts = { seen: 0, added: 0, modified: 0, quarantined: 0, embedded: 0, cards: 0 };
+  let embedding: { readonly path: string; readonly since: number } | undefined;
   let lastWrite = 0;
   let lineLength = 0;
   const summary = () =>
-    `indexing: ${counts.seen} seen (${counts.added} added, ${counts.modified} modified, ${counts.quarantined} quarantined)`;
-  return (event) => {
+    `indexing: ${counts.seen} seen (${counts.added} added, ${counts.modified} modified, ${counts.quarantined} quarantined)${counts.embedded > 0 ? `, ${counts.embedded} embedded (${counts.cards} cards)` : ''}`;
+  const draw = () => {
+    const line = summary();
+    ctx.environment.stderr(`\r${line}${' '.repeat(Math.max(0, lineLength - line.length))}`);
+    lineLength = line.length;
+  };
+  const clear = () => {
+    if (interactive && lineLength > 0) ctx.environment.stderr(`\r${' '.repeat(lineLength)}\r`);
+    lineLength = 0;
+  };
+  const started = Date.now();
+  const heartbeat = interactive
+    ? undefined
+    : setInterval(() => {
+        const now = Date.now();
+        const where = embedding
+          ? ` — embedding ${embedding.path} (${Math.round((now - embedding.since) / 1000)} s on it)`
+          : '';
+        ctx.environment.stderr(
+          `${summary()}${where}, ${Math.round((now - started) / 1000)} s in\n`,
+        );
+      }, ctx.environment.progressIntervalMs ?? 10_000);
+  heartbeat?.unref?.();
+
+  const onEvent = (event: IndexEvent): void => {
     if (event.kind === 'started') {
       if (event.interrupted) {
         ctx.environment.stderr(
@@ -239,7 +267,22 @@ function indexProgress(ctx: Context): (event: IndexEvent) => void {
       return;
     }
     if (event.kind === 'warning') {
+      clear();
       ctx.environment.stderr(`warning: ${event.message}\n`);
+      return;
+    }
+    if (event.kind === 'embedding') {
+      embedding = { path: event.path, since: Date.now() };
+      return;
+    }
+    if (event.kind === 'embedded') {
+      embedding = undefined;
+      counts.embedded += 1;
+      counts.cards += event.cards;
+      if (interactive && Date.now() - lastWrite >= 80) {
+        lastWrite = Date.now();
+        draw();
+      }
       return;
     }
     if (event.kind === 'file') {
@@ -249,8 +292,7 @@ function indexProgress(ctx: Context): (event: IndexEvent) => void {
       else if (event.outcome === 'quarantined') counts.quarantined += 1;
       if (showWalk) {
         // Clear the running count first, so the path does not land on top of it; it is redrawn below.
-        if (interactive && lineLength > 0) ctx.environment.stderr(`\r${' '.repeat(lineLength)}\r`);
-        lineLength = 0;
+        clear();
         lastWrite = 0;
         ctx.environment.stderr(
           `walk: ${event.path} (${event.outcome}${event.reason ? `: ${event.reason}` : ''})\n`,
@@ -260,20 +302,27 @@ function indexProgress(ctx: Context): (event: IndexEvent) => void {
         const now = Date.now();
         if (now - lastWrite < 80) return;
         lastWrite = now;
-        const line = summary();
-        ctx.environment.stderr(`\r${line}${' '.repeat(Math.max(0, lineLength - line.length))}`);
-        lineLength = line.length;
+        draw();
       } else if (counts.seen % 500 === 0) {
         ctx.environment.stderr(`${summary()}\n`);
       }
       return;
     }
     if (event.kind === 'linking') {
-      ctx.environment.stderr(interactive ? `\r${summary()} — linking\n` : 'linking\n');
+      embedding = undefined;
+      ctx.environment.stderr(
+        interactive ? `\r${summary()} — linking\n` : `${summary()} — linking\n`,
+      );
       lineLength = 0;
       return;
     }
-    if (interactive && lineLength > 0) ctx.environment.stderr(`\r${' '.repeat(lineLength)}\r`);
+    clear();
+  };
+  return {
+    onEvent,
+    stop: () => {
+      if (heartbeat) clearInterval(heartbeat);
+    },
   };
 }
 
@@ -323,12 +372,15 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
           `note: no embedder (${embedderReason}); indexing facts and graph only\n`,
         );
       const inScope = pathScope(ctx.parsed.values.scope, '--scope');
-      const result = await retriever.index({
-        onEvent: indexProgress(ctx),
-        ...(ctx.parsed.values.force ? { force: true } : {}),
-        ...(ctx.parsed.values['retry-quarantined'] ? { retryQuarantined: true } : {}),
-        ...(inScope ? { scope: inScope } : {}),
-      });
+      const progress = indexProgress(ctx);
+      const result = await retriever
+        .index({
+          onEvent: progress.onEvent,
+          ...(ctx.parsed.values.force ? { force: true } : {}),
+          ...(ctx.parsed.values['retry-quarantined'] ? { retryQuarantined: true } : {}),
+          ...(inScope ? { scope: inScope } : {}),
+        })
+        .finally(progress.stop);
       const info = retriever.embedder?.info;
       // The model the index was embedded with is recorded, so every later run, on any machine,
       // searches with it instead of whatever that machine would pick.

@@ -21,7 +21,7 @@ import { cleanupTrees, makeTree } from '../test-support.ts';
 import { defaultConfig } from '../workspace/config.ts';
 import { Workspace } from '../workspace/workspace.ts';
 import { Indexer, type IndexerOptions } from './indexer.ts';
-import type { IndexReport } from './report.ts';
+import type { IndexEvent, IndexReport } from './report.ts';
 
 const runtimes: SyntaxRuntime[] = [];
 afterAll(async () => {
@@ -541,6 +541,31 @@ describe('with dense channels', () => {
     rmSync(join(first.root, 'src/lone.ts'));
     await first.indexer.index();
     expect((await dense.vectors.stats('symbols')).sources).toBe(3);
+  });
+
+  test('says which file it is embedding, and how many cards each one now has', async () => {
+    const dense = withDense();
+    const first = await setup(project, { ingester: dense.ingester });
+    const events: IndexEvent[] = [];
+    await first.indexer.index({ onEvent: (event) => events.push(event) });
+    const embedding = events.filter((e) => e.kind === 'embedding').map((e) => e.path);
+    const embedded = events.filter((e) => e.kind === 'embedded');
+    expect(embedded).toHaveLength(4);
+    expect(embedding.sort()).toEqual(embedded.map((e) => e.path).sort());
+    // Each file's 'embedding' comes before its 'embedded'.
+    for (const done of embedded) {
+      const at = events.indexOf(done);
+      expect(events.slice(0, at).some((e) => e.kind === 'embedding' && e.path === done.path)).toBe(
+        true,
+      );
+    }
+    const cards = embedded.reduce((sum, e) => sum + (e.kind === 'embedded' ? e.cards : 0), 0);
+    expect(cards).toBe((await dense.vectors.stats('symbols')).cards);
+
+    // Nothing changed: nothing is rebuilt, so nothing is reported as embedded.
+    const again: IndexEvent[] = [];
+    await first.indexer.index({ onEvent: (event) => again.push(event) });
+    expect(again.filter((e) => e.kind === 'embedded')).toHaveLength(0);
   });
 
   test('a different model makes every file’s cards stale, even though no file changed', async () => {

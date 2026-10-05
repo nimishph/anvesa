@@ -11,6 +11,10 @@ export type IndexEvent =
       readonly reason?: QuarantineReason;
     }
   | { readonly kind: 'warning'; readonly message: string }
+  /** A file's cards are about to be built and embedded: the slow part with a large model. */
+  | { readonly kind: 'embedding'; readonly path: string }
+  /** A file's cards were rebuilt; `cards` is how many it now has. Not sent for files already current. */
+  | { readonly kind: 'embedded'; readonly path: string; readonly cards: number }
   | { readonly kind: 'linking'; readonly everything: boolean }
   | { readonly kind: 'finished'; readonly report: IndexReport };
 
