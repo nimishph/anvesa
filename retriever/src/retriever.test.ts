@@ -473,6 +473,43 @@ describe('searching', () => {
     ).toMatchObject({ applied: 2, source: 'caller' });
   });
 
+  test('search.defaultLimit sets the page size of a query too', async () => {
+    const r = await indexed();
+    const limited = await retriever(r.root, {
+      config: {
+        model: undefined,
+        fusionK: undefined,
+        fragments: false,
+        channels: {},
+        search: { defaultLimit: 1 },
+      },
+    });
+    const page = await limited.query('//function');
+    expect(page.items).toHaveLength(1);
+    expect(page.limit).toMatchObject({ applied: 1, source: 'default', reached: true });
+    expect((await limited.query('//function', { limit: 2 })).limit).toMatchObject({
+      applied: 2,
+      source: 'caller',
+    });
+  });
+
+  test('a search or query with no limit anywhere returns pages of 20', async () => {
+    const many = Object.fromEntries(
+      Array.from({ length: 25 }, (_, i) => [
+        `src/f${i}.ts`,
+        `/** Parse the configuration file, part ${i}. */\nexport function parse${i}() {}\n`,
+      ]),
+    );
+    const r = await indexed({ 'package.json': '{"name":"app"}', ...many });
+    const queried = await r.query('//function');
+    expect(queried.items).toHaveLength(20);
+    expect(queried.limit).toMatchObject({ applied: 20, source: 'default', reached: true });
+    expect(queried.nextCursor).not.toBeNull();
+    const searched = await r.search('parse the configuration file');
+    expect(searched.items).toHaveLength(20);
+    expect(searched.limit).toMatchObject({ applied: 20, source: 'default' });
+  });
+
   test('search.minScore drops dense hits below the cutoff', async () => {
     const r = await indexed();
     const all = await r.search('parse the configuration file');

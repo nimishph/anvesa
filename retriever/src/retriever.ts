@@ -4,12 +4,14 @@ import { dirname, join } from 'node:path';
 import {
   AggregateFailureError,
   type CodeLensError,
+  DEFAULT_SEARCH_LIMIT,
   type Deadline,
   decodeCursor,
   encodeCursor,
   InvalidArgumentError,
   type Page,
   type PageRequest,
+  type ResolvedLimit,
   resolveLimit,
   toCodeLensError,
 } from '@cntxt-labs/anvesa-core';
@@ -608,20 +610,21 @@ export class Retriever {
     }
 
     if (!semanticQuery) {
+      const { value: limit, source } = this.#pageLimit(options.limit);
       const result = this.#structure.query(parsed, {
         ...(options.include ? { include: options.include } : {}),
-        ...(options.limit === undefined ? {} : { limit: options.limit }),
+        limit,
         ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
         ...(options.deadline ? { deadline: options.deadline } : {}),
       });
-      return { ...result, coverage };
+      return { ...result, limit: { ...result.limit, source }, coverage };
     }
 
     // Conjunction active: rank matching WQL hits by semantic relevance
     const embedder = this.#requireEmbedder();
     const mismatch = await this.#modelMismatch();
     if (mismatch) throw mismatch;
-    const { value: limit, source } = resolveLimit('limit', options.limit);
+    const { value: limit, source } = this.#pageLimit(options.limit);
     const offset = options.cursor === undefined ? 0 : decodeCursor(options.cursor);
     const depth = offset + limit + 1;
     const fetchLimit = Math.max(depth * 10, 500);
@@ -705,10 +708,7 @@ export class Retriever {
   async search(query: string, given: SearchOptions = {}): Promise<SearchPage> {
     const options = this.#scoped(given);
     await this.#requireIndexed();
-    // The project's `search.defaultLimit` stands in for the built-in default when the caller gives none.
-    const resolved = resolveLimit('limit', options.limit ?? this.config.search?.defaultLimit);
-    const limit = resolved.value;
-    const source = options.limit === undefined ? 'default' : resolved.source;
+    const { value: limit, source } = this.#pageLimit(options.limit);
     const offset = options.cursor === undefined ? 0 : decodeCursor(options.cursor);
     const depth = offset + limit + 1;
     // Dense hits below the project's `search.minScore` (cosine similarity) are dropped.
@@ -1364,6 +1364,18 @@ export class Retriever {
   }
 
   // --- internals --------------------------------------------------------------------------------
+
+  /**
+   * The page size for a search or query: the caller's, else the project's `search.defaultLimit`,
+   * else `DEFAULT_SEARCH_LIMIT`.
+   */
+  #pageLimit(requested: number | undefined): ResolvedLimit {
+    const resolved = resolveLimit(
+      'limit',
+      requested ?? this.config.search?.defaultLimit ?? DEFAULT_SEARCH_LIMIT,
+    );
+    return requested === undefined ? { ...resolved, source: 'default' } : resolved;
+  }
 
   /** The project's `search.collapse`, when set; unset leaves dense retrieval at its own default (on). */
   #collapse(): { collapse?: boolean } {

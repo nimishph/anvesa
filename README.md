@@ -450,8 +450,10 @@ fixtures in `tooling/fixtures/`.
 4. **Caller-owned time.** Timeouts and cancellation come from a `Deadline`. Nothing picks a timeout
    on the caller's behalf.
 
-`DEFAULT_RESULT_LIMIT` (1000) is the one documented default: high enough not to shape results, there
-so an unbounded result set is never returned by accident.
+`DEFAULT_RESULT_LIMIT` (1000) is the backstop default: high enough not to shape results, there
+so an unbounded result set is never returned by accident. `search` and `query` page at
+`DEFAULT_SEARCH_LIMIT` (20) instead, or the project's `search.defaultLimit`, since people and models
+read those pages; pass `--limit` or a cursor for more.
 
 ## Author & Attribution
 

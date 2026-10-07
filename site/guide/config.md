@@ -84,7 +84,7 @@ The embedding model for dense search: a built-in id (e.g. `'all-MiniLM-L6-v2'`) 
 
 ### `search`
 *Type:* `object`  
-- **`defaultLimit`** (`integer`, default `20`): Default number of results returned when `--limit` is not specified.
+- **`defaultLimit`** (`integer`, default `20`): Default number of results `search` and `query` return when `--limit` is not specified.
 - **`minScore`** (`number`, range `0.0` - `1.0`): Cutoff threshold for cosine similarity in dense channels. Matches below this score are dropped.
 - **`excludeLanes`** (`string[]`): Channels or lanes to exclude by default (e.g. `["docs"]`). Adds to `--exclude`; a channel named with `--channel` is searched anyway.
 - **`collapse`** (`boolean`, default `true`): Keeps only the best-scoring part when a symbol or section was split over several cards. Set `false` to see every part. (Parts of one symbol still merge during fusion, since they share a result key.)
