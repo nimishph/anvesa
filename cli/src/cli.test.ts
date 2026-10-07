@@ -832,48 +832,53 @@ describe('command line', () => {
     expect((await cli(root, 'query', '//function', '--limit', '0')).code).toBe(2);
   });
 
-  // Skipped on Windows for now: there it waits out SQLite's 5 s busy_timeout (5.8 s against a
-  // 227 ms run on main) since the index run started listing its walk up front and reporting
-  // channel totals. The lock it waits on is not yet found; it passes on Linux and macOS.
-  test.skipIf(process.platform === 'win32')(
-    'a channel goes from add to test to index to retrieve',
-    async () => {
-      const root = makeProject();
-      const added = await cli(root, 'channel', 'make', 'notes', NOTES_CHANNEL);
-      expect(added.code).toBe(0);
-      expect(added.out).toContain('registered notes');
+  // On Windows this ran past 5 s on this branch (227 ms on main), so it reports how long each
+  // command took there, and has longer to finish, until the step that waits is found.
+  test('a channel goes from add to test to index to retrieve', async () => {
+    const steps: string[] = [];
+    const cli = async (root: string, ...argv: string[]): Promise<Ran> => {
+      const started = performance.now();
+      const ran = await cliWith({}, root, ...argv);
+      steps.push(`${argv.join(' ')}: ${Math.round(performance.now() - started)} ms`);
+      return ran;
+    };
+    const root = makeProject();
+    const added = await cli(root, 'channel', 'make', 'notes', NOTES_CHANNEL);
+    expect(added.code).toBe(0);
+    expect(added.out).toContain('registered notes');
 
-      const scaffolded = await cli(root, 'channel', 'add', 'runbooks', '--template', 'file');
-      expect(scaffolded.out).toContain('created .anvesa/channels/runbooks/transformer.ts');
-      expect(existsSync(join(root, '.anvesa/channels/runbooks/transformer.ts'))).toBe(true);
-      expect((await cli(root, 'channel', 'create', 'runbooks')).code).toBe(0);
+    const scaffolded = await cli(root, 'channel', 'add', 'runbooks', '--template', 'file');
+    expect(scaffolded.out).toContain('created .anvesa/channels/runbooks/transformer.ts');
+    expect(existsSync(join(root, '.anvesa/channels/runbooks/transformer.ts'))).toBe(true);
+    expect((await cli(root, 'channel', 'create', 'runbooks')).code).toBe(0);
 
-      await cli(root, 'channel', 'remove', 'runbooks');
-      const listed = await cli(root, 'channel', 'list', '--json');
-      // biome-ignore lint/suspicious/noExplicitAny: asserting a JSON shape
-      expect(json(listed).map((c: any) => c.name)).toEqual(
-        expect.arrayContaining(['symbols', 'docs', 'notes']),
-      );
-      expect((await cli(root, 'channel', 'show', 'notes')).out).toContain('custom.note');
-      expect((await cli(root, 'channel', 'show', 'ghost')).code).toBe(2);
+    await cli(root, 'channel', 'remove', 'runbooks');
+    const listed = await cli(root, 'channel', 'list', '--json');
+    // biome-ignore lint/suspicious/noExplicitAny: asserting a JSON shape
+    expect(json(listed).map((c: any) => c.name)).toEqual(
+      expect.arrayContaining(['symbols', 'docs', 'notes']),
+    );
+    expect((await cli(root, 'channel', 'show', 'notes')).out).toContain('custom.note');
+    expect((await cli(root, 'channel', 'show', 'ghost')).code).toBe(2);
 
-      const tested = await cli(root, 'channel', 'test', 'notes', 'src/config.ts');
-      expect(tested.code).toBe(0);
-      expect(tested.out).toContain('does not claim');
+    const tested = await cli(root, 'channel', 'test', 'notes', 'src/config.ts');
+    expect(tested.code).toBe(0);
+    expect(tested.out).toContain('does not claim');
 
-      await cli(root, 'index');
-      const indexed = await cli(root, 'channel', 'index', 'notes', '--json');
-      expect(json(indexed).channel).toBe('notes');
+    await cli(root, 'index');
+    const indexed = await cli(root, 'channel', 'index', 'notes', '--json');
+    expect(json(indexed).channel).toBe('notes');
 
-      const found = json(
-        await cli(root, 'retrieve', 'notes', 'who restarts the queue worker', '--json'),
-      );
-      expect(found.items[0].card.source.path).toBe('note:oncall');
-      const shown = await cli(root, 'retrieve', 'notes', 'who restarts the queue worker');
-      expect(shown.out).toContain('note:oncall');
-      expect((await cli(root, 'retrieve', 'ghost', 'x')).code).not.toBe(0);
-    },
-  );
+    const found = json(
+      await cli(root, 'retrieve', 'notes', 'who restarts the queue worker', '--json'),
+    );
+    expect(found.items[0].card.source.path).toBe('note:oncall');
+    const shown = await cli(root, 'retrieve', 'notes', 'who restarts the queue worker');
+    expect(shown.out).toContain('note:oncall');
+    expect((await cli(root, 'retrieve', 'ghost', 'x')).code).not.toBe(0);
+    if (process.platform === 'win32')
+      process.stderr.write(`channel e2e steps: ${steps.join(', ')}\n`);
+  }, 30_000);
 
   test('channel index takes an async source, names why a record failed, and exits 1', async () => {
     const root = makeProject();
