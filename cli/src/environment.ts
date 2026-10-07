@@ -15,6 +15,8 @@ export interface Environment {
   readonly fetch?: typeof fetch | undefined;
   /** Whether stderr is an interactive terminal, so progress can overwrite its own line. */
   readonly isTTY?: boolean | undefined;
+  /** The terminal's width, when stderr is one, so a line redrawn in place never wraps. */
+  readonly columns?: number | undefined;
   /** How often a run not on a terminal reports that it is still working. Tests shorten it. */
   readonly progressIntervalMs?: number | undefined;
   /**
@@ -42,6 +44,10 @@ export function processEnvironment(): Environment {
     cwd: process.cwd(),
     env: process.env,
     isTTY: process.stderr.isTTY === true,
+    // Read on each use: the terminal can be resized while a run is going.
+    get columns() {
+      return process.stderr.columns;
+    },
     stdout: (text) => {
       process.stdout.write(text);
     },

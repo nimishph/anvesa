@@ -56,6 +56,24 @@ The summary names the model the run embedded with and its embedding size, e.g.
 `model: bge-base-en-v1.5 (embedding size 768, 512 max tokens)`, or `model: none (...)` when there is no
 embedder. With `--json` the same is under `embedder` (`null` when there is none).
 
+It ends with what the index holds per channel after the run, not just what the run changed (under
+`channels` with `--json`):
+
+```
+index totals:
+  docs        95 cards   12 files
+  symbols  1,820 cards  210 files  3 quarantined
+```
+
+On a terminal, progress is a bar against the files the walk listed, with the rate, the time left
+and, once one takes more than a couple of seconds, the file being embedded:
+
+```
+indexing: [████████░░░░░░░░░░░░░░░░]  34%  1,234/3,600 files · 210 embedded (1,820 cards) · 41 files/s · ~58 s left
+```
+
+Piped or logged, a plain line is written every 500 files and every 10 seconds instead.
+
 ---
 
 ### `search <query>`

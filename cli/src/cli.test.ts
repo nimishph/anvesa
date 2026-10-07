@@ -378,6 +378,35 @@ describe('command line', () => {
     expect(tty.err).toContain('— linking\n');
   });
 
+  test('index ends with what the index holds per channel, even when the run changed nothing', async () => {
+    const root = makeProject();
+    const first = await cli(root, 'index', '--json');
+    const channels = JSON.parse(first.out).channels as {
+      name: string;
+      cards: number;
+      sources: number;
+    }[];
+    const symbols = channels.find((channel) => channel.name === 'symbols');
+    expect(symbols?.cards).toBeGreaterThan(0);
+    expect(symbols?.sources).toBeGreaterThan(0);
+
+    // A second run embeds nothing, but the totals still say what is there.
+    const again = await cli(root, 'index');
+    expect(again.out).toContain('index totals:');
+    expect(again.out).toMatch(
+      new RegExp(`\\n  symbols\\s+${symbols?.cards} cards?\\s+${symbols?.sources} files?`),
+    );
+  });
+
+  test('index draws a bar against the files the walk listed, on a terminal', async () => {
+    const root = makeProject();
+    const tty = await cliWith({ isTTY: true }, root, 'index');
+    expect(tty.err).toMatch(/indexing: \[[█░]{24}\] +\d+% {2}\d+\/\d+ files/);
+    expect(tty.err).toMatch(/100% {2}(\d+)\/\1 files.* — linking\n/);
+    const piped = await cliWith({ isTTY: false }, root, 'index', '--force');
+    expect(piped.err).toMatch(/indexing: (\d+)\/\1 seen \(100%\)/);
+  });
+
   test('index names the model and its embedding size, and --show-walk lists each path walked', async () => {
     const root = makeProject();
     const walked = await cliWith({ isTTY: false }, root, 'index', '--show-walk');

@@ -4,6 +4,11 @@ import type { QuarantineReason } from '../store/index.ts';
 /** Something a caller can show while a run is going. */
 export type IndexEvent =
   | { readonly kind: 'started'; readonly interrupted: boolean }
+  /**
+   * The walk is done: `files` is how many `file` events this run will send (one each), and `bytes`
+   * their size, so progress can be shown against a total.
+   */
+  | { readonly kind: 'planned'; readonly files: number; readonly bytes: number }
   | {
       readonly kind: 'file';
       readonly path: string;

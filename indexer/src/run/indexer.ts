@@ -207,9 +207,7 @@ export class Indexer {
       // still applied one file at a time in the order of the walk.
       const prepare = async (entry: SourceEntry): Promise<Prepared> => {
         deadline.throwIfExpired(`index ${entry.path}`);
-        if (this.#only && entry.language !== DOCUMENT_LANGUAGE && !this.#only.has(entry.language)) {
-          return { entry, kind: 'skip-language' };
-        }
+        if (this.#skipsLanguage(entry)) return { entry, kind: 'skip-language' };
         const state = await this.#store.fileState(entry.path);
         const sameStamp =
           state !== undefined && state.size === entry.size && state.mtimeMs === entry.mtimeMs;
@@ -424,7 +422,17 @@ export class Indexer {
         if ('failure' in settled) throw settled.failure;
         for (const prepared of settled.prepared) await apply(prepared);
       };
-      for await (const entry of walk) {
+      // The walk is listed in full first (directory listings and stats, cheap next to reading and
+      // embedding) so the run can say how many files it has ahead of it.
+      const entries: SourceEntry[] = [];
+      for await (const entry of walk) entries.push(entry);
+      const planned = entries.filter((entry) => !this.#skipsLanguage(entry));
+      emit({
+        kind: 'planned',
+        files: planned.length,
+        bytes: planned.reduce((sum, entry) => sum + entry.size, 0),
+      });
+      for (const entry of entries) {
         window.push(entry);
         windowBytes += entry.size;
         if (window.length >= WINDOW_FILES || windowBytes >= WINDOW_BYTES) {
@@ -534,6 +542,15 @@ export class Indexer {
     changes.set(entry.path, 'modified');
     into.push({ path: entry.path, reason, message });
     emit({ kind: 'file', path: entry.path, outcome: 'quarantined', reason });
+  }
+
+  /** A file an `only` language filter leaves out of this run: it sends no `file` event. */
+  #skipsLanguage(entry: SourceEntry): boolean {
+    return (
+      this.#only !== undefined &&
+      entry.language !== DOCUMENT_LANGUAGE &&
+      !this.#only.has(entry.language)
+    );
   }
 
   /** A file that is no longer indexed has no cards either. */

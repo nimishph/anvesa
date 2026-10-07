@@ -403,6 +403,8 @@ export function renderIndex(result: {
   embedder?: { id: string; dimensions: number; maxTokens: number } | null;
   /** Why there is no embedder, when there is none. */
   embedderReason?: string;
+  /** What the index holds after the run, per channel. */
+  channels?: readonly IndexChannelTotal[];
 }): string {
   const { report } = result;
   const f = report.files;
@@ -446,6 +448,7 @@ export function renderIndex(result: {
     report.dense
       ? `dense: ${report.dense.ingested} files embedded (${report.dense.cards} cards), ${report.dense.current} current, ${report.dense.quarantinedCards} cards quarantined, ${report.dense.failed.length} failed`
       : undefined,
+    ...channelTotals(result.channels),
     ...report.quarantined.map((q) => `quarantined ${q.path} (${q.reason}): ${q.message}`),
     ...advice,
     ...(report.warnings ?? []).map((w) => `warning: ${w}`),
@@ -454,6 +457,39 @@ export function renderIndex(result: {
       (s) => `synced ${s.channel}: ${s.reports.length} records, ${s.removed.length} removed`,
     ),
   );
+}
+
+export interface IndexChannelTotal {
+  readonly name: string;
+  readonly cards: number;
+  /** Files with cards in this channel. */
+  readonly sources: number;
+  readonly quarantined: number;
+}
+
+/**
+ * `index totals:` then one aligned row per channel:
+ * `  symbols  1,820 cards  210 files  3 quarantined`.
+ */
+function channelTotals(channels: readonly IndexChannelTotal[] | undefined): string[] {
+  if (!channels || channels.length === 0) return [];
+  const n = (value: number) => value.toLocaleString('en-US');
+  const name = Math.max(...channels.map((c) => c.name.length));
+  const cards = Math.max(...channels.map((c) => n(c.cards).length));
+  const files = Math.max(...channels.map((c) => n(c.sources).length));
+  return [
+    'index totals:',
+    ...channels.map((c) =>
+      [
+        `  ${c.name.padEnd(name)}`,
+        `${n(c.cards).padStart(cards)} card${c.cards === 1 ? ' ' : 's'}`,
+        `${n(c.sources).padStart(files)} file${c.sources === 1 ? ' ' : 's'}`,
+        c.quarantined > 0 ? `${n(c.quarantined)} quarantined` : '',
+      ]
+        .join('  ')
+        .trimEnd(),
+    ),
+  ];
 }
 
 export function renderRepoMap(result: RepoMapResult): string {
