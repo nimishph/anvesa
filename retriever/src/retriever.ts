@@ -748,8 +748,14 @@ export class Retriever {
         (lane) => !(options.channels ?? []).includes(lane),
       ),
     ];
-    const left = (lane: string, configured: number): boolean =>
-      !excluded.includes(lane) && weightOf(lane, configured) > 0;
+    // Whether an exclusion or a zero weight actually took away a lane that would have run. Without
+    // it, an empty search is not the caller's doing (no embedder, say), and must not be blamed on them.
+    let dropped = false;
+    const left = (lane: string, configured: number): boolean => {
+      const kept = !excluded.includes(lane) && weightOf(lane, configured) > 0;
+      if (!kept) dropped = true;
+      return kept;
+    };
 
     let wqlHitsCount = 0;
     const runs: { name: string; weight: number; run: () => Promise<LaneHit[]> }[] = [];
@@ -867,7 +873,7 @@ export class Retriever {
       }
     }
 
-    if (runs.length === 0 && (excluded.length || options.weights)) {
+    if (runs.length === 0 && dropped) {
       throw new InvalidArgumentError(
         'exclude/weights',
         'a search that keeps at least one lane',

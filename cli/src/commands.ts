@@ -33,6 +33,7 @@ import {
   verifyModel,
   writeProjectConfig,
 } from '@cntxt-labs/anvesa-retriever';
+import { agentTargets, applyAgentSection, renderAgentFiles } from './agent-instructions.ts';
 import type { Environment } from './environment.ts';
 import { CommandFailedError } from './errors.ts';
 import { renderSetup, setupProject } from './init.ts';
@@ -218,6 +219,27 @@ function scaffoldFiles(): readonly ScaffoldFile[] {
 }
 
 /**
+ * The section `init` keeps in the project's AGENTS.md / CLAUDE.md (see agent-instructions.ts), so a
+ * coding agent working in the project reaches for anvesa. Re-running `init` after an upgrade
+ * replaces it with the guidance of the new version.
+ */
+export const AGENT_SECTION = `## Code search: anvesa
+
+This repository is indexed by anvesa (dense + structural code retrieval, fused). Prefer it over
+grep when you look for code by what it does or how it is shaped:
+
+- \`anvesa search "<what the code does>"\` finds code by behavior or concept.
+- \`anvesa query '//function[@name="foo"]'\` finds definitions by structure (WQL; \`anvesa primer wql\`).
+- \`anvesa callers <symbol>\` / \`anvesa callees <symbol>\` trace the call graph.
+- \`anvesa dependents <path>\` lists who imports a file: the blast radius before a change.
+- \`anvesa map\` gives a ranked overview of the repository's architecture.
+- Plain grep/ripgrep is still right for an exact string.
+
+\`anvesa index\` brings the index up to date (incremental; run it after large changes).
+\`anvesa primer [topic]\` explains any of this in a few lines. If an \`anvesa\` MCP server is
+connected, its tools do the same.`;
+
+/**
  * Live progress for `index`, on stderr so it never mixes with --json (or the text summary, both
  * on stdout). On a terminal, a bar against the files the walk listed is redrawn in place, with the
  * rate, the time left and, once one takes a while, the file being embedded. Otherwise (piped,
@@ -398,12 +420,24 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       await writeFile(absolute, file.content, 'utf8');
       created.push(file.path);
     }
+    // Always refreshed, --force or not: the user's text is outside the markers and stays.
+    const agentFiles =
+      ctx.parsed.values['no-agents-file'] === true
+        ? []
+        : applyAgentSection(
+            projectRoot,
+            agentTargets(projectRoot, ctx.parsed.values['agents-file']),
+            'anvesa',
+            VERSION,
+            AGENT_SECTION,
+          );
     const setup = await setupProject(ctx, projectRoot, modelCache(ctx));
+    const agentLines = renderAgentFiles('anvesa', agentFiles);
     emit(
       ctx,
-      { created, kept, setup },
+      { created, kept, agentFiles, setup },
       () =>
-        `${created.map((f) => `created ${f}`).join('\n')}${created.length ? '\n' : ''}${kept.map((f) => `kept ${f} (already exists; use --force to overwrite)`).join('\n')}${kept.length ? '\n' : ''}${renderSetup(setup)}`,
+        `${created.map((f) => `created ${f}`).join('\n')}${created.length ? '\n' : ''}${kept.map((f) => `kept ${f} (already exists; use --force to overwrite)`).join('\n')}${kept.length ? '\n' : ''}${agentLines.map((line) => `${line}\n`).join('')}${renderSetup(setup)}`,
     );
   },
 

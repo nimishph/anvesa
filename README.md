@@ -61,6 +61,14 @@ what it proposes, `--model <id>` chooses the encoder, `--no-download` (or `--no-
 what it would fetch. Off a terminal it never downloads unless you pass `--yes`. A chosen encoder is
 written to `.anvesa/config.json`; parsers go to your user folder, so every project shares them.
 
+`init` also keeps a short section on using anvesa in the project's `AGENTS.md` and `CLAUDE.md`,
+whichever exist (a `CLAUDE.md` that only says `@AGENTS.md` is skipped; `AGENTS.md` is created when
+neither does), so a coding agent working there reaches for `anvesa search` and friends. Name another
+file with `--agents-file <path>`, or pass `--no-agents-file`. The section sits between
+`<!-- anvesa:begin … -->` and `<!-- anvesa:end -->`; the rest of the file is yours and never touched.
+Re-run `anvesa init` after upgrading: files it already made are kept, and the section is replaced
+with the one the new version ships.
+
 Built-in encoders, smallest first: `all-MiniLM-L6-v2` (23 MB), `all-MiniLM-L12-v2`, `bge-small-en-v1.5`,
 `gte-small`, `gte-base`, `jina-embeddings-v2-base-code` (trained on code, 1024-token window),
 `bge-base-en-v1.5` and `bge-large-en-v1.5`. The three BGE/MiniLM models are what automatic choice

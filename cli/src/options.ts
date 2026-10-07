@@ -57,6 +57,8 @@ const OPTIONS = {
   format: { type: 'string' },
   compact: { type: 'boolean' },
   full: { type: 'boolean' },
+  'agents-file': { type: 'string' },
+  'no-agents-file': { type: 'boolean' },
 } as const;
 
 export interface Parsed {
@@ -115,6 +117,8 @@ export interface Parsed {
     readonly format?: string;
     readonly compact?: boolean;
     readonly full?: boolean;
+    readonly 'agents-file'?: string;
+    readonly 'no-agents-file'?: boolean;
   };
 }
 

@@ -361,6 +361,55 @@ describe('command line', () => {
     expect(readFileSync(join(root, '.anvesaignore'), 'utf8')).toContain('node_modules');
   });
 
+  test('init keeps an anvesa section in the agent instruction files, refreshed on every run', async () => {
+    const section = /<!-- anvesa:begin v[^\n]*-->[\s\S]*<!-- anvesa:end -->/;
+    const fresh = makeProject();
+    const created = await cli(fresh, 'init', '--no-download', '--json');
+    expect(json(created)).toMatchObject({ agentFiles: [{ path: 'AGENTS.md', state: 'created' }] });
+    expect(readFileSync(join(fresh, 'AGENTS.md'), 'utf8')).toMatch(section);
+    expect(readFileSync(join(fresh, 'AGENTS.md'), 'utf8')).toContain('anvesa search');
+
+    // Both files exist: both get it, after what is there. One that only imports AGENTS.md does not.
+    const both = makeProject();
+    writeFileSync(join(both, 'AGENTS.md'), '# Agents\n');
+    writeFileSync(join(both, 'CLAUDE.md'), '# Claude\n');
+    await cli(both, 'init', '--no-download');
+    expect(readFileSync(join(both, 'AGENTS.md'), 'utf8').startsWith('# Agents\n\n<!--')).toBe(true);
+    expect(readFileSync(join(both, 'CLAUDE.md'), 'utf8')).toMatch(section);
+    const imports = makeProject();
+    writeFileSync(join(imports, 'AGENTS.md'), '# Agents\n');
+    writeFileSync(join(imports, 'CLAUDE.md'), '@AGENTS.md\n');
+    await cli(imports, 'init', '--no-download');
+    expect(readFileSync(join(imports, 'CLAUDE.md'), 'utf8')).toBe('@AGENTS.md\n');
+
+    // An older version's section is replaced in place; a current one is left byte for byte.
+    const old = makeProject();
+    writeFileSync(
+      join(old, 'AGENTS.md'),
+      '# Top\n\n<!-- anvesa:begin v0.1.0 -->\nstale\n<!-- anvesa:end -->\n\n## Mine\n',
+    );
+    const upgraded = await cli(old, 'init', '--no-download', '--json');
+    expect(json(upgraded)).toMatchObject({
+      agentFiles: [{ path: 'AGENTS.md', state: 'updated', previousVersion: '0.1.0' }],
+    });
+    const text = readFileSync(join(old, 'AGENTS.md'), 'utf8');
+    expect(text).not.toContain('stale');
+    expect(text.endsWith('<!-- anvesa:end -->\n\n## Mine\n')).toBe(true);
+    const again = await cli(old, 'init', '--no-download', '--json');
+    expect(json(again)).toMatchObject({ agentFiles: [{ state: 'current' }] });
+    expect(readFileSync(join(old, 'AGENTS.md'), 'utf8')).toBe(text);
+
+    // --agents-file names the file; --no-agents-file writes none.
+    const named = makeProject();
+    await cli(named, 'init', '--no-download', '--agents-file', 'docs/agents.md');
+    expect(readFileSync(join(named, 'docs/agents.md'), 'utf8')).toMatch(section);
+    expect(existsSync(join(named, 'AGENTS.md'))).toBe(false);
+    const none = makeProject();
+    const skipped = await cli(none, 'init', '--no-download', '--no-agents-file', '--json');
+    expect(json(skipped)).toMatchObject({ agentFiles: [] });
+    expect(existsSync(join(none, 'AGENTS.md'))).toBe(false);
+  });
+
   test('index reports live progress on stderr, never on stdout', async () => {
     const root = makeProject();
     // Non-interactive (the default for a pipe or a log): a plain "linking" line, no \r rewriting.

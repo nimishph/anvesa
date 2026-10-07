@@ -26,7 +26,10 @@ usage: anvesa <command> [arguments] [options]
                             project: proposes an encoder that suits the hardware and offers a parser for each
                             language that lacks one, with a progress bar per download. Asks on a terminal;
                             --yes accepts the proposals; --model <id> picks the encoder; --no-download only
-                            reports what it would fetch. Nothing downloads without a yes.
+                            reports what it would fetch. Nothing downloads without a yes. Also keeps an
+                            anvesa section in AGENTS.md / CLAUDE.md (created as AGENTS.md if neither
+                            exists; --agents-file <path> names another file, --no-agents-file skips it).
+                            Re-run after an upgrade: kept files stay, the section is refreshed.
   index                     bring the index up to date (--force, --retry-quarantined, --scope <path>,
                             --no-embed or --no-dense: structure and graph only, no embedding pass,
                             --show-walk: print each path the walk offers, with its outcome, on stderr)
