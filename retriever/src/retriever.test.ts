@@ -453,6 +453,44 @@ describe('searching', () => {
     expect(page.items.every((item) => item.card?.channel !== 'docs')).toBe(true);
   });
 
+  test('search.defaultLimit sets the page size when the caller gives none', async () => {
+    const r = await indexed();
+    const limited = await retriever(r.root, {
+      config: {
+        model: undefined,
+        fusionK: undefined,
+        fragments: false,
+        channels: {},
+        search: { defaultLimit: 1 },
+      },
+    });
+    const page = await limited.search('parse the configuration file');
+    expect(page.items).toHaveLength(1);
+    expect(page.limit).toMatchObject({ applied: 1, source: 'default' });
+    // The caller's limit still wins.
+    expect(
+      (await limited.search('parse the configuration file', { limit: 2 })).limit,
+    ).toMatchObject({ applied: 2, source: 'caller' });
+  });
+
+  test('search.minScore drops dense hits below the cutoff', async () => {
+    const r = await indexed();
+    const all = await r.search('parse the configuration file');
+    expect(all.items.some((item) => (item.bestScore ?? 0) < 1)).toBe(true);
+    const strict = await retriever(r.root, {
+      config: {
+        model: undefined,
+        fusionK: undefined,
+        fragments: false,
+        channels: {},
+        search: { minScore: 0.999 },
+      },
+    });
+    const page = await strict.search('parse the configuration file');
+    expect(page.items.length).toBeLessThan(all.items.length);
+    expect(page.items.every((item) => (item.bestScore ?? 0) >= 0.999)).toBe(true);
+  });
+
   test('no embedder and no WQL is an error that says what to do', async () => {
     const r = await indexed();
     const bare = await retriever(r.root, { embedder: null });

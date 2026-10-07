@@ -703,9 +703,16 @@ export class Retriever {
   async search(query: string, given: SearchOptions = {}): Promise<SearchPage> {
     const options = this.#scoped(given);
     await this.#requireIndexed();
-    const { value: limit, source } = resolveLimit('limit', options.limit);
+    // The project's `search.defaultLimit` stands in for the built-in default when the caller gives none.
+    const resolved = resolveLimit('limit', options.limit ?? this.config.search?.defaultLimit);
+    const limit = resolved.value;
+    const source = options.limit === undefined ? 'default' : resolved.source;
     const offset = options.cursor === undefined ? 0 : decodeCursor(options.cursor);
     const depth = offset + limit + 1;
+    // Dense hits below the project's `search.minScore` (cosine similarity) are dropped.
+    const minScore = this.config.search?.minScore;
+    const aboveMinScore = (hit: SearchHit): boolean =>
+      minScore === undefined || hit.score >= minScore;
     const split = splitConjunction(query, options.wql);
     const isConjunction = Boolean(split.semantic && split.wql);
     // Searching by meaning with the wrong model finds nothing; say so. A WQL query still has its
@@ -796,7 +803,9 @@ export class Retriever {
               ...cardFilter(options.include),
               ...(options.deadline ? { deadline: options.deadline } : {}),
             });
-            return res.items.filter((hit) => matcher(hit.card) !== undefined).map(cardHit);
+            return res.items
+              .filter((hit) => aboveMinScore(hit) && matcher(hit.card) !== undefined)
+              .map(cardHit);
           },
         });
       }
@@ -822,7 +831,9 @@ export class Retriever {
                   ...cardFilter(options.include),
                   ...(options.deadline ? { deadline: options.deadline } : {}),
                 })
-              ).items.map(cardHit);
+              ).items
+                .filter(aboveMinScore)
+                .map(cardHit);
             },
           });
         }
