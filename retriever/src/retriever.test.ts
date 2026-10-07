@@ -27,7 +27,7 @@ import {
 } from './errors.ts';
 import { fuse } from './fuse.ts';
 import { fenceUntrusted } from './render.ts';
-import { Retriever } from './retriever.ts';
+import { Retriever, type SearchPage } from './retriever.ts';
 
 const FIXTURES = resolve(import.meta.dir, '__fixtures__');
 const roots: string[] = [];
@@ -489,6 +489,50 @@ describe('searching', () => {
     const page = await strict.search('parse the configuration file');
     expect(page.items.length).toBeLessThan(all.items.length);
     expect(page.items.every((item) => (item.bestScore ?? 0) >= 0.999)).toBe(true);
+  });
+
+  test('search.excludeLanes leaves those lanes out unless the caller names the channel', async () => {
+    const r = await indexed();
+    const query = 'install the service with the installer';
+    expect((await r.search(query)).lanes.map((lane) => lane.name)).toContain('docs');
+    const noDocs = await retriever(r.root, {
+      config: {
+        model: undefined,
+        fusionK: undefined,
+        fragments: false,
+        channels: {},
+        search: { excludeLanes: ['docs'] },
+      },
+    });
+    const page = await noDocs.search(query);
+    expect(page.lanes.map((lane) => lane.name)).not.toContain('docs');
+    expect(page.items.every((item) => item.card?.channel !== 'docs')).toBe(true);
+    // Asking for the channel by name overrides the project's exclusion.
+    const asked = await noDocs.search(query, { channels: ['docs'] });
+    expect(asked.lanes.map((lane) => lane.name)).toEqual(['docs']);
+  });
+
+  test('search.collapse: false keeps every part of a split section', async () => {
+    // Paragraphs over the test embedder's 512-word window split one section into several cards.
+    const paragraph = (n: number) =>
+      Array.from({ length: 100 }, (_, i) => `deploy rollout step${n}x${i}`).join('\n');
+    const r = await indexed({
+      ...project,
+      'docs/long.md': `# Deploying\n\n${[1, 2, 3].map(paragraph).join('\n\n')}\n`,
+    });
+    const sectionHits = (page: SearchPage) =>
+      page.items.filter((item) => item.card?.attrs.section === 'Deploying');
+    expect(sectionHits(await r.search('deploy rollout'))).toHaveLength(1);
+    const parts = await retriever(r.root, {
+      config: {
+        model: undefined,
+        fusionK: undefined,
+        fragments: false,
+        channels: {},
+        search: { collapse: false },
+      },
+    });
+    expect(sectionHits(await parts.search('deploy rollout')).length).toBeGreaterThan(1);
   });
 
   test('no embedder and no WQL is an error that says what to do', async () => {

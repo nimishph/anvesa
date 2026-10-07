@@ -30,7 +30,7 @@ Anvesa is configured via `.anvesa/config.json` in your repository root. A full J
     "defaultLimit": 20,
     "minScore": 0.35,
     "excludeLanes": ["docs"],
-    "collapse": false
+    "collapse": true
   },
   "indexing": {
     "concurrency": 8,
@@ -86,8 +86,8 @@ The embedding model for dense search: a built-in id (e.g. `'all-MiniLM-L6-v2'`) 
 *Type:* `object`  
 - **`defaultLimit`** (`integer`, default `20`): Default number of results returned when `--limit` is not specified.
 - **`minScore`** (`number`, range `0.0` - `1.0`): Cutoff threshold for cosine similarity in dense channels. Matches below this score are dropped.
-- **`excludeLanes`** (`string[]`): Channels or lanes to exclude by default (e.g. `["docs"]`).
-- **`collapse`** (`boolean`, default `false`): When enabled, merges multiple chunks originating from the same symbol.
+- **`excludeLanes`** (`string[]`): Channels or lanes to exclude by default (e.g. `["docs"]`). Adds to `--exclude`; a channel named with `--channel` is searched anyway.
+- **`collapse`** (`boolean`, default `true`): Keeps only the best-scoring part when a symbol or section was split over several cards. Set `false` to see every part. (Parts of one symbol still merge during fusion, since they share a result key.)
 
 ### `indexing`
 *Type:* `object`  

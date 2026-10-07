@@ -574,6 +574,7 @@ export class Retriever {
     const mismatch = await this.#modelMismatch();
     if (mismatch) throw mismatch;
     return retrieveDense({
+      ...this.#collapse(),
       channel,
       query,
       embedder: this.#requireEmbedder(),
@@ -643,6 +644,7 @@ export class Retriever {
     for (const channel of channels) {
       if (!this.registry.has(channel)) continue;
       const res = await retrieveDense({
+        ...this.#collapse(),
         channel,
         query: semanticQuery,
         embedder,
@@ -739,8 +741,15 @@ export class Retriever {
     }
     const weightOf = (lane: string, configured: number): number =>
       options.weights?.[lane] ?? configured;
+    // The project's `search.excludeLanes` adds to the caller's, except for a channel the caller asks for by name.
+    const excluded = [
+      ...(options.exclude ?? []),
+      ...(this.config.search?.excludeLanes ?? []).filter(
+        (lane) => !(options.channels ?? []).includes(lane),
+      ),
+    ];
     const left = (lane: string, configured: number): boolean =>
-      !(options.exclude ?? []).includes(lane) && weightOf(lane, configured) > 0;
+      !excluded.includes(lane) && weightOf(lane, configured) > 0;
 
     let wqlHitsCount = 0;
     const runs: { name: string; weight: number; run: () => Promise<LaneHit[]> }[] = [];
@@ -794,6 +803,7 @@ export class Retriever {
           weight: weightOf(channel, configured),
           run: async () => {
             const res = await retrieveDense({
+              ...this.#collapse(),
               channel,
               query: semanticQuery,
               embedder: this.embedder as Embedder,
@@ -822,6 +832,7 @@ export class Retriever {
               if (mismatch) throw mismatch;
               return (
                 await retrieveDense({
+                  ...this.#collapse(),
                   channel,
                   query,
                   embedder: this.embedder as Embedder,
@@ -856,11 +867,11 @@ export class Retriever {
       }
     }
 
-    if (runs.length === 0 && (options.exclude?.length || options.weights)) {
+    if (runs.length === 0 && (excluded.length || options.weights)) {
       throw new InvalidArgumentError(
         'exclude/weights',
         'a search that keeps at least one lane',
-        [...(options.exclude ?? []), ...Object.keys(options.weights ?? {})].join(', '),
+        [...excluded, ...Object.keys(options.weights ?? {})].join(', '),
       );
     }
     if (runs.length === 0) {
@@ -874,7 +885,7 @@ export class Retriever {
     const degraded: { lane: string; error: CodeLensError }[] = [];
     for (const [name, error] of this.#unloaded) {
       if (options.channels && !options.channels.includes(name)) continue;
-      if ((options.exclude ?? []).includes(name)) continue;
+      if (excluded.includes(name)) continue;
       degraded.push({ lane: name, error });
     }
     settled.forEach((outcome, index) => {
@@ -1353,6 +1364,12 @@ export class Retriever {
   }
 
   // --- internals --------------------------------------------------------------------------------
+
+  /** The project's `search.collapse`, when set; unset leaves dense retrieval at its own default (on). */
+  #collapse(): { collapse?: boolean } {
+    const collapse = this.config.search?.collapse;
+    return collapse === undefined ? {} : { collapse };
+  }
 
   /** `options` with its `scope` checked and folded into `include`, the one test every lane reads. */
   #scoped<T extends SearchOptions>(options: T): T {
