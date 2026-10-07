@@ -40,7 +40,7 @@ anvesa index --no-embed          # structural & graph only (no embedding pass)
 ```bash
 anvesa search "parse configuration file"
 anvesa search "auth middleware" --exclude docs    # exclude doc cards when target is strictly code
-anvesa search "user session" --limit 10          # page results (default 1000)
+anvesa search "user session" --limit 10          # page results (default 20, or search.defaultLimit)
 ```
 - Hits are fused using Reciprocal Rank Fusion (RRF). Each hit reports its score and which lanes found it (`dense`, `structural`, `docs`).
 - **Critical rule:** If you only care about code implementations, pass `--exclude docs`. Do not use low weights like `--weight docs=0.1`, because RRF ranks by position and low weights will distort rankings.

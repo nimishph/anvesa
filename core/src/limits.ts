@@ -13,6 +13,12 @@ import { InvalidArgumentError } from './errors.ts';
  */
 export const DEFAULT_RESULT_LIMIT = 1000;
 
+/**
+ * Page size for a search or query when neither the caller nor the project's `search.defaultLimit`
+ * gives one. These pages are read by people and models, so they are short; pass a cursor for more.
+ */
+export const DEFAULT_SEARCH_LIMIT = 20;
+
 export type LimitSource = 'caller' | 'default' | 'derived';
 
 /** What limit was applied, where it came from, and whether it actually cut anything off. */

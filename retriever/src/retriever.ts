@@ -4,12 +4,14 @@ import { dirname, join } from 'node:path';
 import {
   AggregateFailureError,
   type CodeLensError,
+  DEFAULT_SEARCH_LIMIT,
   type Deadline,
   decodeCursor,
   encodeCursor,
   InvalidArgumentError,
   type Page,
   type PageRequest,
+  type ResolvedLimit,
   resolveLimit,
   toCodeLensError,
 } from '@cntxt-labs/anvesa-core';
@@ -574,6 +576,7 @@ export class Retriever {
     const mismatch = await this.#modelMismatch();
     if (mismatch) throw mismatch;
     return retrieveDense({
+      ...this.#collapse(),
       channel,
       query,
       embedder: this.#requireEmbedder(),
@@ -607,20 +610,21 @@ export class Retriever {
     }
 
     if (!semanticQuery) {
+      const { value: limit, source } = this.#pageLimit(options.limit);
       const result = this.#structure.query(parsed, {
         ...(options.include ? { include: options.include } : {}),
-        ...(options.limit === undefined ? {} : { limit: options.limit }),
+        limit,
         ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
         ...(options.deadline ? { deadline: options.deadline } : {}),
       });
-      return { ...result, coverage };
+      return { ...result, limit: { ...result.limit, source }, coverage };
     }
 
     // Conjunction active: rank matching WQL hits by semantic relevance
     const embedder = this.#requireEmbedder();
     const mismatch = await this.#modelMismatch();
     if (mismatch) throw mismatch;
-    const { value: limit, source } = resolveLimit('limit', options.limit);
+    const { value: limit, source } = this.#pageLimit(options.limit);
     const offset = options.cursor === undefined ? 0 : decodeCursor(options.cursor);
     const depth = offset + limit + 1;
     const fetchLimit = Math.max(depth * 10, 500);
@@ -643,6 +647,7 @@ export class Retriever {
     for (const channel of channels) {
       if (!this.registry.has(channel)) continue;
       const res = await retrieveDense({
+        ...this.#collapse(),
         channel,
         query: semanticQuery,
         embedder,
@@ -703,9 +708,13 @@ export class Retriever {
   async search(query: string, given: SearchOptions = {}): Promise<SearchPage> {
     const options = this.#scoped(given);
     await this.#requireIndexed();
-    const { value: limit, source } = resolveLimit('limit', options.limit);
+    const { value: limit, source } = this.#pageLimit(options.limit);
     const offset = options.cursor === undefined ? 0 : decodeCursor(options.cursor);
     const depth = offset + limit + 1;
+    // Dense hits below the project's `search.minScore` (cosine similarity) are dropped.
+    const minScore = this.config.search?.minScore;
+    const aboveMinScore = (hit: SearchHit): boolean =>
+      minScore === undefined || hit.score >= minScore;
     const split = splitConjunction(query, options.wql);
     const isConjunction = Boolean(split.semantic && split.wql);
     // Searching by meaning with the wrong model finds nothing; say so. A WQL query still has its
@@ -732,11 +741,18 @@ export class Retriever {
     }
     const weightOf = (lane: string, configured: number): number =>
       options.weights?.[lane] ?? configured;
-    // Whether --exclude or a zero weight actually took away a lane that would have run. Without it,
-    // an empty search is not the caller's doing (no embedder, say), and must not be blamed on them.
+    // The project's `search.excludeLanes` adds to the caller's, except for a channel the caller asks for by name.
+    const excluded = [
+      ...(options.exclude ?? []),
+      ...(this.config.search?.excludeLanes ?? []).filter(
+        (lane) => !(options.channels ?? []).includes(lane),
+      ),
+    ];
+    // Whether an exclusion or a zero weight actually took away a lane that would have run. Without
+    // it, an empty search is not the caller's doing (no embedder, say), and must not be blamed on them.
     let dropped = false;
     const left = (lane: string, configured: number): boolean => {
-      const kept = !(options.exclude ?? []).includes(lane) && weightOf(lane, configured) > 0;
+      const kept = !excluded.includes(lane) && weightOf(lane, configured) > 0;
       if (!kept) dropped = true;
       return kept;
     };
@@ -793,6 +809,7 @@ export class Retriever {
           weight: weightOf(channel, configured),
           run: async () => {
             const res = await retrieveDense({
+              ...this.#collapse(),
               channel,
               query: semanticQuery,
               embedder: this.embedder as Embedder,
@@ -802,7 +819,9 @@ export class Retriever {
               ...cardFilter(options.include),
               ...(options.deadline ? { deadline: options.deadline } : {}),
             });
-            return res.items.filter((hit) => matcher(hit.card) !== undefined).map(cardHit);
+            return res.items
+              .filter((hit) => aboveMinScore(hit) && matcher(hit.card) !== undefined)
+              .map(cardHit);
           },
         });
       }
@@ -819,6 +838,7 @@ export class Retriever {
               if (mismatch) throw mismatch;
               return (
                 await retrieveDense({
+                  ...this.#collapse(),
                   channel,
                   query,
                   embedder: this.embedder as Embedder,
@@ -828,7 +848,9 @@ export class Retriever {
                   ...cardFilter(options.include),
                   ...(options.deadline ? { deadline: options.deadline } : {}),
                 })
-              ).items.map(cardHit);
+              ).items
+                .filter(aboveMinScore)
+                .map(cardHit);
             },
           });
         }
@@ -855,7 +877,7 @@ export class Retriever {
       throw new InvalidArgumentError(
         'exclude/weights',
         'a search that keeps at least one lane',
-        [...(options.exclude ?? []), ...Object.keys(options.weights ?? {})].join(', '),
+        [...excluded, ...Object.keys(options.weights ?? {})].join(', '),
       );
     }
     if (runs.length === 0) {
@@ -869,7 +891,7 @@ export class Retriever {
     const degraded: { lane: string; error: CodeLensError }[] = [];
     for (const [name, error] of this.#unloaded) {
       if (options.channels && !options.channels.includes(name)) continue;
-      if ((options.exclude ?? []).includes(name)) continue;
+      if (excluded.includes(name)) continue;
       degraded.push({ lane: name, error });
     }
     settled.forEach((outcome, index) => {
@@ -1348,6 +1370,24 @@ export class Retriever {
   }
 
   // --- internals --------------------------------------------------------------------------------
+
+  /**
+   * The page size for a search or query: the caller's, else the project's `search.defaultLimit`,
+   * else `DEFAULT_SEARCH_LIMIT`.
+   */
+  #pageLimit(requested: number | undefined): ResolvedLimit {
+    const resolved = resolveLimit(
+      'limit',
+      requested ?? this.config.search?.defaultLimit ?? DEFAULT_SEARCH_LIMIT,
+    );
+    return requested === undefined ? { ...resolved, source: 'default' } : resolved;
+  }
+
+  /** The project's `search.collapse`, when set; unset leaves dense retrieval at its own default (on). */
+  #collapse(): { collapse?: boolean } {
+    const collapse = this.config.search?.collapse;
+    return collapse === undefined ? {} : { collapse };
+  }
 
   /** `options` with its `scope` checked and folded into `include`, the one test every lane reads. */
   #scoped<T extends SearchOptions>(options: T): T {

@@ -167,7 +167,18 @@ describe('a first run', () => {
     await indexer.index({ onEvent: (event) => kinds.push(event.kind) });
     expect(kinds[0]).toBe('started');
     expect(kinds.filter((kind) => kind === 'file')).toHaveLength(4);
+    // The total is known before the first file, and it is how many file events follow.
+    expect(kinds.indexOf('planned')).toBeLessThan(kinds.indexOf('file'));
     expect(kinds.at(-1)).toBe('finished');
+  });
+
+  test('plans exactly as many files as it reports', async () => {
+    const { indexer } = await setup(project);
+    const events: IndexEvent[] = [];
+    await indexer.index({ onEvent: (event) => events.push(event) });
+    const planned = events.find((event) => event.kind === 'planned');
+    expect(planned).toMatchObject({ files: 4 });
+    expect(planned && 'bytes' in planned ? planned.bytes : 0).toBeGreaterThan(0);
   });
 });
 

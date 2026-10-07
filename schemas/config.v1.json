@@ -135,7 +135,7 @@
         },
         "collapse": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "Collapse multiple search result chunks originating from the same symbol or card group."
         }
       }

@@ -80,3 +80,66 @@ export class DownloadProgress {
     this.#drawn = false;
   }
 }
+
+/** `42 s`, `3 m 05 s`, `1 h 12 m`: a duration as a person reads it. */
+export function formatDuration(ms: number): string {
+  const seconds = Math.max(0, Math.round(ms / 1000));
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} m ${String(seconds % 60).padStart(2, '0')} s`;
+  return `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, '0')} m`;
+}
+
+export interface IndexProgressState {
+  /** Files handled so far, and how many the run has (unknown until the walk is listed). */
+  readonly done: number;
+  readonly total: number | undefined;
+  readonly embedded: number;
+  readonly cards: number;
+  readonly quarantined: number;
+  /** Since the walk was listed: what the rate and the time left are measured over. */
+  readonly elapsedMs: number;
+  /** The file being embedded and for how long, when it is taking a while. */
+  readonly embedding?: { readonly path: string; readonly forMs: number } | undefined;
+}
+
+/**
+ * One line of an index run:
+ * `indexing [████████░░░░]  34%  1,234/3,600 files · 210 embedded (1,820 cards) · 41/s · ~58 s left`.
+ * Cut to `width` from the right, the file being embedded first, so it never wraps.
+ */
+export function renderIndexBar(state: IndexProgressState, width?: number): string {
+  const n = (value: number) => value.toLocaleString('en-US');
+  const parts: string[] = [];
+  if (state.total === undefined) {
+    parts.push(`indexing: listing files…`);
+  } else {
+    const share = state.total === 0 ? 1 : Math.min(1, state.done / state.total);
+    const filled = Math.round(share * BAR_WIDTH);
+    const bar = `${'█'.repeat(filled)}${'░'.repeat(BAR_WIDTH - filled)}`;
+    parts.push(
+      `indexing: [${bar}] ${String(Math.floor(share * 100)).padStart(3)}%  ${n(state.done)}/${n(state.total)} files`,
+    );
+  }
+  if (state.embedded > 0) parts.push(`${n(state.embedded)} embedded (${n(state.cards)} cards)`);
+  if (state.quarantined > 0) parts.push(`${n(state.quarantined)} quarantined`);
+  const seconds = state.elapsedMs / 1000;
+  // Too early, and the rate is noise.
+  if (state.total !== undefined && seconds >= 2 && state.done > 0) {
+    const rate = state.done / seconds;
+    parts.push(`${rate >= 10 ? Math.round(rate) : rate.toFixed(1)} files/s`);
+    if (state.done < state.total) {
+      parts.push(`~${formatDuration(((state.total - state.done) / rate) * 1000)} left`);
+    }
+  }
+  const line = parts.join(' · ');
+  const current = state.embedding
+    ? ` · embedding ${state.embedding.path} (${formatDuration(state.embedding.forMs)})`
+    : '';
+  if (width === undefined || width <= 0) return `${line}${current}`;
+  // One column spare: writing into the last one wraps on some terminals.
+  const room = width - 1;
+  if (line.length + current.length <= room) return `${line}${current}`;
+  if (line.length <= room) return line;
+  return `${line.slice(0, Math.max(0, room - 1))}…`;
+}
