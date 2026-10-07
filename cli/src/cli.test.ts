@@ -832,16 +832,7 @@ describe('command line', () => {
     expect((await cli(root, 'query', '//function', '--limit', '0')).code).toBe(2);
   });
 
-  // On Windows this ran past 5 s on this branch (227 ms on main), so it reports how long each
-  // command took there, and has longer to finish, until the step that waits is found.
   test('a channel goes from add to test to index to retrieve', async () => {
-    const steps: string[] = [];
-    const cli = async (root: string, ...argv: string[]): Promise<Ran> => {
-      const started = performance.now();
-      const ran = await cliWith({}, root, ...argv);
-      steps.push(`${argv.join(' ')}: ${Math.round(performance.now() - started)} ms`);
-      return ran;
-    };
     const root = makeProject();
     const added = await cli(root, 'channel', 'make', 'notes', NOTES_CHANNEL);
     expect(added.code).toBe(0);
@@ -876,9 +867,7 @@ describe('command line', () => {
     const shown = await cli(root, 'retrieve', 'notes', 'who restarts the queue worker');
     expect(shown.out).toContain('note:oncall');
     expect((await cli(root, 'retrieve', 'ghost', 'x')).code).not.toBe(0);
-    if (process.platform === 'win32')
-      process.stderr.write(`channel e2e steps: ${steps.join(', ')}\n`);
-  }, 30_000);
+  });
 
   test('channel index takes an async source, names why a record failed, and exits 1', async () => {
     const root = makeProject();
