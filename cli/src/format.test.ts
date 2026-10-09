@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'bun:test';
 import type { SearchPage, SearchResult } from '@cntxt-labs/anvesa-retriever';
-import { extractDocSummary, jumpLink, renderSearch, renderStructural, scoreBar } from './render.ts';
+import {
+  extractDocSummary,
+  jumpLink,
+  renderHitRows,
+  renderSearch,
+  renderSearchHeader,
+  renderStructural,
+  scoreBar,
+} from './render.ts';
 
 const sampleHit: SearchResult = {
   key: 'src/config.ts:45',
@@ -107,12 +115,47 @@ describe('Multi-Mode Results Formatting (anv-80l)', () => {
     );
   });
 
-  it('renderSearch in pretty mode includes score confidence bar and fenced body', () => {
+  it('renderSearch in pretty mode lists one aligned row per result; --expand adds the fenced card', () => {
     const pretty = renderSearch(samplePage, { mode: 'pretty', isTTY: false });
-    expect(pretty).toContain('1. parseConfig (function)');
-    expect(pretty).toContain('best 0.842');
-    expect(pretty).toContain('[████████░░] 0.842');
-    expect(pretty).toContain('<<<untrusted');
+    expect(pretty).toContain(
+      ' 1  parseConfig (function)  src/config.ts:45-80  dense+structural  ███████░ 0.84',
+    );
+    expect(pretty).not.toContain('<<<untrusted');
+    const expanded = renderSearch(samplePage, { mode: 'pretty', isTTY: false, full: true });
+    expect(expanded).toContain('<<<untrusted');
+    expect(expanded).toContain('export async function parseConfig');
+  });
+
+  it('a header names the query, model, dimensions, index size and time, when given', () => {
+    const header = {
+      query: 'parse config',
+      model: { id: 'bge-base-en-v1.5', dimensions: 768 },
+      files: 1204,
+      cards: 9812,
+      elapsedMs: 41.6,
+    };
+    const pretty = renderSearch(samplePage, { mode: 'pretty', isTTY: false, header });
+    expect(pretty.split('\n')[0]).toBe(
+      '╭ "parse config" · bge-base-en-v1.5 · 768 dims · 1,204 files · 9,812 cards · 42 ms',
+    );
+    const structural = renderSearchHeader({ ...header, model: undefined }, false);
+    expect(structural).toBe(
+      '╭ "parse config" · structural (no model) · 1,204 files · 9,812 cards · 42 ms',
+    );
+  });
+
+  it('rows line up whatever the names, and colour never counts towards a column', () => {
+    const rows = renderHitRows(
+      [
+        { name: 'a', location: 'x.ts:1', channel: 'symbols', score: 0.5 },
+        { name: 'longer name', location: 'deep/path.ts:20', channel: 'docs', score: undefined },
+      ],
+      { expand: false, isTTY: true },
+    );
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping the escapes being tested
+    const plain = rows.map((row) => row.replace(/\x1b\[[0-9;]*m/g, ''));
+    expect(plain[0]?.indexOf('x.ts')).toBe(plain[1]?.indexOf('deep/'));
+    expect(plain[1]).toContain('—');
   });
 
   it('renderSearch in json mode returns strictly typed JSON', () => {

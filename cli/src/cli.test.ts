@@ -595,6 +595,73 @@ describe('command line', () => {
     expect(unknown.err).toContain('my-encoder');
   });
 
+  test('search, retrieve and query share one layout: a header on a terminal, rows, cards on --expand', async () => {
+    const root = makeProject();
+    expect((await cli(root, 'index')).code).toBe(0);
+    const tty = { isTTY: true };
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping colour to read the text
+    const plain = (text: string) => text.replace(/\x1b\[[0-9;]*m/g, '');
+
+    const searched = plain(
+      (await cliWith(tty, root, 'search', 'parse the configuration file')).out,
+    );
+    expect(searched.split('\n')[0]).toMatch(
+      /^╭ "parse the configuration file" · test-words · 256 dims · \d+ files · \d+ cards · \d+ ms$/,
+    );
+    expect(searched).toMatch(/^ {1,2}1 {2}parseConfig \(function\) +src\/config\.ts:2 +symbols/m);
+
+    const retrieved = plain(
+      (await cliWith(tty, root, 'retrieve', 'symbols', 'parse the configuration file')).out,
+    );
+    expect(retrieved.split('\n')[0]).toContain('╭ "parse the configuration file" · test-words');
+    expect(retrieved).toMatch(
+      /^ {1,2}1 {2}parseConfig +src\/config\.ts:2 +symbols +[█░]{8} \d\.\d{2}$/m,
+    );
+    expect(retrieved).not.toContain('untrusted');
+    expect(
+      plain((await cliWith(tty, root, 'retrieve', 'symbols', 'parse', '--expand')).out),
+    ).toContain('untrusted');
+
+    const queried = plain(
+      (await cliWith(tty, root, 'query', '//function[@name="parseConfig"]')).out,
+    );
+    expect(queried.split('\n')[0]).toContain('· structural (no model) ·');
+    expect(queried).toMatch(/^ {1,2}1 {2}function parseConfig +src\/config\.ts:2 +structural +—$/m);
+    expect(
+      plain((await cliWith(tty, root, 'query', '//function[@name="parseConfig"]', '--expand')).out),
+    ).toContain('\n    parseConfig(text)\n');
+
+    // Off a terminal, and in --json, there is no header; --compact keeps the older layout.
+    expect((await cli(root, 'search', 'parse the configuration file')).out).not.toContain('╭');
+    expect(
+      (await cliWith(tty, root, 'search', 'parse', '--json')).out.trimStart().startsWith('{'),
+    ).toBe(true);
+    expect((await cli(root, 'retrieve', 'symbols', 'parse', '--compact')).out).toContain(
+      'untrusted',
+    );
+  });
+
+  test('--json carries what the search ran against as _meta, for search, retrieve and query', async () => {
+    const root = makeProject();
+    expect((await cli(root, 'index')).code).toBe(0);
+    const searched = json(await cli(root, 'search', 'parse the configuration file', '--json'));
+    expect(searched._meta).toMatchObject({
+      query: 'parse the configuration file',
+      model: { id: 'test-words', dimensions: 256 },
+      index: { files: 3 },
+    });
+    expect(searched._meta.index.cards).toBeGreaterThan(0);
+    expect(Number.isInteger(searched._meta.elapsedMs)).toBe(true);
+    expect(searched.items.length).toBeGreaterThan(0);
+
+    const retrieved = json(await cli(root, 'retrieve', 'symbols', 'parse', '--format', 'json'));
+    expect(retrieved._meta).toMatchObject({ query: 'parse', model: { id: 'test-words' } });
+    expect(retrieved.items.length).toBeGreaterThan(0);
+
+    const queried = json(await cli(root, 'query', '//function', '--json'));
+    expect(queried._meta).toMatchObject({ query: '//function', model: null, index: { files: 3 } });
+  });
+
   test('where names the project in use, how it was found, and its paths', async () => {
     const root = makeProject();
     const inside = join(root, 'src');
@@ -708,8 +775,16 @@ describe('command line', () => {
 
     const text = await cli(root, 'search', 'parse the configuration file');
     expect(text.out).toContain('src/config.ts');
-    expect(text.out).toContain('untrusted');
-    expect(text.out).toMatch(/best \d\.\d{3}/);
+    // A list by default; the cards, fenced as untrusted, with --expand (or --full).
+    expect(text.out).not.toContain('untrusted');
+    const expanded = await cli(root, 'search', 'parse the configuration file', '--expand');
+    expect(expanded.out).toContain('untrusted');
+    // Each run fences with a fresh id, so the two are compared without it.
+    const unfenced = (text: string) => text.replace(/untrusted-[0-9a-f]+/g, 'untrusted');
+    expect(
+      unfenced((await cli(root, 'search', 'parse the configuration file', '--full')).out),
+    ).toBe(unfenced(expanded.out));
+    expect(text.out).toMatch(/symbols {2}[█░]{8} \d\.\d{2}/);
 
     const structural = json(await cli(root, 'query', '//function[@name="validate"]', '--json'));
     // biome-ignore lint/suspicious/noExplicitAny: asserting a JSON shape
@@ -806,7 +881,7 @@ describe('command line', () => {
     // 6. query text output displays conjunction header and score
     const queryText = (await cli(root, 'query', '//function && listen requests')).out;
     expect(queryText).toContain('conjunction: semantic "listen requests" && wql "//function"');
-    expect(queryText).toMatch(/score \d\.\d{3}/);
+    expect(queryText).toMatch(/structural {2}[█░]{8} \d\.\d{2}/);
   });
 
   test('a limit is applied, reported and continued with a cursor', async () => {
@@ -1852,6 +1927,35 @@ describe('mcp server', () => {
       const refused = await call(client, 'search', { query: 'parse', scope: '../outside' });
       expect(refused.isError).toBe(true);
       expect(JSON.stringify(refused.body)).toContain('CORE_INVALID_ARGUMENT');
+    } finally {
+      await session.close();
+    }
+  });
+
+  test('search, retrieve_<channel> and query send what they ran against as _meta', async () => {
+    const root = makeProject();
+    expect((await cli(root, 'index')).code).toBe(0);
+    const session = await connect(root);
+    try {
+      const { client } = session;
+      const searched = await call(client, 'search', { query: 'parse configuration' });
+      expect(searched.body._meta).toMatchObject({
+        query: 'parse configuration',
+        model: { id: 'test-words', dimensions: 256 },
+        index: { files: 3 },
+      });
+      expect(searched.body.items.length).toBeGreaterThan(0);
+      const located = await call(client, 'search', { query: 'parse', format: 'locations' });
+      expect(located.body._meta.model.id).toBe('test-words');
+
+      const retrieved = await call(client, 'retrieve_symbols', { query: 'parse configuration' });
+      expect(retrieved.body._meta).toMatchObject({ query: 'parse configuration' });
+
+      // Pure WQL used no model, though the server has one loaded; a conjunction did.
+      const queried = await call(client, 'query', { wql: '//function' });
+      expect(queried.body._meta).toMatchObject({ query: '//function', model: null });
+      const combined = await call(client, 'query', { wql: '//function && parse configuration' });
+      expect(combined.body._meta.model).toMatchObject({ id: 'test-words' });
     } finally {
       await session.close();
     }

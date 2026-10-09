@@ -144,6 +144,72 @@ function pageRequest(ctx: Context): PageRequest {
   };
 }
 
+/**
+ * What a search, retrieve or query ran against: the query, the model, the index's size and how
+ * long it took. A terminal shows it as the header line, JSON carries it as `_meta`; anything else
+ * (piped text) does not read it at all.
+ */
+async function searchFacts(
+  ctx: Context,
+  retriever: Retriever,
+  query: string,
+  startedAt: number,
+): Promise<show.SearchHeader | undefined> {
+  const json = ctx.parsed.values.json === true || resolveFormat(ctx) === 'json';
+  if (!json && ctx.environment.isTTY !== true) return undefined;
+  return resultFacts(retriever, query, startedAt);
+}
+
+/** The facts themselves; the MCP tools send them as `_meta` with every result page. */
+export async function resultFacts(
+  retriever: Retriever,
+  query: string,
+  startedAt: number,
+  options: { readonly structural?: boolean } = {},
+): Promise<show.SearchHeader> {
+  const elapsedMs = performance.now() - startedAt;
+  // A WQL query with no semantic part used no model, whether or not one is loaded.
+  const info = options.structural ? undefined : retriever.embedder?.info;
+  const [stats, models] = await Promise.all([retriever.store.stats(), retriever.indexedModels()]);
+  const cards = info
+    ? (models.find((row) => row.model === info.id)?.cards ?? 0)
+    : models.reduce((sum, row) => sum + row.cards, 0);
+  return {
+    query,
+    model: info ? { id: info.id, dimensions: info.dimensions } : undefined,
+    files: stats.files,
+    cards,
+    elapsedMs,
+  };
+}
+
+/**
+ * Print a page of results: as JSON with the facts as `_meta`, or as text, with the facts as the
+ * header line on a terminal.
+ */
+function emitResults(
+  ctx: Context,
+  page: object,
+  facts: show.SearchHeader | undefined,
+  render: (options: show.RenderOptions) => string,
+): void {
+  const format = resolveFormat(ctx);
+  if (format === 'json') {
+    const value = facts ? { ...page, _meta: show.metaOf(facts) } : page;
+    emit(ctx, value, () => show.toJson(value));
+    return;
+  }
+  const isTTY = ctx.environment.isTTY === true;
+  emit(ctx, page, () =>
+    render({
+      mode: format,
+      full: ctx.parsed.values.full === true,
+      isTTY,
+      header: isTTY ? facts : undefined,
+    }),
+  );
+}
+
 /** `--scope` for a search, query or retrieve (checked once, in runCli). */
 function scopeOption(ctx: Context): { readonly scope?: string } {
   const scope = ctx.parsed.values.scope;
@@ -579,7 +645,9 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       const channels = ctx.parsed.values.channel;
       const exclude = ctx.parsed.values.exclude;
       const weights = parseWeights(ctx.parsed.values.weight);
-      const page = await retriever.search(rest(ctx, 0) || need(ctx, 0, 'query'), {
+      const query = rest(ctx, 0) || need(ctx, 0, 'query');
+      const startedAt = performance.now();
+      const page = await retriever.search(query, {
         ...pageRequest(ctx),
         ...(channels ? { channels } : {}),
         ...(exclude ? { exclude } : {}),
@@ -587,28 +655,21 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         ...(ctx.parsed.values.wql ? { wql: ctx.parsed.values.wql } : {}),
         ...scopeOption(ctx),
       });
-      const format = resolveFormat(ctx);
-      if (format === 'json') {
-        emit(ctx, page, () => show.toJson(page));
-      } else {
-        emit(ctx, page, () =>
-          show.renderSearch(page, {
-            mode: format,
-            full: ctx.parsed.values.full === true,
-            isTTY: ctx.environment.isTTY === true,
-          }),
-        );
-      }
+      const facts = await searchFacts(ctx, retriever, query, startedAt);
+      emitResults(ctx, page, facts, (options) => show.renderSearch(page, options));
     }),
 
   retrieve: (ctx) =>
     withProject(ctx, { embed: true }, async ({ retriever }) => {
       const channel = need(ctx, 0, 'channel');
-      const page = await retriever.retrieve(channel, need(ctx, 1, 'query') && rest(ctx, 1), {
+      const query = need(ctx, 1, 'query') && rest(ctx, 1);
+      const startedAt = performance.now();
+      const page = await retriever.retrieve(channel, query, {
         ...pageRequest(ctx),
         ...scopeOption(ctx),
       });
-      emit(ctx, page, () => show.renderRetrieved(page));
+      const facts = await searchFacts(ctx, retriever, query, startedAt);
+      emitResults(ctx, page, facts, (options) => show.renderRetrieved(page, options));
     }),
 
   query: (ctx) => {
@@ -617,23 +678,19 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
     const split = splitConjunction(rawWql, undefined, semantic);
     const needsEmbed = Boolean(split.semantic);
     return withProject(ctx, { embed: needsEmbed }, async ({ retriever }) => {
+      const startedAt = performance.now();
       const page = await retriever.query(rawWql, {
         ...pageRequest(ctx),
         ...(semantic ? { semantic } : {}),
         ...scopeOption(ctx),
       });
-      const format = resolveFormat(ctx);
-      if (format === 'json') {
-        emit(ctx, page, () => show.toJson(page));
-      } else {
-        emit(ctx, page, () =>
-          show.renderStructural(page, {
-            mode: format,
-            full: ctx.parsed.values.full === true,
-            isTTY: ctx.environment.isTTY === true,
-          }),
-        );
-      }
+      const facts = await searchFacts(
+        ctx,
+        retriever,
+        semantic ? `${rawWql} && ${semantic}` : rawWql,
+        startedAt,
+      );
+      emitResults(ctx, page, facts, (options) => show.renderStructural(page, options));
     });
   },
 
