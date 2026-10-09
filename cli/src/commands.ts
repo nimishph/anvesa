@@ -145,16 +145,18 @@ function pageRequest(ctx: Context): PageRequest {
 }
 
 /**
- * The header line a search, retrieve or query shows on a terminal: what was asked, with which
- * model, against an index of what size, and how long it took. Not read at all off a terminal.
+ * What a search, retrieve or query ran against: the query, the model, the index's size and how
+ * long it took. A terminal shows it as the header line, JSON carries it as `_meta`; anything else
+ * (piped text) does not read it at all.
  */
-async function searchHeader(
+async function searchFacts(
   ctx: Context,
   retriever: Retriever,
   query: string,
   startedAt: number,
 ): Promise<show.SearchHeader | undefined> {
-  if (ctx.environment.isTTY !== true || ctx.parsed.values.json) return undefined;
+  const json = ctx.parsed.values.json === true || resolveFormat(ctx) === 'json';
+  if (!json && ctx.environment.isTTY !== true) return undefined;
   const elapsedMs = performance.now() - startedAt;
   const info = retriever.embedder?.info;
   const [stats, models] = await Promise.all([retriever.store.stats(), retriever.indexedModels()]);
@@ -168,6 +170,33 @@ async function searchHeader(
     cards,
     elapsedMs,
   };
+}
+
+/**
+ * Print a page of results: as JSON with the facts as `_meta`, or as text, with the facts as the
+ * header line on a terminal.
+ */
+function emitResults(
+  ctx: Context,
+  page: object,
+  facts: show.SearchHeader | undefined,
+  render: (options: show.RenderOptions) => string,
+): void {
+  const format = resolveFormat(ctx);
+  if (format === 'json') {
+    const value = facts ? { ...page, _meta: show.metaOf(facts) } : page;
+    emit(ctx, value, () => show.toJson(value));
+    return;
+  }
+  const isTTY = ctx.environment.isTTY === true;
+  emit(ctx, page, () =>
+    render({
+      mode: format,
+      full: ctx.parsed.values.full === true,
+      isTTY,
+      header: isTTY ? facts : undefined,
+    }),
+  );
 }
 
 /** `--scope` for a search, query or retrieve (checked once, in runCli). */
@@ -615,20 +644,8 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         ...(ctx.parsed.values.wql ? { wql: ctx.parsed.values.wql } : {}),
         ...scopeOption(ctx),
       });
-      const format = resolveFormat(ctx);
-      if (format === 'json') {
-        emit(ctx, page, () => show.toJson(page));
-      } else {
-        const header = await searchHeader(ctx, retriever, query, startedAt);
-        emit(ctx, page, () =>
-          show.renderSearch(page, {
-            mode: format,
-            full: ctx.parsed.values.full === true,
-            isTTY: ctx.environment.isTTY === true,
-            header,
-          }),
-        );
-      }
+      const facts = await searchFacts(ctx, retriever, query, startedAt);
+      emitResults(ctx, page, facts, (options) => show.renderSearch(page, options));
     }),
 
   retrieve: (ctx) =>
@@ -640,16 +657,8 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         ...pageRequest(ctx),
         ...scopeOption(ctx),
       });
-      const format = resolveFormat(ctx);
-      const header = await searchHeader(ctx, retriever, query, startedAt);
-      emit(ctx, page, () =>
-        show.renderRetrieved(page, {
-          mode: format,
-          full: ctx.parsed.values.full === true,
-          isTTY: ctx.environment.isTTY === true,
-          header,
-        }),
-      );
+      const facts = await searchFacts(ctx, retriever, query, startedAt);
+      emitResults(ctx, page, facts, (options) => show.renderRetrieved(page, options));
     }),
 
   query: (ctx) => {
@@ -664,25 +673,13 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         ...(semantic ? { semantic } : {}),
         ...scopeOption(ctx),
       });
-      const format = resolveFormat(ctx);
-      if (format === 'json') {
-        emit(ctx, page, () => show.toJson(page));
-      } else {
-        const header = await searchHeader(
-          ctx,
-          retriever,
-          semantic ? `${rawWql} && ${semantic}` : rawWql,
-          startedAt,
-        );
-        emit(ctx, page, () =>
-          show.renderStructural(page, {
-            mode: format,
-            full: ctx.parsed.values.full === true,
-            isTTY: ctx.environment.isTTY === true,
-            header,
-          }),
-        );
-      }
+      const facts = await searchFacts(
+        ctx,
+        retriever,
+        semantic ? `${rawWql} && ${semantic}` : rawWql,
+        startedAt,
+      );
+      emitResults(ctx, page, facts, (options) => show.renderStructural(page, options));
     });
   },
 

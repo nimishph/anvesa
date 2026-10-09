@@ -641,6 +641,27 @@ describe('command line', () => {
     );
   });
 
+  test('--json carries what the search ran against as _meta, for search, retrieve and query', async () => {
+    const root = makeProject();
+    expect((await cli(root, 'index')).code).toBe(0);
+    const searched = json(await cli(root, 'search', 'parse the configuration file', '--json'));
+    expect(searched._meta).toMatchObject({
+      query: 'parse the configuration file',
+      model: { id: 'test-words', dimensions: 256 },
+      index: { files: 3 },
+    });
+    expect(searched._meta.index.cards).toBeGreaterThan(0);
+    expect(Number.isInteger(searched._meta.elapsedMs)).toBe(true);
+    expect(searched.items.length).toBeGreaterThan(0);
+
+    const retrieved = json(await cli(root, 'retrieve', 'symbols', 'parse', '--format', 'json'));
+    expect(retrieved._meta).toMatchObject({ query: 'parse', model: { id: 'test-words' } });
+    expect(retrieved.items.length).toBeGreaterThan(0);
+
+    const queried = json(await cli(root, 'query', '//function', '--json'));
+    expect(queried._meta).toMatchObject({ query: '//function', model: null, index: { files: 3 } });
+  });
+
   test('where names the project in use, how it was found, and its paths', async () => {
     const root = makeProject();
     const inside = join(root, 'src');
@@ -763,7 +784,7 @@ describe('command line', () => {
     expect(
       unfenced((await cli(root, 'search', 'parse the configuration file', '--full')).out),
     ).toBe(unfenced(expanded.out));
-    expect(text.out).toMatch(/symbols  [█░]{8} \d\.\d{2}/);
+    expect(text.out).toMatch(/symbols {2}[█░]{8} \d\.\d{2}/);
 
     const structural = json(await cli(root, 'query', '//function[@name="validate"]', '--json'));
     // biome-ignore lint/suspicious/noExplicitAny: asserting a JSON shape

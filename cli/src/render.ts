@@ -199,6 +199,21 @@ export interface HitRow {
 
 const count = (n: number): string => n.toLocaleString('en-US');
 
+/** The facts as JSON's `_meta`: `model` is null for a search with no model, time in whole ms. */
+export function metaOf(header: SearchHeader): {
+  readonly query: string;
+  readonly model: { readonly id: string; readonly dimensions: number } | null;
+  readonly index: { readonly files: number; readonly cards: number };
+  readonly elapsedMs: number;
+} {
+  return {
+    query: header.query,
+    model: header.model ?? null,
+    index: { files: header.files, cards: header.cards },
+    elapsedMs: Math.round(header.elapsedMs),
+  };
+}
+
 /** `╭ "save user" · bge-base-en-v1.5 · 768 dims · 1,204 files · 9,812 cards · 42 ms` */
 export function renderSearchHeader(header: SearchHeader, isTTY: boolean): string {
   const facts = [

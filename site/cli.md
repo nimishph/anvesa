@@ -106,7 +106,8 @@ the query, the model and its vector dimensions, how many files and cards the ind
 search took. Then comes one aligned row per result: rank, name, place, the channel (or lanes) that found it,
 and a bar with the similarity score (`—` for a structural match, which has none). `--expand` puts each
 result's card, fenced as untrusted, under its row; for a structural match it shows the signature. There is
-no header when the output is piped or with `--json`, and `--format compact` keeps the older layout.
+no header when the output is piped, and `--format compact` keeps the older layout. With `--json` the same facts
+come as `_meta`: `{ query, model: { id, dimensions } | null, index: { files, cards }, elapsedMs }`.
 
 ```
 ╭ "save user" · bge-base-en-v1.5 · 768 dims · 1,204 files · 9,812 cards · 12 ms
