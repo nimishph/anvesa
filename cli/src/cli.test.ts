@@ -1932,6 +1932,35 @@ describe('mcp server', () => {
     }
   });
 
+  test('search, retrieve_<channel> and query send what they ran against as _meta', async () => {
+    const root = makeProject();
+    expect((await cli(root, 'index')).code).toBe(0);
+    const session = await connect(root);
+    try {
+      const { client } = session;
+      const searched = await call(client, 'search', { query: 'parse configuration' });
+      expect(searched.body._meta).toMatchObject({
+        query: 'parse configuration',
+        model: { id: 'test-words', dimensions: 256 },
+        index: { files: 3 },
+      });
+      expect(searched.body.items.length).toBeGreaterThan(0);
+      const located = await call(client, 'search', { query: 'parse', format: 'locations' });
+      expect(located.body._meta.model.id).toBe('test-words');
+
+      const retrieved = await call(client, 'retrieve_symbols', { query: 'parse configuration' });
+      expect(retrieved.body._meta).toMatchObject({ query: 'parse configuration' });
+
+      // Pure WQL used no model, though the server has one loaded; a conjunction did.
+      const queried = await call(client, 'query', { wql: '//function' });
+      expect(queried.body._meta).toMatchObject({ query: '//function', model: null });
+      const combined = await call(client, 'query', { wql: '//function && parse configuration' });
+      expect(combined.body._meta.model).toMatchObject({ id: 'test-words' });
+    } finally {
+      await session.close();
+    }
+  });
+
   test('answers index, search, retrieve_<channel>, explain and diagnose; errors are typed', async () => {
     const root = makeProject();
     await cli(root, 'channel', 'add', 'notes', NOTES_CHANNEL);

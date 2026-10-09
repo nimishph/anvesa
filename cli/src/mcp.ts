@@ -1,12 +1,12 @@
 import { toCodeLensError } from '@cntxt-labs/anvesa-core';
-import { fenceUntrusted, type Retriever } from '@cntxt-labs/anvesa-retriever';
+import { fenceUntrusted, type Retriever, splitConjunction } from '@cntxt-labs/anvesa-retriever';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { z } from 'zod';
-import { type Context, openSession } from './commands.ts';
+import { type Context, openSession, resultFacts } from './commands.ts';
 import { getPrimer } from './primer.ts';
-import { extractDocSummary, toJson } from './render.ts';
+import { extractDocSummary, metaOf, toJson } from './render.ts';
 import { VERSION } from './version.ts';
 
 /**
@@ -36,6 +36,17 @@ export function createMcpServer(retriever: Retriever): McpServer {
     }
   };
 
+  /** A result page with what it ran against as `_meta`, as the CLI's `--json` has it. */
+  const withMeta = async (
+    query: string,
+    run: () => Promise<object>,
+    options: { readonly structural?: boolean } = {},
+  ) => {
+    const startedAt = performance.now();
+    const value = await run();
+    return { ...value, _meta: metaOf(await resultFacts(retriever, query, startedAt, options)) };
+  };
+
   const page = { limit: z.number().int().positive().optional(), cursor: z.string().optional() };
 
   const scope = {
@@ -51,7 +62,7 @@ export function createMcpServer(retriever: Retriever): McpServer {
     'search',
     {
       description:
-        'Search the project by meaning (every dense channel) and, when the query is WQL, by structure, fused by rank. Results say which lane found each. Every result always has a score (rank position across lanes; not comparable across different searches, and never a sign of relevance — a bad query can score its best guess the same as a great match). Judge relevance from bestScore instead, when it is present (the strongest real similarity a lane reported); it is absent only when nothing but the structural lane, which has no similarity score, found the result.',
+        'Search the project by meaning (every dense channel) and, when the query is WQL, by structure, fused by rank. Results say which lane found each. Every result always has a score (rank position across lanes; not comparable across different searches, and never a sign of relevance — a bad query can score its best guess the same as a great match). Judge relevance from bestScore instead, when it is present (the strongest real similarity a lane reported); it is absent only when nothing but the structural lane, which has no similarity score, found the result. _meta says what answered: the model and its dimensions, and the index size.',
       inputSchema: {
         query: z.string(),
         format: z
@@ -83,52 +94,54 @@ export function createMcpServer(retriever: Retriever): McpServer {
       },
     },
     ({ query, format, full, channels, exclude, weights, wql, scope, limit, cursor }) =>
-      respond(async () => {
-        const resultPage = await retriever.search(query, {
-          ...(scope !== undefined ? { scope } : {}),
-          ...(channels ? { channels } : {}),
-          ...(exclude ? { exclude } : {}),
-          ...(weights ? { weights } : {}),
-          ...(wql ? { wql } : {}),
-          ...(limit ? { limit } : {}),
-          ...(cursor ? { cursor } : {}),
-        });
-        const selectedFormat = format ?? (full ? 'full' : 'full');
-        if (selectedFormat === 'locations') {
-          return {
-            items: resultPage.items.map((item) => ({
-              location: `${item.path}:${item.line ?? 1}:1`,
-              kind: item.kind,
-              title: item.title,
-              foundBy: item.foundBy,
-            })),
-          };
-        }
-        if (selectedFormat === 'compact') {
-          return {
-            ...resultPage,
-            items: resultPage.items.map((item) => {
-              const docSummary = extractDocSummary(item.card?.text);
-              const { card, ...rest } = item;
-              return {
-                ...rest,
-                signature: card?.attrs.signature,
-                docstring: docSummary,
-                card: card
-                  ? {
-                      id: card.id,
-                      source: card.source,
-                      channel: card.channel,
-                      attrs: card.attrs,
-                      provenance: card.provenance,
-                    }
-                  : undefined,
-              };
-            }),
-          };
-        }
-        return resultPage;
-      }),
+      respond(() =>
+        withMeta(query, async () => {
+          const resultPage = await retriever.search(query, {
+            ...(scope !== undefined ? { scope } : {}),
+            ...(channels ? { channels } : {}),
+            ...(exclude ? { exclude } : {}),
+            ...(weights ? { weights } : {}),
+            ...(wql ? { wql } : {}),
+            ...(limit ? { limit } : {}),
+            ...(cursor ? { cursor } : {}),
+          });
+          const selectedFormat = format ?? (full ? 'full' : 'full');
+          if (selectedFormat === 'locations') {
+            return {
+              items: resultPage.items.map((item) => ({
+                location: `${item.path}:${item.line ?? 1}:1`,
+                kind: item.kind,
+                title: item.title,
+                foundBy: item.foundBy,
+              })),
+            };
+          }
+          if (selectedFormat === 'compact') {
+            return {
+              ...resultPage,
+              items: resultPage.items.map((item) => {
+                const docSummary = extractDocSummary(item.card?.text);
+                const { card, ...rest } = item;
+                return {
+                  ...rest,
+                  signature: card?.attrs.signature,
+                  docstring: docSummary,
+                  card: card
+                    ? {
+                        id: card.id,
+                        source: card.source,
+                        channel: card.channel,
+                        attrs: card.attrs,
+                        provenance: card.provenance,
+                      }
+                    : undefined,
+                };
+              }),
+            };
+          }
+          return resultPage;
+        }),
+      ),
   );
 
   for (const channel of retriever.registry.channels()) {
@@ -140,11 +153,13 @@ export function createMcpServer(retriever: Retriever): McpServer {
       },
       ({ query, scope, limit, cursor }) =>
         respond(() =>
-          retriever.retrieve(channel, query, {
-            ...(scope !== undefined ? { scope } : {}),
-            ...(limit ? { limit } : {}),
-            ...(cursor ? { cursor } : {}),
-          }),
+          withMeta(query, () =>
+            retriever.retrieve(channel, query, {
+              ...(scope !== undefined ? { scope } : {}),
+              ...(limit ? { limit } : {}),
+              ...(cursor ? { cursor } : {}),
+            }),
+          ),
         ),
     );
   }
@@ -166,12 +181,18 @@ export function createMcpServer(retriever: Retriever): McpServer {
     },
     ({ wql, semantic, scope, limit, cursor }) =>
       respond(() =>
-        retriever.query(wql, {
-          ...(scope !== undefined ? { scope } : {}),
-          ...(semantic ? { semantic } : {}),
-          ...(limit ? { limit } : {}),
-          ...(cursor ? { cursor } : {}),
-        }),
+        withMeta(
+          semantic ? `${wql} && ${semantic}` : wql,
+          () =>
+            retriever.query(wql, {
+              ...(scope !== undefined ? { scope } : {}),
+              ...(semantic ? { semantic } : {}),
+              ...(limit ? { limit } : {}),
+              ...(cursor ? { cursor } : {}),
+            }),
+          // A conjunction in the WQL itself ('//function && save') uses the model too.
+          { structural: !semantic && splitConjunction(wql).semantic === undefined },
+        ),
       ),
   );
 

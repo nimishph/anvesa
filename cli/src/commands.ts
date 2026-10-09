@@ -157,8 +157,19 @@ async function searchFacts(
 ): Promise<show.SearchHeader | undefined> {
   const json = ctx.parsed.values.json === true || resolveFormat(ctx) === 'json';
   if (!json && ctx.environment.isTTY !== true) return undefined;
+  return resultFacts(retriever, query, startedAt);
+}
+
+/** The facts themselves; the MCP tools send them as `_meta` with every result page. */
+export async function resultFacts(
+  retriever: Retriever,
+  query: string,
+  startedAt: number,
+  options: { readonly structural?: boolean } = {},
+): Promise<show.SearchHeader> {
   const elapsedMs = performance.now() - startedAt;
-  const info = retriever.embedder?.info;
+  // A WQL query with no semantic part used no model, whether or not one is loaded.
+  const info = options.structural ? undefined : retriever.embedder?.info;
   const [stats, models] = await Promise.all([retriever.store.stats(), retriever.indexedModels()]);
   const cards = info
     ? (models.find((row) => row.model === info.id)?.cards ?? 0)
