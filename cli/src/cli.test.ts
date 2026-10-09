@@ -162,6 +162,9 @@ describe('command line', () => {
     expect((await cliWith(env, root, 'status')).code).toBe(0);
     expect((await cliWith(env, root, 'search', 'x', '--limit', '0')).code).toBe(2);
     await cliWith(env, root, 'query', '--help');
+    expect(
+      (await cliWith(env, root, 'mcp', 'serve', '--root', join(root, 'missing'))).code,
+    ).not.toBe(0);
 
     const help = (await cliWith(env, root, '--help')).out;
     const recent = help.slice(help.indexOf('Recently used'), help.indexOf('\nGet started'));

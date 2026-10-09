@@ -85,8 +85,11 @@ export function recordUse(
   }
 }
 
-/** The commands used most lately, best first: at most `limit`, none gone quiet. */
-export function recentCommands(env: Env, now = Date.now(), limit = 5): string[] {
+/**
+ * The commands used most lately, best first: at most `limit` (all by default), none gone quiet.
+ * The help limits its block itself, after merging names that share a line.
+ */
+export function recentCommands(env: Env, now = Date.now(), limit = Infinity): string[] {
   const path = usageFile(env);
   if (!path) return [];
   return Object.entries(read(path))

@@ -27,6 +27,8 @@ usage: anvesa <command> [arguments] [options]
 /** Every first word that runs a command: what usage may record, and what help can look up. */
 const KNOWN = new Set(COMMAND_HELP.flatMap((entry) => entry.keys));
 
+/** How many lines the "Recently used" block shows at most. */
+const RECENT_LIMIT = 5;
 /** Wide enough for the longest name and two spaces, so every summary starts in one column. */
 const NAME_WIDTH = Math.max(...COMMAND_HELP.map((entry) => entry.name.length)) + 2;
 const line = (entry: CommandHelp): string => `  ${entry.name.padEnd(NAME_WIDTH)}${entry.summary}`;
@@ -37,11 +39,12 @@ const line = (entry: CommandHelp): string => `  ${entry.name.padEnd(NAME_WIDTH)}
  * keep their order, so the help reads the same from one day to the next; only the first block moves.
  */
 export function renderHelp(recent: readonly string[] = []): string {
+  // Limited after merging, so names that share a line (callers|callees|neighbors) take one slot.
   const recentEntries = [
     ...new Set(
       recent.flatMap((command) => COMMAND_HELP.filter((entry) => entry.keys.includes(command))),
     ),
-  ];
+  ].slice(0, RECENT_LIMIT);
   const blocks = [
     USAGE,
     recentEntries.length > 0 ? ['Recently used', ...recentEntries.map(line)].join('\n') : undefined,
@@ -109,9 +112,11 @@ export async function runCli(argv: readonly string[], environment: Environment):
       if (sub !== 'serve')
         return usage(environment, `unknown mcp command "${sub ?? ''}"; use: mcp serve`);
       const { serveMcp } = await import('./mcp.ts');
-      // A server runs for as long as its client: counted once, when it starts.
-      recordUse(environment.env, command, KNOWN);
-      await serveMcp({ ...ctx, parsed: { ...parsed, positionals: rest } });
+      // A server runs for as long as its client: counted once, when it is serving. One that fails
+      // to start is a failed run and is not counted.
+      await serveMcp({ ...ctx, parsed: { ...parsed, positionals: rest } }, undefined, () =>
+        recordUse(environment.env, command, KNOWN),
+      );
     } else {
       const handler = COMMANDS[command];
       if (!handler) return usage(environment, `unknown command "${command}"`);
