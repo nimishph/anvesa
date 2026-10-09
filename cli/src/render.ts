@@ -50,8 +50,11 @@ export type FormatMode = 'compact' | 'pretty' | 'locations' | 'json';
 
 export interface RenderOptions {
   readonly mode?: FormatMode;
+  /** Show each result's card (`--expand`, or its older name `--full`). */
   readonly full?: boolean;
   readonly isTTY?: boolean;
+  /** The one-line summary of what was searched, shown first when given (on a terminal). */
+  readonly header?: SearchHeader | undefined;
 }
 
 export function extractDocSummary(text: string | undefined): string | undefined {
@@ -163,6 +166,111 @@ function renderResult(result: SearchResult, index: number, options?: RenderOptio
   return `${head}\n${fenced.replace(/^/gm, '      ')}`;
 }
 
+/** What a search ran against, for the one-line header on a terminal. */
+export interface SearchHeader {
+  readonly query: string;
+  /** The model the dense lanes used; absent for a purely structural query. */
+  readonly model?: { readonly id: string; readonly dimensions: number } | undefined;
+  readonly files: number;
+  readonly cards: number;
+  readonly elapsedMs: number;
+}
+
+/** One result, whichever command found it: the same row for search, retrieve and query. */
+export interface HitRow {
+  readonly name: string;
+  readonly location: string;
+  /** The channel or lanes that found it: `symbols`, `docs+structural`, `structural`. */
+  readonly channel: string;
+  /** A real similarity (cosine), when one exists; structural hits have none. */
+  readonly score?: number | undefined;
+  /** The card's untrusted text, fenced when shown. */
+  readonly card?:
+    | {
+        readonly text: string;
+        readonly source: { readonly path: string };
+        readonly channel: string;
+        readonly provenance: { readonly trust: string };
+      }
+    | undefined;
+  /** What `--expand` shows when there is no card: a structural hit's signature. */
+  readonly detail?: string | undefined;
+}
+
+const count = (n: number): string => n.toLocaleString('en-US');
+
+/** `╭ "save user" · bge-base-en-v1.5 · 768 dims · 1,204 files · 9,812 cards · 42 ms` */
+export function renderSearchHeader(header: SearchHeader, isTTY: boolean): string {
+  const facts = [
+    `"${header.query}"`,
+    header.model ? header.model.id : 'structural (no model)',
+    header.model ? `${header.model.dimensions} dims` : undefined,
+    `${count(header.files)} files`,
+    `${count(header.cards)} cards`,
+    `${Math.round(header.elapsedMs)} ms`,
+  ].filter((fact): fact is string => fact !== undefined);
+  const line = `╭ ${facts.join(' · ')}`;
+  return isTTY ? `\x1b[2m${line}\x1b[0m` : line;
+}
+
+/** `███████░ 0.82`: eight cells for a similarity in [0, 1]; a dash when there is none. */
+function shortBar(score: number | undefined): string {
+  if (score === undefined || !Number.isFinite(score)) return '       —';
+  const filled = Math.round(Math.max(0, Math.min(1, score)) * 8);
+  return `${'█'.repeat(filled)}${'░'.repeat(8 - filled)} ${score.toFixed(2)}`;
+}
+
+/**
+ * The rows of a search, retrieve or query, aligned in columns: rank, name, place, channel and
+ * score. With `expand`, each row is followed by its card, fenced as untrusted, or by the hit's
+ * signature when it has no card.
+ */
+export function renderHitRows(
+  rows: readonly HitRow[],
+  options: { readonly expand: boolean; readonly isTTY: boolean },
+): string[] {
+  const nameWidth = Math.max(0, ...rows.map((row) => row.name.length));
+  const placeWidth = Math.max(0, ...rows.map((row) => row.location.length));
+  const channelWidth = Math.max(0, ...rows.map((row) => row.channel.length));
+  const rankWidth = String(rows.length).length;
+  return rows.map((row, index) => {
+    // Padded before colouring, so escape codes never count towards a column's width.
+    const name = row.name.padEnd(nameWidth);
+    const location = row.location.padEnd(placeWidth);
+    const head = [
+      ` ${String(index + 1).padStart(rankWidth)}`,
+      options.isTTY ? `\x1b[1m${name}\x1b[0m` : name,
+      options.isTTY ? `\x1b[36m${location}\x1b[0m` : location,
+      row.channel.padEnd(channelWidth),
+      shortBar(row.score),
+    ].join('  ');
+    if (!options.expand) return head.trimEnd();
+    const indent = ' '.repeat(rankWidth + 3);
+    if (row.card) {
+      const fenced = fenceUntrusted(row.card.text, {
+        source: row.card.source.path,
+        channel: row.card.channel,
+        trust: row.card.provenance.trust,
+      });
+      return `${head.trimEnd()}\n${fenced.replace(/^/gm, indent)}`;
+    }
+    return row.detail ? `${head.trimEnd()}\n${indent}${row.detail}` : head.trimEnd();
+  });
+}
+
+/** A search result as a row: the lanes that found it are its channel. */
+function searchRow(result: SearchResult): HitRow {
+  const lanes = [...new Set(result.foundBy.map((c) => c.lane))].join('+');
+  return {
+    name: result.kind ? `${result.title} (${result.kind})` : result.title,
+    location: place(result),
+    channel: lanes,
+    score: result.bestScore,
+    card: result.card,
+    detail: result.card?.attrs.signature,
+  };
+}
+
 export function renderSearch(page: SearchPage, options?: RenderOptions): string {
   if (options?.mode === 'json') {
     return toJson(page);
@@ -173,9 +281,17 @@ export function renderSearch(page: SearchPage, options?: RenderOptions): string 
   const conjunctionHead = page.conjunction
     ? `conjunction: semantic "${page.conjunction.semantic}" && wql "${page.conjunction.wql}"`
     : undefined;
+  const rows =
+    options?.mode === 'compact'
+      ? page.items.map((r, i) => renderResult(r, i, options))
+      : renderHitRows(page.items.map(searchRow), {
+          expand: options?.full === true,
+          isTTY: options?.isTTY === true,
+        });
   return lines(
+    options?.header ? renderSearchHeader(options.header, options.isTTY === true) : undefined,
     conjunctionHead,
-    ...page.items.map((r, i) => renderResult(r, i, options)),
+    ...rows,
     pageFooter(page),
     `lanes: ${page.lanes.map((l) => `${l.name} ${l.hits}`).join(', ')}`,
     ...page.degraded.map((d) => `degraded: ${d.lane} — ${d.error.message}`),
@@ -186,8 +302,9 @@ export function renderRetrieved(
   page: Page<{ card: SearchResult['card'] & object; score: number }> & {
     screen?: { withheld: number; sanitized: number } | undefined;
   },
+  options?: RenderOptions,
 ): string {
-  const rows = page.items.map((hit, index) => {
+  const compact = page.items.map((hit, index) => {
     const { card } = hit;
     const at = place({
       path: card.source.path,
@@ -202,12 +319,34 @@ export function renderRetrieved(
     });
     return `${String(index + 1).padStart(2)}. ${card.attrs.symbol ?? card.attrs.section ?? card.id}  ${at}${signature ? `  ${signature}` : ''}  score ${hit.score.toFixed(3)}\n${fenced.replace(/^/gm, '      ')}`;
   });
+  const rows =
+    options?.mode === 'compact'
+      ? compact
+      : renderHitRows(
+          page.items.map(({ card, score }) => ({
+            name: card.attrs.symbol ?? card.attrs.section ?? card.id,
+            location: place({
+              path: card.source.path,
+              line: card.source.span?.startLine,
+              endLine: card.source.span?.endLine,
+            }),
+            channel: card.channel,
+            score,
+            card,
+          })),
+          { expand: options?.full === true, isTTY: options?.isTTY === true },
+        );
   const screen = page.screen;
   const note =
     screen && (screen.withheld > 0 || screen.sanitized > 0)
       ? `red-team screen at retrieval: ${screen.withheld} card(s) withheld, ${screen.sanitized} cleaned`
       : undefined;
-  return lines(...rows, ...(note ? [note] : []), pageFooter(page, 'cards'));
+  return lines(
+    options?.header ? renderSearchHeader(options.header, options.isTTY === true) : undefined,
+    ...rows,
+    ...(note ? [note] : []),
+    pageFooter(page, 'cards'),
+  );
 }
 
 export function renderStructural(
@@ -236,7 +375,7 @@ export function renderStructural(
     return lines(...locRows);
   }
 
-  const rows = page.items.map((hit, index) => {
+  const plain = page.items.map((hit, index) => {
     const at =
       options?.isTTY && hit.path
         ? `\x1b[36m${hit.path}:${hit.startLine ?? 1}:1\x1b[0m`
@@ -250,6 +389,19 @@ export function renderStructural(
     }
     return `${hit.tag} ${name}  ${at}${sig}${scoreStr}${bar}`;
   });
+  const rows =
+    options?.mode === 'compact'
+      ? plain
+      : renderHitRows(
+          page.items.map((hit) => ({
+            name: hit.name ? `${hit.tag} ${hit.name}` : hit.tag,
+            location: place({ path: hit.path ?? '', line: hit.startLine, endLine: hit.endLine }),
+            channel: 'structural',
+            score: hit.score,
+            detail: hit.signature,
+          })),
+          { expand: options?.full === true, isTTY: options?.isTTY === true },
+        );
   const conjunctionHead = page.conjunction
     ? `conjunction: semantic "${page.conjunction.semantic}" && wql "${page.conjunction.wql}"`
     : undefined;
@@ -258,6 +410,7 @@ export function renderStructural(
       ? `${page.coverage.missing.length} indexed files have no cached outline and were not searched (run: anvesa index --force)`
       : undefined;
   return lines(
+    options?.header ? renderSearchHeader(options.header, options.isTTY === true) : undefined,
     conjunctionHead,
     ...rows,
     pageFooter(page, 'matches'),

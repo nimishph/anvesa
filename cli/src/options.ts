@@ -57,6 +57,8 @@ const OPTIONS = {
   format: { type: 'string' },
   compact: { type: 'boolean' },
   full: { type: 'boolean' },
+  // The name the result layout uses; the same as --full.
+  expand: { type: 'boolean' },
   'agents-file': { type: 'string' },
   'no-agents-file': { type: 'boolean' },
 } as const;
@@ -117,6 +119,7 @@ export interface Parsed {
     readonly format?: string;
     readonly compact?: boolean;
     readonly full?: boolean;
+    readonly expand?: boolean;
     readonly 'agents-file'?: string;
     readonly 'no-agents-file'?: boolean;
   };
@@ -131,6 +134,7 @@ export function parseOptions(argv: readonly string[]): Parsed {
       strict: true,
     });
     if (values['no-dense']) values['no-embed'] = true;
+    if (values.expand) values.full = true;
     return { values, positionals } as Parsed;
   } catch (failure) {
     throw new InvalidArgumentError(

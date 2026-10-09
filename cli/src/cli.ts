@@ -36,7 +36,8 @@ usage: anvesa <command> [arguments] [options]
   status                    what is indexed, and by which channels and model
   where [root|config|index|models]   the project in use, how it was found, and its config, index and
                             models paths; name one to print just that path (for scripts)
-  search <question>         fused search over every channel and, for WQL, the structure
+  search <question>         fused search over every channel and, for WQL, the structure; one row per
+                            result (--expand or --full: each result's card under its row)
                             (--wql <wql>, --channel, --exclude <lane>, --weight <lane>=<n>,
                             --scope <path>: only results from that path or under it, relative to
                             the project root; every lane, documentation included; also on retrieve, query)

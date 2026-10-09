@@ -91,6 +91,9 @@ anvesa search "validate session token"
 # Conjunction query (combines natural language with WQL)
 anvesa search "validate session token && //function"
 
+# Show each result's card under its row (--full is the same)
+anvesa search "jwt auth" --expand
+
 # Output format options
 anvesa search "jwt auth" --format compact
 anvesa search "jwt auth" --format pretty
@@ -98,7 +101,21 @@ anvesa search "jwt auth" --format locations
 anvesa search "jwt auth" --format json
 ```
 
+`search`, `retrieve` and `query` share one layout. On a terminal, the first line says what was searched:
+the query, the model and its vector dimensions, how many files and cards the index holds, and how long the
+search took. Then comes one aligned row per result: rank, name, place, the channel (or lanes) that found it,
+and a bar with the similarity score (`—` for a structural match, which has none). `--expand` puts each
+result's card, fenced as untrusted, under its row; for a structural match it shows the signature. There is
+no header when the output is piped or with `--json`, and `--format compact` keeps the older layout.
+
+```
+╭ "save user" · bge-base-en-v1.5 · 768 dims · 1,204 files · 9,812 cards · 12 ms
+ 1  saveUser (function)                       src/api/users.ts:2  symbols  █████░░░ 0.58
+ 2  Users API › Saving a user (Documentation section)  docs/users.md  docs  ██░░░░░░ 0.25
+```
+
 **Options:**
+- `--expand` (alias `--full`): Show each result's card under its row.
 - `--wql <expr>`: Filter semantic hits with a structural WQL expression.
 - `--channel <name>`: Limit search to a specific channel (e.g. `code`, `docs`).
 - `--exclude <lane>`: Exclude specific lanes from RRF fusion (e.g. `--exclude docs`).
