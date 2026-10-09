@@ -12,91 +12,61 @@ import {
   redteamCommand,
 } from './commands.ts';
 import type { Environment } from './environment.ts';
+import { COMMAND_HELP, type CommandHelp, GLOBAL_HELP, SECTIONS } from './help.ts';
 import { blockNetwork, NetworkBlockedError, type NetworkGuard } from './network-guard.ts';
 import { parseOptions } from './options.ts';
 import { toJson } from './render.ts';
+import { recentCommands, recordUse } from './usage.ts';
 import { VERSION } from './version.ts';
 
-export const HELP = `anvesa — dense and structural code retrieval
+const USAGE = `anvesa — dense and structural code retrieval
 
 usage: anvesa <command> [arguments] [options]
+       anvesa <command> --help    that command's arguments and options`;
 
-  init                      scaffold .anvesaignore, .anvesa/workspace.json, .anvesa/config.json
-                            (--force to overwrite files that already exist), then looks at this machine and
-                            project: proposes an encoder that suits the hardware and offers a parser for each
-                            language that lacks one, with a progress bar per download. Asks on a terminal;
-                            --yes accepts the proposals; --model <id> picks the encoder; --no-download only
-                            reports what it would fetch. Nothing downloads without a yes. Also keeps an
-                            anvesa section in AGENTS.md / CLAUDE.md (created as AGENTS.md if neither
-                            exists; --agents-file <path> names another file, --no-agents-file skips it).
-                            Re-run after an upgrade: kept files stay, the section is refreshed.
-  index                     bring the index up to date (--force, --retry-quarantined, --scope <path>,
-                            --no-embed or --no-dense: structure and graph only, no embedding pass,
-                            --show-walk: print each path the walk offers, with its outcome, on stderr)
-  status                    what is indexed, and by which channels and model
-  where [root|config|index|models]   the project in use, how it was found, and its config, index and
-                            models paths; name one to print just that path (for scripts)
-  search <question>         fused search over every channel and, for WQL, the structure; one row per
-                            result (--expand or --full: each result's card under its row)
-                            (--wql <wql>, --channel, --exclude <lane>, --weight <lane>=<n>,
-                            --scope <path>: only results from that path or under it, relative to
-                            the project root; every lane, documentation included; also on retrieve, query)
-                            (supports conjunction: 'save user && //function', 'save user where //class')
-  retrieve <channel> <q>    one channel on its own
-  query '<wql>'             structural query, e.g. '//function[@name="parse"]'
-                            (--semantic <q>, or conjunction: '//function && save user')
-  callers|callees|neighbors <symbol>   symbol id, name, or path:line
-  dependents <path>         files that import it (--depth N, --limit N, --types)
-  explain                   what the project is made of
-  map [dir]                 graph-weighted architectural repomap (--depth N, --budget N)
-  routes [method] [path]    discover HTTP routes across Laravel, Express, Next.js, FastAPI
-  diagnose <question> --expect <path>   why a file did not come up
-  channel add|list|show|test|index|pin|remove   custom dense channels (make/create = add)
-                            pin <name> holds a channel's module to its checksum; "security": {"requireChecksums": true}
-                            in .anvesa/config.json refuses any module that is not pinned
-  grammar list|install <language>        parsers (--from <file|dir|tarball>, --user, --force, --download)
-  redteam list|verify|scan  the screen every card passes; .anvesa/redteam.json adds rules and
-                            changes what each trust level does (scan: would this project's own text be quarantined?)
-  fragments status|propose|enable|disable|settle   keep the index in one database per fragment
-                            propose [--tier path|clusters] [--write]; the manifest is committed
-  mapping list|show|train|audit|refine|fork|lock|remove|verify|check   how a language's syntax becomes an outline;
-                            audit/refine <language> finds and adds unmapped syntax nodes from code;
-                            train <language> --samples <dir|file> [more...] learns from code and extends the
-                            mapping in effect (--replace learns from scratch; --min-samples N, default 10;
-                            --min-files N a new node type must occur in, default 3; --assist asks a
-                            language model about what is left, from OPENROUTER_API_KEY, checked before use;
-                            --tags <tags.scm> starts from the grammar's own definitions and calls)
-  model list|install|verify|doctor       local embedding models; install <new-name> --from <dir|file.onnx>
-                                         brings your own (--pooling, --max-tokens, --force)
-  pattern list|run <name> [param=val...]  declarative structural patterns
-  primer [topic]            token-frugal guidance on Anvesa architecture and concepts (--compact)
-  issue [title]             raise an issue on GitHub with sanitized diagnostics
-  mcp serve                 run as an MCP server on stdio, for the project (see --root below)
-  --version                 print the version
+/** Every first word that runs a command: what usage may record, and what help can look up. */
+const KNOWN = new Set(COMMAND_HELP.flatMap((entry) => entry.keys));
 
-project: the nearest directory, here or above, with a .anvesa/ project in it (config.json,
-         workspace.json or an index), the way git finds .git; none found, the current directory.
-         --root <dir> names it instead. init always scaffolds in the current directory (or --root).
-
-options: --root <dir>  --json  --limit N  --cursor <token>  --channel <name>  --no-embed (or --no-dense)
-         --no-network (or ANVESA_NO_NETWORK=1)  audit mode: block every outbound connection, report attempts
-         --wql <wql>  --semantic <q>  --models <dir>  --model <id>  --from <dir>  --help
-`;
+/** How many lines the "Recently used" block shows at most. */
+const RECENT_LIMIT = 5;
+/** Wide enough for the longest name and two spaces, so every summary starts in one column. */
+const NAME_WIDTH = Math.max(...COMMAND_HELP.map((entry) => entry.name.length)) + 2;
+const line = (entry: CommandHelp): string => `  ${entry.name.padEnd(NAME_WIDTH)}${entry.summary}`;
 
 /**
- * The help entry for one command: its line in HELP plus the indented lines that continue it, under
- * the usage line. A command with no entry (or an unknown name) gets the whole HELP.
+ * The overview: the commands this user ran most lately, if any, then every command by section,
+ * one line each, then how the project is found and the options every command takes. The sections
+ * keep their order, so the help reads the same from one day to the next; only the first block moves.
+ */
+export function renderHelp(recent: readonly string[] = []): string {
+  // Limited after merging, so names that share a line (callers|callees|neighbors) take one slot.
+  const recentEntries = [
+    ...new Set(
+      recent.flatMap((command) => COMMAND_HELP.filter((entry) => entry.keys.includes(command))),
+    ),
+  ].slice(0, RECENT_LIMIT);
+  const blocks = [
+    USAGE,
+    recentEntries.length > 0 ? ['Recently used', ...recentEntries.map(line)].join('\n') : undefined,
+    ...SECTIONS.map((section) =>
+      [section, ...COMMAND_HELP.filter((entry) => entry.section === section).map(line)].join('\n'),
+    ),
+    GLOBAL_HELP,
+  ];
+  return `${blocks.filter((block): block is string => block !== undefined).join('\n\n')}\n`;
+}
+
+/** The whole help with no recent block: what a library caller or a usage error shows. */
+export const HELP = renderHelp();
+
+/**
+ * The help for one command: the usage line and everything about that command. A command with no
+ * entry (or an unknown name) gets the whole help.
  */
 export function helpFor(command: string): string {
-  const lines = HELP.split('\n');
-  const start = lines.findIndex((line) => {
-    const name = /^ {2}(\S+)/.exec(line)?.[1];
-    return name?.split('|').includes(command) === true;
-  });
-  if (start === -1) return HELP;
-  let end = start + 1;
-  while (end < lines.length && /^ {20,}\S/.test(lines[end] as string)) end += 1;
-  return `${[...lines.filter((line) => line.startsWith('usage:')), '', ...lines.slice(start, end)].join('\n')}\n`;
+  const entry = COMMAND_HELP.find((candidate) => candidate.keys.includes(command));
+  if (!entry) return HELP;
+  return `usage: anvesa <command> [arguments] [options]\n\n${entry.details}\n`;
 }
 
 /** Exit codes: 0 done, 1 the operation failed, 2 the command line was wrong. */
@@ -108,7 +78,7 @@ export async function runCli(argv: readonly string[], environment: Environment):
     return 0;
   }
   if (command === undefined || command === 'help' || command === '--help' || command === '-h') {
-    environment.stdout(HELP);
+    environment.stdout(renderHelp(recentCommands(environment.env)));
     return command === undefined ? 2 : 0;
   }
 
@@ -142,7 +112,11 @@ export async function runCli(argv: readonly string[], environment: Environment):
       if (sub !== 'serve')
         return usage(environment, `unknown mcp command "${sub ?? ''}"; use: mcp serve`);
       const { serveMcp } = await import('./mcp.ts');
-      await serveMcp({ ...ctx, parsed: { ...parsed, positionals: rest } });
+      // A server runs for as long as its client: counted once, when it is serving. One that fails
+      // to start is a failed run and is not counted.
+      await serveMcp({ ...ctx, parsed: { ...parsed, positionals: rest } }, undefined, () =>
+        recordUse(environment.env, command, KNOWN),
+      );
     } else {
       const handler = COMMANDS[command];
       if (!handler) return usage(environment, `unknown command "${command}"`);
@@ -153,6 +127,7 @@ export async function runCli(argv: readonly string[], environment: Environment):
       if (guard.attempts.length > 0) throw new NetworkBlockedError(guard.attempts);
       if (!json) environment.stderr('network audit: no outbound connection was attempted\n');
     }
+    if (command !== 'mcp') recordUse(environment.env, command, KNOWN);
     return 0;
   } catch (failure) {
     const error = toCodeLensError(failure, `run ${command}`);
@@ -169,7 +144,7 @@ export async function runCli(argv: readonly string[], environment: Environment):
 }
 
 function usage(environment: Environment, problem: string): number {
-  environment.stderr(`${problem}\n\n${HELP}`);
+  environment.stderr(`${problem}\n\n${renderHelp(recentCommands(environment.env))}`);
   return 2;
 }
 

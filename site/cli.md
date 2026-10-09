@@ -21,6 +21,21 @@ The following flags can be passed to any Anvesa command:
 
 ---
 
+## Help
+
+`anvesa --help` lists the commands one line each, grouped into sections (Get started, Index, Search, Code
+graph, Extend, Safety, Agents and help). `anvesa <command> --help` shows one command's arguments and options in
+full. The sections always come in the same order; above them, a **Recently used** block lists the commands you
+have run most lately.
+
+To do that, anvesa keeps a small record on this machine, in `~/.anvesa/usage.json` (or `$ANVESA_HOME/usage.json`).
+It holds a known command's name, a score and when it was last run, and nothing else: no arguments, queries, paths
+or project names. It is never sent anywhere. Each successful run adds 1 to the command's score and scores halve
+every two weeks, so the block follows what you use now. `--help` and failed runs are not counted, and
+`mcp serve` counts once when it starts. Set `ANVESA_NO_USAGE=1` to turn it off, or delete the file to forget it.
+
+---
+
 ## Commands
 
 ### `init`

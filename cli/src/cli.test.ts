@@ -151,6 +151,35 @@ describe('command line', () => {
     expect((await cli(root)).code).toBe(2);
   });
 
+  test('help puts the commands this user ran lately first; failures, --help and an opt-out count for nothing', async () => {
+    const root = makeProject();
+    const state = join(root, 'state');
+    const env = { env: { ANVESA_HOME: state } };
+    expect((await cliWith(env, root, '--help')).out).not.toContain('Recently used');
+
+    expect((await cliWith(env, root, 'index')).code).toBe(0);
+    expect((await cliWith(env, root, 'status')).code).toBe(0);
+    expect((await cliWith(env, root, 'status')).code).toBe(0);
+    expect((await cliWith(env, root, 'search', 'x', '--limit', '0')).code).toBe(2);
+    await cliWith(env, root, 'query', '--help');
+    expect(
+      (await cliWith(env, root, 'mcp', 'serve', '--root', join(root, 'missing'))).code,
+    ).not.toBe(0);
+
+    const help = (await cliWith(env, root, '--help')).out;
+    const recent = help.slice(help.indexOf('Recently used'), help.indexOf('\nGet started'));
+    expect(recent.indexOf('  status')).toBeLessThan(recent.indexOf('  index'));
+    expect(recent).not.toContain('search');
+    expect(recent).not.toContain('query');
+    expect(Object.keys(JSON.parse(readFileSync(join(state, 'usage.json'), 'utf8'))).sort()).toEqual(
+      ['index', 'status'],
+    );
+
+    const off = { env: { ANVESA_HOME: join(root, 'off'), ANVESA_NO_USAGE: '1' } };
+    expect((await cliWith(off, root, 'status')).code).toBe(0);
+    expect(existsSync(join(root, 'off', 'usage.json'))).toBe(false);
+  });
+
   test('<command> --help shows that command, not the whole help, and does not run it', async () => {
     const root = makeProject();
     const help = await cli(root, 'channel', 'add', '--help');

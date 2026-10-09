@@ -421,6 +421,7 @@ function fenceCards(value: unknown): unknown {
 export async function serveMcp(
   ctx: Context,
   transport: Transport = new StdioServerTransport(),
+  onServing?: () => void,
 ): Promise<void> {
   const session = await openSession(ctx, { embed: true });
   const server = createMcpServer(session.retriever);
@@ -437,6 +438,7 @@ export async function serveMcp(
   ctx.environment.stderr(
     `anvesa mcp: serving ${session.retriever.root} (${session.embedderReason})\n`,
   );
+  onServing?.();
   await closed;
   await session.close();
 }
