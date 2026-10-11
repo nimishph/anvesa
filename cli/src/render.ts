@@ -754,6 +754,42 @@ export function renderDiagnosis(d: Diagnosis): string {
   );
 }
 
+/** What `model use` reports: the model in use, where that came from, and what the index holds. */
+export function renderModelUse(use: {
+  readonly model: string | null;
+  readonly dimensions: number | null;
+  readonly source: 'config' | 'machine';
+  readonly reason: string;
+  readonly changed: 'set' | 'unset' | null;
+  readonly config: string;
+  readonly indexed: readonly { readonly model: string; readonly cards: number }[];
+}): string {
+  const model = use.model
+    ? `${use.model}${use.dimensions === null ? '' : ` (${use.dimensions} dims)`}`
+    : undefined;
+  const where =
+    use.source === 'config'
+      ? `set in ${use.config}`
+      : `not set in the project; chosen for this machine: ${use.reason}`;
+  const stale =
+    use.model !== null &&
+    use.indexed.length > 0 &&
+    !use.indexed.some((row) => row.model === use.model);
+  return lines(
+    use.changed === 'set'
+      ? `using ${model} for this project; recorded in ${use.config}`
+      : undefined,
+    use.changed === 'unset' ? `"model" removed from ${use.config}` : undefined,
+    model ? `model: ${model}, ${where}` : `model: none (${use.reason})`,
+    use.indexed.length > 0
+      ? `index: embedded with ${use.indexed.map((row) => `${row.model} (${row.cards} cards)`).join(', ')}`
+      : 'index: nothing embedded yet',
+    stale
+      ? `note: the index was embedded with another model, so searching by meaning needs it embedded again. Run: anvesa index`
+      : undefined,
+  );
+}
+
 export function renderModels(models: readonly ModelRow[]): string {
   return lines(
     ...models.map(

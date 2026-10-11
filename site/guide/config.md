@@ -76,7 +76,7 @@ Anvesa is configured via `.anvesa/config.json` in your repository root. A full J
 
 ### `model`
 *Type:* `string | null`  
-The embedding model for dense search: a built-in id (e.g. `'all-MiniLM-L6-v2'`) or the name of one you installed with `anvesa model install <name> --from <dir>`. `anvesa init --model` and `anvesa index` record the model the index was embedded with here, so every run and every teammate searches with it. When unset, Anvesa picks the most capable installed model this machine's cores and free memory suit.
+The embedding model for dense search: a built-in id (e.g. `'all-MiniLM-L6-v2'`) or the name of one you installed with `anvesa model install <name> --from <dir>`. `anvesa model use <id>` sets it (and `anvesa model use --auto` removes it); `anvesa init --model` and `anvesa index` record the model the index was embedded with here, so every run and every teammate searches with it. When unset, Anvesa picks the most capable installed model this machine's cores and free memory suit.
 
 ### `fusion`
 *Type:* `object`  

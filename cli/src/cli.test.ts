@@ -578,6 +578,66 @@ describe('command line', () => {
     expect(searched.err).toContain('--model test-words');
   });
 
+  test('model use sets the project model, says what is in use and why, and --auto forgets it', async () => {
+    const root = makeProject();
+    const models = join(root, 'models');
+    const source = join(root, 'source');
+    mkdirSync(source, { recursive: true });
+    writeFileSync(join(source, 'model.onnx'), 'a stand-in graph');
+    copyFileSync(
+      resolve(import.meta.dir, '../../embedder/src/__fixtures__/bpe.tokenizer.json'),
+      join(source, 'tokenizer.json'),
+    );
+    await new ModelCache(models).installCustom({
+      id: 'my-encoder',
+      maxTokens: 128,
+      pooling: 'cls',
+      source,
+      files: { model: join(source, 'model.onnx'), tokenizer: join(source, 'tokenizer.json') },
+      validate: async () => 8,
+    });
+    const args = ['--models', models];
+    const config = () => JSON.parse(readFileSync(join(root, '.anvesa', 'config.json'), 'utf8'));
+
+    const set = await cli(root, 'model', 'use', 'my-encoder', ...args);
+    expect(set.code).toBe(0);
+    expect(set.out).toContain('using my-encoder (8 dims) for this project');
+    expect(config().model).toBe('my-encoder');
+    expect(json(await cli(root, 'model', 'use', '--json', ...args))).toMatchObject({
+      model: 'my-encoder',
+      dimensions: 8,
+      source: 'config',
+      changed: null,
+      indexed: [],
+    });
+
+    // Not installed, or not a model at all: refused, and the config is left as it was.
+    const missing = await cli(root, 'model', 'use', 'bge-small-en-v1.5', ...args);
+    expect(missing.code).toBe(1);
+    expect(missing.err).toContain('anvesa model install bge-small-en-v1.5 --download');
+    expect((await cli(root, 'model', 'use', 'ghost', ...args)).code).toBe(2);
+    expect(config().model).toBe('my-encoder');
+
+    // An index embedded with another model is pointed out, with what to run.
+    expect((await cli(root, 'index')).code).toBe(0);
+    const stale = await cli(root, 'model', 'use', 'my-encoder', ...args);
+    expect(stale.out).toContain('index: embedded with test-words');
+    expect(stale.out).toContain('Run: anvesa index');
+
+    // A config naming a model that is not installed is reported, not a crash.
+    expect(config().model).toBe('my-encoder');
+    writeFileSync(join(root, '.anvesa', 'config.json'), '{"channels":{},"model":"gone-model"}');
+    const broken = await cli(root, 'model', 'use', ...args);
+    expect(broken.code).toBe(0);
+    expect(broken.out).toContain('"gone-model" in .anvesa/config.json is not an installed model');
+
+    const auto = await cli(root, 'model', 'use', '--auto', ...args);
+    expect(auto.code).toBe(0);
+    expect(auto.out).toContain('"model" removed from');
+    expect(config().model).toBeUndefined();
+    expect((await cli(root, 'model', 'use', 'my-encoder', '--auto', ...args)).code).toBe(2);
+  });
+
   test('init --model takes a model the user installed, and records it', async () => {
     const root = makeProject();
     const models = join(root, 'models');

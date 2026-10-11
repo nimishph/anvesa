@@ -169,9 +169,9 @@ export const COMMAND_HELP: readonly CommandHelp[] = [
     section: 'Extend',
     keys: ['model'],
     name: 'model <subcommand>',
-    summary: 'local embedding models',
+    summary: 'local embedding models, and which one this project uses',
     details:
-      '  model list|install|verify|doctor       local embedding models; install <new-name> --from <dir|file.onnx>\n                                         brings your own (--pooling, --max-tokens, --force)',
+      '  model list|use|install|verify|doctor   local embedding models; install <new-name> --from <dir|file.onnx>\n                                         brings your own (--pooling, --max-tokens, --force)\n                                         use <id> sets the model this project embeds and searches with\n                                         (recorded in .anvesa/config.json; it must be installed); use alone\n                                         says which model is in use and why; use --auto goes back to the\n                                         one this machine suits',
   },
   {
     section: 'Safety',

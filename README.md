@@ -49,6 +49,7 @@ Models and wasm grammars work offline once installed:
 anvesa init                               # scaffolds, then proposes an encoder and parsers to download
 anvesa model list                         # the built-in models and which are installed
 anvesa model install bge-base-en-v1.5 --from ./models/bge-base   # offline; or --download
+anvesa model use bge-base-en-v1.5           # the model this project embeds and searches with
 anvesa grammar list
 anvesa grammar install python --from ./tree-sitter-python.wasm   # file, folder or npm tarball
 ```

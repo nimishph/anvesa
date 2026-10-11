@@ -60,6 +60,8 @@ const OPTIONS = {
   // The name the result layout uses; the same as --full.
   expand: { type: 'boolean' },
   'agents-file': { type: 'string' },
+  // model use --auto: forget the project's model, so the machine's choice applies again.
+  auto: { type: 'boolean' },
   'no-agents-file': { type: 'boolean' },
 } as const;
 
@@ -121,6 +123,7 @@ export interface Parsed {
     readonly full?: boolean;
     readonly expand?: boolean;
     readonly 'agents-file'?: string;
+    readonly auto?: boolean;
     readonly 'no-agents-file'?: boolean;
   };
 }

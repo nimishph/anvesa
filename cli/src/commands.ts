@@ -1396,6 +1396,77 @@ export async function mappingCommand(ctx: Context): Promise<void> {
 
 // --- model -----------------------------------------------------------------------------------
 
+/** The models the project's index holds vectors for, without creating an index where there is none. */
+async function indexedModelsOf(
+  ctx: Context,
+  projectRoot: string,
+): Promise<readonly { readonly model: string; readonly cards: number }[]> {
+  const state = join(projectRoot, '.anvesa');
+  if (!existsSync(join(state, 'index.db')) && !existsSync(join(state, 'shards'))) return [];
+  return withProject(ctx, { embed: false }, ({ retriever }) => retriever.indexedModels());
+}
+
+/**
+ * `model use <id>` records the project's model in .anvesa/config.json, so every run and every
+ * teammate embeds and searches with it; the model must be installed. `model use --auto` forgets
+ * it, so the machine's choice applies again. `model use` alone says which model is in use and why.
+ */
+async function useModel(ctx: Context, id: string | undefined, cache: ModelCache): Promise<void> {
+  const projectRoot = root(ctx);
+  const config = await loadProjectConfig(projectRoot);
+  if (ctx.parsed.values.auto) {
+    if (id !== undefined) {
+      throw new InvalidArgumentError('model use', 'a model id, or --auto, not both', id);
+    }
+    if (config.model !== undefined)
+      await writeProjectConfig(projectRoot, { ...config, model: undefined });
+  } else if (id !== undefined) {
+    const rows = await listModels(cache);
+    const row = rows.find((candidate) => candidate.id === id);
+    if (!row) {
+      throw new InvalidArgumentError(
+        'model',
+        `one of ${rows.map((candidate) => candidate.id).join(', ')}, or a model brought in with: anvesa model install <name> --from <dir>`,
+        id,
+      );
+    }
+    if (!row.installed) {
+      throw new CommandFailedError('model use', `${id} is not installed`, {
+        hint: row.builtin
+          ? `Install it first: anvesa model install ${id} --download (or --from <dir>)`
+          : `Install it first: anvesa model install ${id} --from <dir>`,
+      });
+    }
+    await writeProjectConfig(projectRoot, {
+      ...config,
+      $schema: config.$schema ?? CONFIG_SCHEMA_URL,
+      model: id,
+    });
+  }
+  // The config as it stands after this command, which is what every later run will read.
+  const after = { ...config, model: ctx.parsed.values.auto ? undefined : (id ?? config.model) };
+  // A config naming a model that is not installed is what this command is for: say so, do not fail.
+  const { resolved, models } = await doctorModels(cache, after).catch((failure: unknown) => {
+    if (!(failure instanceof InvalidArgumentError)) throw failure;
+    return {
+      resolved: { problem: `"${after.model}" in ${PROJECT_CONFIG_PATH} is not an installed model` },
+      models: [],
+    };
+  });
+  const inUse = 'id' in resolved ? resolved : undefined;
+  const result = {
+    model: inUse?.id ?? null,
+    dimensions: models.find((row) => row.id === inUse?.id)?.dimensions ?? null,
+    source: after.model !== undefined ? ('config' as const) : ('machine' as const),
+    reason: inUse ? inUse.reason : 'problem' in resolved ? resolved.problem : '',
+    changed:
+      id !== undefined ? ('set' as const) : ctx.parsed.values.auto ? ('unset' as const) : null,
+    config: join(projectRoot, PROJECT_CONFIG_PATH),
+    indexed: await indexedModelsOf(ctx, projectRoot),
+  };
+  emit(ctx, result, () => show.renderModelUse(result));
+}
+
 export async function modelCommand(ctx: Context): Promise<void> {
   const [sub, ...names] = ctx.parsed.positionals;
   const inner: Context = { ...ctx, parsed: { ...ctx.parsed, positionals: names } };
@@ -1406,6 +1477,8 @@ export async function modelCommand(ctx: Context): Promise<void> {
       emit(ctx, models, () => show.renderModels(models));
       return;
     }
+    case 'use':
+      return useModel(ctx, inner.parsed.positionals[0], cache);
     case 'doctor': {
       const config = await loadProjectConfig(root(ctx));
       const doctor = await doctorModels(cache, config);
@@ -1451,7 +1524,7 @@ export async function modelCommand(ctx: Context): Promise<void> {
       return;
     }
     default:
-      throw new InvalidArgumentError('model', 'list, install, verify or doctor', sub);
+      throw new InvalidArgumentError('model', 'list, use, install, verify or doctor', sub);
   }
 }
 
