@@ -834,6 +834,16 @@ describe('command line', () => {
     expect(() => parseOptions(['--limit'])).toThrow();
   });
 
+  test('--retry-skipped is --retry-quarantined by its new name, and output says skipped', async () => {
+    expect(parseOptions(['--retry-skipped']).values['retry-skipped']).toBe(true);
+    const root = makeProject();
+    writeFileSync(join(root, 'src', 'broken.unknownlang'), 'x');
+    const ran = await cli(root, 'index', '--retry-skipped');
+    expect(ran.code).toBe(0);
+    expect(ran.out).toMatch(/\d+ skipped/);
+    expect(ran.out).not.toContain('quarantined');
+  });
+
   test('--no-dense is --no-embed by another name', async () => {
     expect(parseOptions(['--no-dense']).values['no-embed']).toBe(true);
     const root = makeProject();
@@ -1840,7 +1850,7 @@ describe('red-team rules a project brings', () => {
     // Without any change to code, the gate now refuses the cards that mention configuration.
     const scan = await cli(root, 'redteam', 'scan');
     expect(scan.code).toBe(1);
-    expect(scan.out).toContain('would quarantine src/config.ts (symbols): config-talk');
+    expect(scan.out).toContain('would skip src/config.ts (symbols): config-talk');
     expect(scan.err).toContain('CLI_COMMAND_FAILED');
     await cli(root, 'index', '--force');
     const status = json(await cli(root, 'status', '--json'));
@@ -2265,7 +2275,7 @@ describe('declarative patterns', () => {
     };
     const rendered = renderIndex({ report, synced: [] });
     expect(rendered).toContain(
-      "advice: 2 files quarantined because 'php' grammar is missing. Run: anvesa grammar install php --download",
+      "advice: 2 files skipped because 'php' grammar is missing. Run: anvesa grammar install php --download",
     );
   });
 
@@ -2303,7 +2313,7 @@ describe('declarative patterns', () => {
     };
     const rendered = renderIndex({ report, synced: [] });
     expect(rendered).toContain(
-      "advice: 1 file quarantined because 'csharp' has no structural mapping. Run: anvesa mapping train csharp --samples <dir>",
+      "advice: 1 file skipped because 'csharp' has no structural mapping. Run: anvesa mapping train csharp --samples <dir>",
     );
     expect(rendered).not.toContain('grammar install csharp');
   });

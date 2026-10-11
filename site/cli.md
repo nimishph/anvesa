@@ -64,8 +64,8 @@ anvesa index [options]
 - `--force`: Rebuild entire index from scratch (discards cached AST hashes).
 - `--scope <path>`: Restrict indexing to a specific subdirectory.
 - `--no-embed` (alias `--no-dense`): Structural AST indexing only (skips neural embedding generation).
-- `--retry-quarantined`: Re-evaluate files previously flagged by red-team screens.
-- `--show-walk`: Print each path the walk offers, with its outcome (`added`, `unchanged`, `quarantined`, ...), on stderr.
+- `--retry-skipped` (also `--retry-quarantined`): Try again files an earlier run skipped (a parse failure, a missing grammar or mapping, the red-team screen).
+- `--show-walk`: Print each path the walk offers, with its outcome (`added`, `unchanged`, `skipped`, ...), on stderr.
 
 The summary names the model the run embedded with and its embedding size, e.g.
 `model: bge-base-en-v1.5 (embedding size 768, 512 max tokens)`, or `model: none (...)` when there is no
@@ -77,7 +77,7 @@ It ends with what the index holds per channel after the run, not just what the r
 ```
 index totals:
   docs        95 cards   12 files
-  symbols  1,820 cards  210 files  3 quarantined
+  symbols  1,820 cards  210 files  3 skipped
 ```
 
 On a terminal, progress is a bar against the files the walk listed, with the rate, the time left

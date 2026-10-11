@@ -141,7 +141,7 @@ Anvesa stores index data in \`.anvesa/index.db\` (or fragmented databases for la
 - \`anvesa index --force\` — Rebuilds AST outlines and cards from scratch.
 - \`anvesa index --scope <path>\` — Limit indexing to a specific subdirectory.
 - \`anvesa index --no-embed\` (alias \`--no-dense\`) — Structural AST and graph only (no embedding pass).
-- \`anvesa index --retry-quarantined\` — Re-evaluates previously quarantined files.
+- \`anvesa index --retry-skipped\` — Re-evaluates previously skipped files.
 
 ### Fragment Sharding (\`anvesa fragments\`)
 For large codebases where a single \`index.db\` exceeds 500MB:
@@ -174,7 +174,7 @@ For large codebases where a single \`index.db\` exceeds 500MB:
 - \`model doctor\` — Diagnose hardware acceleration (CPU AVX2, CoreML, DirectML).
 
 ### Security & Diagnostics
-- \`redteam list|verify|scan\` — Prompt-injection screening rules and card quarantine inspector.
+- \`redteam list|verify|scan\` — Prompt-injection screening rules, and which cards they would skip.
 - \`channel add|list|show|test|index|pin|remove\` — Custom dense documentation and domain channels.
 - \`pattern list|run <name>\` — Run parameterized declarative AST patterns.
 - \`diagnose <query> --expect <path>\` — Explain why a target file was missed.

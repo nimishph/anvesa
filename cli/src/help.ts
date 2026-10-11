@@ -57,7 +57,7 @@ export const COMMAND_HELP: readonly CommandHelp[] = [
     name: 'index',
     summary: 'bring the index up to date',
     details:
-      '  index                     bring the index up to date (--force, --retry-quarantined, --scope <path>,\n                            --no-embed or --no-dense: structure and graph only, no embedding pass,\n                            --show-walk: print each path the walk offers, with its outcome, on stderr)',
+      '  index                     bring the index up to date (--force, --retry-skipped, --scope <path>,\n                            --no-embed or --no-dense: structure and graph only, no embedding pass,\n                            --show-walk: print each path the walk offers, with its outcome, on stderr)',
   },
   {
     section: 'Index',
@@ -179,7 +179,7 @@ export const COMMAND_HELP: readonly CommandHelp[] = [
     name: 'redteam <subcommand>',
     summary: 'the screen every card passes',
     details:
-      "  redteam list|verify|scan  the screen every card passes; .anvesa/redteam.json adds rules and\n                            changes what each trust level does (scan: would this project's own text be quarantined?)",
+      "  redteam list|verify|scan  the screen every card passes; .anvesa/redteam.json adds rules and\n                            changes what each trust level does (scan: would this project's own text be skipped?)",
   },
   {
     section: 'Agents and help',

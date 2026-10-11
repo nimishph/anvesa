@@ -122,7 +122,7 @@ export function renderIndexBar(state: IndexProgressState, width?: number): strin
     );
   }
   if (state.embedded > 0) parts.push(`${n(state.embedded)} embedded (${n(state.cards)} cards)`);
-  if (state.quarantined > 0) parts.push(`${n(state.quarantined)} quarantined`);
+  if (state.quarantined > 0) parts.push(`${n(state.quarantined)} skipped`);
   const seconds = state.elapsedMs / 1000;
   // Too early, and the rate is noise.
   if (state.total !== undefined && seconds >= 2 && state.done > 0) {

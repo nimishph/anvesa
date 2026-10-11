@@ -507,7 +507,7 @@ export function renderStatus(status: Status): string {
   const { index } = status;
   return lines(
     `project ${status.root}`,
-    `files ${index.files}, quarantined ${index.quarantinedFiles}, symbols ${index.symbols}, calls ${index.calls}, imports ${index.imports}, edges ${index.edges}`,
+    `files ${index.files}, skipped ${index.quarantinedFiles}, symbols ${index.symbols}, calls ${index.calls}, imports ${index.imports}, edges ${index.edges}`,
     `languages: ${index.byLanguage.map((l) => `${l.language} ${l.files}`).join(', ') || 'none'}`,
     status.interrupted ? 'the last index run did not finish; run: anvesa index' : undefined,
     `embedder: ${status.embedder ? `${status.embedder.id} (${status.embedder.dimensions} dims)` : 'none (structural queries only)'}`,
@@ -535,7 +535,7 @@ function renderChannelLine(channel: ChannelInfo): string {
   ]
     .filter(Boolean)
     .join(', ');
-  return `  ${channel.name}  ${channel.cards} cards from ${channel.sources} sources${channel.quarantined ? `, ${channel.quarantined} quarantined` : ''}  weight ${channel.weight}  trust ${channel.trust}  (${flags})`;
+  return `  ${channel.name}  ${channel.cards} cards from ${channel.sources} sources${channel.quarantined ? `, ${channel.quarantined} skipped` : ''}  weight ${channel.weight}  trust ${channel.trust}  (${flags})`;
 }
 
 export function renderChannels(channels: readonly ChannelInfo[]): string {
@@ -593,12 +593,12 @@ export function renderIndex(result: {
   const advice: string[] = [];
   for (const [language, count] of missingGrammars) {
     advice.push(
-      `advice: ${count} file${count === 1 ? '' : 's'} quarantined because '${language}' grammar is missing. Run: anvesa grammar install ${language} --download`,
+      `advice: ${count} file${count === 1 ? '' : 's'} skipped because '${language}' grammar is missing. Run: anvesa grammar install ${language} --download`,
     );
   }
   for (const [language, count] of missingMappings) {
     advice.push(
-      `advice: ${count} file${count === 1 ? '' : 's'} quarantined because '${language}' has no structural mapping. Run: anvesa mapping train ${language} --samples <dir>`,
+      `advice: ${count} file${count === 1 ? '' : 's'} skipped because '${language}' has no structural mapping. Run: anvesa mapping train ${language} --samples <dir>`,
     );
   }
   return lines(
@@ -608,16 +608,16 @@ export function renderIndex(result: {
       : result.embedder === null
         ? `model: none${result.embedderReason ? ` (${result.embedderReason})` : ''}; structure and graph only`
         : undefined,
-    `files: ${f.added} added, ${f.modified} modified, ${f.unchanged} unchanged, ${f.touched} re-stamped, ${f.removed} removed, ${f.quarantined + f.stillQuarantined} quarantined`,
+    `files: ${f.added} added, ${f.modified} modified, ${f.unchanged} unchanged, ${f.touched} re-stamped, ${f.removed} removed, ${f.quarantined + f.stillQuarantined} skipped`,
     f.unsupported.size > 0 ? notSource(f.unsupported) : undefined,
     report.link
       ? `linked ${report.relinked} files: ${report.link.calls.resolved} calls resolved, ${report.link.imports.dangling} imports dangling`
       : undefined,
     report.dense
-      ? `dense: ${report.dense.ingested} files embedded (${report.dense.cards} cards), ${report.dense.current} current, ${report.dense.quarantinedCards} cards quarantined, ${report.dense.failed.length} failed`
+      ? `dense: ${report.dense.ingested} files embedded (${report.dense.cards} cards), ${report.dense.current} current, ${report.dense.quarantinedCards} cards skipped, ${report.dense.failed.length} failed`
       : undefined,
     ...channelTotals(result.channels),
-    ...report.quarantined.map((q) => `quarantined ${q.path} (${q.reason}): ${q.message}`),
+    ...report.quarantined.map((q) => `skipped ${q.path} (${q.reason}): ${q.message}`),
     ...advice,
     ...(report.warnings ?? []).map((w) => `warning: ${w}`),
     ...(report.dense?.failed ?? []).map((d) => `failed ${d.path} in ${d.channel}: ${d.message}`),
@@ -652,7 +652,7 @@ function channelTotals(channels: readonly IndexChannelTotal[] | undefined): stri
         `  ${c.name.padEnd(name)}`,
         `${n(c.cards).padStart(cards)} card${c.cards === 1 ? ' ' : 's'}`,
         `${n(c.sources).padStart(files)} file${c.sources === 1 ? ' ' : 's'}`,
-        c.quarantined > 0 ? `${n(c.quarantined)} quarantined` : '',
+        c.quarantined > 0 ? `${n(c.quarantined)} skipped` : '',
       ]
         .join('  ')
         .trimEnd(),
@@ -747,7 +747,7 @@ export function renderDiagnosis(d: Diagnosis): string {
     `index: ${d.indexed.status} — ${d.indexed.detail}`,
     ...d.channels.map(
       (c) =>
-        `  ${c.channel}: ${c.cards} cards${c.quarantinedCards ? `, ${c.quarantinedCards} quarantined (${c.reasons.join('; ')})` : ''}`,
+        `  ${c.channel}: ${c.cards} cards${c.quarantinedCards ? `, ${c.quarantinedCards} skipped (${c.reasons.join('; ')})` : ''}`,
     ),
     ...d.ranks.map((r) => `  rank in ${r.lane}: ${r.rank ?? `below ${d.depth}`}`),
     ...d.failed.map((f) => `  ${f.lane} failed: ${f.error.message}`),
@@ -974,7 +974,7 @@ export function renderFragmentStatus(status: FragmentStatus): string {
     `sharded by ${status.algorithm?.id}@${status.algorithm?.version}`,
     ...drift.shards.map(
       (s) =>
-        `  ${s.id.padEnd(24)} ${s.files} files, ${s.symbols} symbols${s.quarantinedFiles ? `, ${s.quarantinedFiles} quarantined` : ''}`,
+        `  ${s.id.padEnd(24)} ${s.files} files, ${s.symbols} symbols${s.quarantinedFiles ? `, ${s.quarantinedFiles} skipped` : ''}`,
     ),
     drift.manifestChanged
       ? 'the manifest changed since the shards were last settled; the next index run moves what is out of place'
@@ -1029,12 +1029,10 @@ export function renderRedTeamScan(scan: RedTeamScan): string {
     `${scan.cards} cards from ${scan.files} files screened`,
     ...scan.byRule.map(
       (r) =>
-        `  ${r.rule.padEnd(24)} ${r.flagged} flagged, ${r.sanitized} sanitized, ${r.quarantined} quarantined`,
+        `  ${r.rule.padEnd(24)} ${r.flagged} flagged, ${r.sanitized} sanitized, ${r.quarantined} skipped`,
     ),
-    ...scan.quarantined.map(
-      (q) => `  would quarantine ${q.path} (${q.channel}): ${q.rules.join(', ')}`,
-    ),
-    scan.quarantined.length === 0 ? 'nothing would be quarantined' : undefined,
+    ...scan.quarantined.map((q) => `  would skip ${q.path} (${q.channel}): ${q.rules.join(', ')}`),
+    scan.quarantined.length === 0 ? 'nothing would be skipped' : undefined,
   );
 }
 

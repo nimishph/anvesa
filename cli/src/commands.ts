@@ -330,7 +330,7 @@ function indexProgress(ctx: Context): {
       total === undefined
         ? `${counts.seen} seen`
         : `${counts.seen}/${total} seen (${total === 0 ? 100 : Math.floor((counts.seen / total) * 100)}%)`;
-    return `indexing: ${seen} (${counts.added} added, ${counts.modified} modified, ${counts.quarantined} quarantined)${counts.embedded > 0 ? `, ${counts.embedded} embedded (${counts.cards} cards)` : ''}`;
+    return `indexing: ${seen} (${counts.added} added, ${counts.modified} modified, ${counts.quarantined} skipped)${counts.embedded > 0 ? `, ${counts.embedded} embedded (${counts.cards} cards)` : ''}`;
   };
   const bar = (width?: number) => {
     const now = Date.now();
@@ -421,7 +421,7 @@ function indexProgress(ctx: Context): {
         clear();
         lastWrite = 0;
         ctx.environment.stderr(
-          `walk: ${event.path} (${event.outcome}${event.reason ? `: ${event.reason}` : ''})\n`,
+          `walk: ${event.path} (${event.outcome === 'quarantined' ? 'skipped' : event.outcome}${event.reason ? `: ${event.reason}` : ''})\n`,
         );
       }
       if (interactive) {
@@ -519,7 +519,9 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         .index({
           onEvent: progress.onEvent,
           ...(ctx.parsed.values.force ? { force: true } : {}),
-          ...(ctx.parsed.values['retry-quarantined'] ? { retryQuarantined: true } : {}),
+          ...(ctx.parsed.values['retry-quarantined'] || ctx.parsed.values['retry-skipped']
+            ? { retryQuarantined: true }
+            : {}),
           ...(inScope ? { scope: inScope } : {}),
         })
         .finally(progress.stop);
@@ -802,7 +804,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         try {
           const status = await session.retriever.status();
           const langs = status.index.byLanguage.map((l) => `${l.language} (${l.files})`).join(', ');
-          workspaceStats = `files: ${status.index.files}, symbols: ${status.index.symbols}, languages: ${langs || 'none'}, quarantined: ${status.index.quarantinedFiles}`;
+          workspaceStats = `files: ${status.index.files}, symbols: ${status.index.symbols}, languages: ${langs || 'none'}, skipped: ${status.index.quarantinedFiles}`;
         } finally {
           await session.close();
         }
@@ -936,7 +938,7 @@ export async function channelCommand(ctx: Context): Promise<void> {
             : previews
                 .map(
                   (p) =>
-                    `${p.cards.length} cards, ${p.screened.accepted.length} accepted, ${p.screened.quarantined.length} quarantined, ${p.screened.sanitized} sanitized\n${p.screened.accepted.map((c) => `  ${c.id}  ${c.text.replace(/\s+/g, ' ')}`).join('\n')}\n${p.screened.quarantined.map((q) => `  quarantined ${q.card.id}: ${q.reasons.join('; ')}`).join('\n')}`,
+                    `${p.cards.length} cards, ${p.screened.accepted.length} accepted, ${p.screened.quarantined.length} skipped, ${p.screened.sanitized} sanitized\n${p.screened.accepted.map((c) => `  ${c.id}  ${c.text.replace(/\s+/g, ' ')}`).join('\n')}\n${p.screened.quarantined.map((q) => `  skipped ${q.card.id}: ${q.reasons.join('; ')}`).join('\n')}`,
                 )
                 .join('\n'),
         );
@@ -1068,7 +1070,7 @@ export async function redteamCommand(ctx: Context): Promise<void> {
         if (scan.quarantined.length > 0) {
           throw new CommandFailedError(
             'redteam scan',
-            `${scan.quarantined.length} cards of this project would be quarantined`,
+            `${scan.quarantined.length} cards of this project would be skipped`,
             {
               hint: 'If they are not attacks, loosen the rule that fired in .anvesa/redteam.json.',
             },

@@ -126,7 +126,7 @@ Anvesa stores index data in `.anvesa/index.db` (or fragmented databases for larg
 - `anvesa index --force` — Rebuilds AST outlines and cards from scratch.
 - `anvesa index --scope <path>` — Limit indexing to a specific subdirectory.
 - `anvesa index --no-embed` (alias `--no-dense`) — Structural AST and graph only (no embedding pass).
-- `anvesa index --retry-quarantined` — Re-evaluates previously quarantined files.
+- `anvesa index --retry-skipped` — Re-evaluates previously skipped files.
 - `anvesa index --show-walk` — Prints each path walked, with its outcome, on stderr.
 - `anvesa search <q> --scope <path>` — Only results under a path (also on query, retrieve and MCP).
 

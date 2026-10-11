@@ -312,7 +312,7 @@ export function createMcpServer(retriever: Retriever): McpServer {
     'diagnose',
     {
       description:
-        'Why a file did not come up for a query: not indexed, no cards, quarantined, or ranked too low.',
+        'Why a file did not come up for a query: not indexed, no cards, skipped, or ranked too low.',
       inputSchema: {
         query: z.string(),
         path: z.string(),

@@ -110,4 +110,4 @@ Code retrieved from an index is inherently untrusted. Anvesa automatically prote
   // source code from repository
   <<<ANVESA_UNTRUSTED_CONTENT_END>>>
   ```
-- Any suspicious payloads detected by Anvesa's redteam engine are quarantined or flagged before reaching the LLM context.
+- Any suspicious payloads detected by Anvesa's redteam engine are skipped or flagged before reaching the LLM context.

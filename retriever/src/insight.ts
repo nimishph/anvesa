@@ -279,10 +279,10 @@ export async function diagnoseMiss(
     verdict =
       indexed.status === 'missing'
         ? `${input.path} is not in the index: it may be ignored, in a language with no grammar, out of scope, or not indexed since it appeared (run: anvesa index).`
-        : `${input.path} was quarantined: ${indexed.detail}.`;
+        : `${input.path} was skipped: ${indexed.detail}.`;
   } else if (withCards.length === 0 && quarantinedOnly.length > 0) {
     lostAt = 'RED_TEAM';
-    verdict = `Every card of ${input.path} was quarantined by the red-team gate: ${quarantinedOnly.flatMap((e) => e.reasons).join('; ')}.`;
+    verdict = `Every card of ${input.path} was skipped by the red-team screen: ${quarantinedOnly.flatMap((e) => e.reasons).join('; ')}.`;
   } else if (withCards.length === 0) {
     lostAt = 'CARDS';
     verdict = `${input.path} is indexed but no channel made cards from it: no transformer claims it, or it yields nothing (see: anvesa channel test).`;
