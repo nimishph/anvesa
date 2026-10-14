@@ -61,6 +61,9 @@ const OPTIONS = {
   expand: { type: 'boolean' },
   'agents-file': { type: 'string' },
   'no-agents-file': { type: 'boolean' },
+  debounce: { type: 'string' },
+  once: { type: 'boolean' },
+  'no-initial': { type: 'boolean' },
 } as const;
 
 export interface Parsed {
@@ -122,6 +125,9 @@ export interface Parsed {
     readonly expand?: boolean;
     readonly 'agents-file'?: string;
     readonly 'no-agents-file'?: boolean;
+    readonly debounce?: string;
+    readonly once?: boolean;
+    readonly 'no-initial'?: boolean;
   };
 }
 
