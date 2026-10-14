@@ -29,6 +29,7 @@
     "eval": "bun run eval/src/run.ts",
     "eval:retrieval": "bun run eval/src/retrieval-run.ts",
     "eval:ingestion": "bun run eval/src/ingestion-benchmark.ts",
+    "eval:real": "bun run eval/src/real-benchmark.ts",
     "golden": "bun run eval/src/golden-run.ts",
     "package": "bun run tooling/package-release.ts",
     "native:build": "bun run tooling/build-native.ts",

@@ -9,3 +9,5 @@ target/
 
 # Copied in at release from skills/ (the one source).
 /cli/skills/
+eval/fixtures/
+

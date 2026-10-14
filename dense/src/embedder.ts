@@ -77,7 +77,7 @@ export async function embedAllBucketed(
   const { info } = embedder;
   const baseBatchSize = info.preferredBatchSize ?? Math.max(1, Math.min(16, texts.length));
   const bounds = options.bucketBounds ?? [64, 192, 384];
-  const multipliers = options.batchMultipliers ?? [4, 2, 1, 1];
+  const multipliers = options.batchMultipliers ?? [1, 1, 1, 1];
 
   // 1. Measure text lengths
   const counted = texts.map((text, originalIndex) => {
@@ -101,7 +101,7 @@ export async function embedAllBucketed(
     linearPaddedTokens += (end - start) * maxLen;
   }
 
-  // 2. Partition into buckets
+  // 2. Partition into buckets and sort each bucket by length
   const numBuckets = bounds.length + 1;
   const buckets: Array<typeof counted> = Array.from({ length: numBuckets }, () => []);
 
@@ -110,6 +110,10 @@ export async function embedAllBucketed(
     if (bucketIdx === -1) bucketIdx = bounds.length;
     const bucket = buckets[bucketIdx];
     if (bucket) bucket.push(item);
+  }
+
+  for (const bucket of buckets) {
+    bucket.sort((a, b) => a.length - b.length);
   }
 
   const vectors: Float32Array[] = new Array(texts.length);

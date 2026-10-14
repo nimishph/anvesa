@@ -12,6 +12,7 @@
     "@cntxt-labs/anvesa-syntax": "workspace:*",
     "@cntxt-labs/anvesa-structural": "workspace:*",
     "@cntxt-labs/anvesa-dense": "workspace:*",
+    "@cntxt-labs/anvesa-embedder": "workspace:*",
     "@cntxt-labs/anvesa-indexer": "workspace:*",
     "@cntxt-labs/anvesa-retriever": "workspace:*"
   },
