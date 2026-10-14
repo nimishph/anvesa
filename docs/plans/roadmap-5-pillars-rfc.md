@@ -366,19 +366,17 @@ In enterprise environments, microservices, polyrepos, and modular libraries span
 
 ## Prioritization & ROI Matrix
 
-To assist with roadmap scheduling and sprint planning, initiatives are scored across **Developer Impact**, **Implementation Effort**, and **Architectural Risk**:
+Updated based on team alignment and objective measurement priorities:
 
-| Initiative | Impact | Effort | Risk | Dependencies | Recommended Priority |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Agent UI Showcase (`?search=...`)** | High | Low | Low | PR #34 (`anvesa-ui`) | **P0 (Immediate Sprint)** |
-| **Length-Sorted Bucket Batching** | High | Low | Low | `dense/embedder.ts` | **P0 (Immediate Sprint)** |
-| **Vector Centroid Calibration** | High | Low | Low | `dense/embedder.ts` | **P0 (Immediate Sprint)** |
-| **`anvesa watch` (Daemon & MCP)** | High | Medium | Medium | FS watcher, AST diffing | **P1 (Next Sprint)** |
-| **Non-LLM 2-Layer NN on Colab** | High | Medium | Low | Colab notebook, ONNX | **P1 (Next Sprint)** |
-| **Graph-Context Preamble Injection** | Medium | Medium | Low | Fact extractor | **P2** |
-| **Anonymous Telemetry (Non-IP)** | Medium | Low | Low | Edge endpoint | **P2** |
-| **SCIP Compiler Ingestion** | High | High | Medium | SCIP protobuf parser | **P3** |
-| **Multi-Repo Federation** | High | High | High | Workspace resolver | **P3** |
+| Initiative | Impact | Effort | Risk | Dependencies | Aligned Priority | Notes |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Agent UI Showcase (`?search=...`)** | High | Low | Low | PR #34 (`anvesa-ui`) | **P0 (Immediate)** | Implemented directly inside PR #34 (no new branch needed). |
+| **Anonymous Telemetry (Non-IP)** | High | Low | Low | Edge endpoint | **P0 (Immediate)** | Critical measurement baseline to objectively compare search & grammar quality before/after. |
+| **Ingestion Optimization Trio**<br>*(Bucket Batching + Centroid Calibration + Graph Preamble)* | High | Medium | Medium | `dense/embedder.ts`, facts | **P1 (Batched Experiment)** | Grouped into a single branch/worktree with an objective mathematical validation & benchmark harness. |
+| **Non-LLM 2-Layer NN on Colab** | High | Medium | Low | Colab notebook, ONNX | **P2** | Train on 500 OSS repos to induce grammars without LLMs. |
+| **`anvesa watch` (Daemon & MCP)** | Low | Medium | Medium | FS watcher, AST diffing | **P3 (De-prioritized)** | Consequent runs of `anvesa index` are already fast; file-watch daemon is deferred. |
+| **SCIP Compiler Ingestion** | High | High | Medium | SCIP protobuf parser | **P3** | Long-term precision for compiler-level type graphs. |
+| **Multi-Repo Federation** | High | High | High | Workspace resolver | **P4** | Cross-repo retrieval mesh for enterprise polyrepos. |
 
 ---
 
@@ -388,19 +386,17 @@ To assist with roadmap scheduling and sprint planning, initiatives are scored ac
 gantt
     title Anvesa Core Evolution Roadmap
     dateFormat  YYYY-MM
-    section P0: Quick Wins & High ROI
-    Agent UI Showcase & URL Router     :active, p0_1, 2026-10, 2026-11
-    Length-Sorted Bucket Batching       :p0_2, 2026-10, 2026-11
-    Centroid Calibration Subtraction    :p0_3, 2026-10, 2026-11
-    section P1: Automation & Intelligence
-    anvesa watch Daemon & Debouncer     :p1_1, 2026-11, 2026-12
-    Colab 2-Layer NN Grammar Induction  :p1_2, 2026-11, 2026-12
-    section P2: Telemetry & Quality
-    Zero-IP Privacy Telemetry Pipeline  :p2_1, 2026-12, 2027-01
-    Graph-Context Preamble Injection    :p2_2, 2026-12, 2027-01
-    section P3: Enterprise Scale
+    section P0: Immediate Foundations
+    Agent UI Showcase in PR #34         :active, p0_1, 2026-10, 2026-11
+    Anonymous Measurement Telemetry     :p0_2, 2026-10, 2026-11
+    section P1: Ingestion Math & Benchmark
+    Batched Ingestion Branch & Metric Harness :p1_1, 2026-11, 2026-12
+    Bucket Batching + Centroid + Preamble     :p1_2, 2026-11, 2026-12
+    section P2: Grammar Induction
+    Colab / Kaggle 2-Layer NN Training  :p2_1, 2026-12, 2027-01
+    section P3: Long-Term Enterprise
     SCIP / LSIF Compiler Ingestion      :p3_1, 2027-01, 2027-02
-    Multi-Repository Federation Mesh    :p3_2, 2027-02, 2027-03
+    anvesa watch & Multi-Repo           :p3_2, 2027-02, 2027-03
 ```
 
 ---
