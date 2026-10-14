@@ -384,6 +384,65 @@ export function createMcpServer(retriever: Retriever): McpServer {
     ({ topic }) => respond(async () => getPrimer(topic)),
   );
 
+  server.registerTool(
+    'show_in_ui',
+    {
+      description:
+        "Open the interactive Anvesa visual web dashboard in the human developer's browser to showcase code search results, a symbol call graph, or an architectural repomap.",
+      inputSchema: {
+        query: z.string().optional().describe('Code search query to display in Search Studio.'),
+        mode: z.enum(['fused', 'semantic', 'structural']).optional().describe('Search mode.'),
+        wql: z.string().optional().describe('WQL structural filter or query.'),
+        scope: z.string().optional().describe('Path scope filter.'),
+        symbol: z
+          .string()
+          .optional()
+          .describe('Symbol name to center in the interactive Code Graph.'),
+        view: z
+          .enum(['search', 'graph', 'wql', 'status'])
+          .optional()
+          .describe('Tab view to switch to.'),
+        repomap: z
+          .boolean()
+          .optional()
+          .describe('Whether to open the PageRank architectural repomap view.'),
+        routes: z.boolean().optional().describe('Whether to open the HTTP routes view.'),
+      },
+    },
+    async ({ query, mode, wql, scope, symbol, view, repomap, routes }) => {
+      const queryParams: Record<string, string> = {
+        ...(query ? { q: query } : {}),
+        ...(mode ? { mode } : {}),
+        ...(wql ? { wql } : {}),
+        ...(scope ? { scope } : {}),
+        ...(symbol ? { symbol } : {}),
+        ...(view ? { view } : {}),
+        ...(repomap ? { repomap: 'true' } : {}),
+        ...(routes ? { routes: 'true' } : {}),
+      };
+
+      const { ensureUiRunning } = await import('../../ui/src/server.ts');
+      const { url } = await ensureUiRunning({
+        root: retriever.root,
+        queryParams,
+      });
+
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: toJson({
+              status: 'opened',
+              url,
+              view:
+                view ?? (symbol || repomap || routes ? 'graph' : wql && !query ? 'wql' : 'search'),
+            }),
+          },
+        ],
+      };
+    },
+  );
+
   return server;
 }
 

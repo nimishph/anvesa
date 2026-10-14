@@ -13,6 +13,7 @@ export interface ServerOptions {
   readonly port?: number;
   readonly root?: string;
   readonly open?: boolean;
+  readonly queryParams?: Readonly<Record<string, string>>;
 }
 
 interface SearchPayload {
@@ -71,7 +72,7 @@ function sendText(
   res.end(text);
 }
 
-function openBrowser(url: string): void {
+export function openBrowser(url: string): void {
   try {
     const platform = process.platform;
     if (platform === 'win32') {
@@ -84,6 +85,23 @@ function openBrowser(url: string): void {
   } catch (err) {
     process.stderr.write(`anvesa ui: could not open browser automatically: ${String(err)}\n`);
   }
+}
+
+export function buildDashboardUrl(
+  baseUrl: string,
+  queryParams?: Readonly<Record<string, string>>,
+): string {
+  if (!queryParams || Object.keys(queryParams).length === 0) {
+    return baseUrl;
+  }
+  const params = new URLSearchParams();
+  for (const [key, val] of Object.entries(queryParams)) {
+    if (val !== undefined && val !== '') {
+      params.set(key, val);
+    }
+  }
+  const qs = params.toString();
+  return qs ? `${baseUrl}/?${qs}` : baseUrl;
 }
 
 async function readBody<T = unknown>(req: IncomingMessage): Promise<T> {
@@ -379,30 +397,85 @@ export async function startUiServer(options: ServerOptions = {}) {
     }
   });
 
+  const activeInstance = {
+    port,
+    root: projectRoot,
+    close: async () => {
+      server.close();
+      if (retriever) {
+        await retriever.close();
+      }
+      if (runningInstance === activeInstance) {
+        runningInstance = undefined;
+      }
+    },
+  };
+  runningInstance = activeInstance;
+
   server.listen(port, () => {
-    const url = `http://localhost:${port}`;
+    const rawUrl = `http://localhost:${port}`;
+    const displayUrl = buildDashboardUrl(rawUrl, options.queryParams);
     process.stdout.write(
       `\n  \x1b[38;2;99;102;241m▲\x1b[0m \x1b[1m\x1b[38;2;255;255;255manvesa ui\x1b[0m — interactive web dashboard\n`,
     );
-    process.stdout.write(`  \x1b[90mURL:\x1b[0m     \x1b[36m${url}\x1b[0m\n`);
+    process.stdout.write(`  \x1b[90mURL:\x1b[0m     \x1b[36m${displayUrl}\x1b[0m\n`);
     process.stdout.write(`  \x1b[90mRoot:\x1b[0m    ${projectRoot}\n`);
     process.stdout.write(
       `  \x1b[90mStatus:\x1b[0m  ${retriever ? '\x1b[32mlive index connected\x1b[0m' : '\x1b[33mpreview mode (ready to index)\x1b[0m'}\n\n`,
     );
     if (shouldOpen) {
-      openBrowser(url);
+      openBrowser(displayUrl);
     }
   });
 
   return {
     server,
     port,
-    close: async () => {
-      server.close();
-      if (retriever) {
-        await retriever.close();
-      }
-    },
+    close: activeInstance.close,
+  };
+}
+
+let runningInstance:
+  | {
+      port: number;
+      root: string;
+      close: () => Promise<void>;
+    }
+  | undefined;
+
+/**
+ * Ensure the Anvesa UI server is running. If already running, reuses the instance
+ * and opens the browser with the requested query parameters.
+ */
+export async function ensureUiRunning(
+  options: ServerOptions = {},
+): Promise<{ port: number; url: string; close: () => Promise<void> }> {
+  if (runningInstance) {
+    const baseUrl = `http://localhost:${runningInstance.port}`;
+    const url = buildDashboardUrl(baseUrl, options.queryParams);
+    if (options.open !== false) {
+      openBrowser(url);
+    }
+    return {
+      port: runningInstance.port,
+      url,
+      close: runningInstance.close,
+    };
+  }
+
+  const instance = await startUiServer({
+    ...options,
+    open: false,
+  });
+  const baseUrl = `http://localhost:${instance.port}`;
+  const url = buildDashboardUrl(baseUrl, options.queryParams);
+  if (options.open !== false) {
+    openBrowser(url);
+  }
+  return {
+    port: instance.port,
+    url,
+    close: instance.close,
   };
 }
 

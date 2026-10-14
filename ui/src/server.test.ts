@@ -1,11 +1,47 @@
 import { describe, expect, test } from 'bun:test';
-import { startUiServer } from './server.ts';
+import { buildDashboardUrl, ensureUiRunning, startUiServer } from './server.ts';
 
 interface ApiResponse {
   readonly success: boolean;
 }
 
 describe('anvesa-ui server', () => {
+  test('buildDashboardUrl constructs target URLs with search parameters', () => {
+    expect(buildDashboardUrl('http://localhost:3847')).toBe('http://localhost:3847');
+    expect(
+      buildDashboardUrl('http://localhost:3847', {
+        q: 'authentication token',
+        mode: 'fused',
+        wql: '//class//method',
+        symbol: 'Retriever.search',
+      }),
+    ).toBe(
+      'http://localhost:3847/?q=authentication+token&mode=fused&wql=%2F%2Fclass%2F%2Fmethod&symbol=Retriever.search',
+    );
+  });
+
+  test('ensureUiRunning starts or reuses running instance', async () => {
+    const running = await ensureUiRunning({
+      port: 3899,
+      open: false,
+      queryParams: { q: 'token' },
+    });
+    try {
+      expect(running.port).toBe(3899);
+      expect(running.url).toContain('q=token');
+
+      // Second call reuses running instance
+      const second = await ensureUiRunning({
+        open: false,
+        queryParams: { symbol: 'fuse' },
+      });
+      expect(second.port).toBe(3899);
+      expect(second.url).toContain('symbol=fuse');
+    } finally {
+      await running.close();
+    }
+  });
+
   test('serves web assets and JSON API endpoints', async () => {
     const instance = await startUiServer({ port: 3898, open: false });
 

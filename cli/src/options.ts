@@ -63,6 +63,12 @@ const OPTIONS = {
   'no-agents-file': { type: 'boolean' },
   port: { type: 'string' },
   'no-open': { type: 'boolean' },
+  search: { type: 'string', short: 'q' },
+  mode: { type: 'string' },
+  symbol: { type: 'string' },
+  view: { type: 'string' },
+  repomap: { type: 'boolean' },
+  routes: { type: 'boolean' },
 } as const;
 
 export interface Parsed {
@@ -126,6 +132,12 @@ export interface Parsed {
     readonly 'no-agents-file'?: boolean;
     readonly port?: string;
     readonly 'no-open'?: boolean;
+    readonly search?: string;
+    readonly mode?: string;
+    readonly symbol?: string;
+    readonly view?: string;
+    readonly repomap?: boolean;
+    readonly routes?: boolean;
   };
 }
 

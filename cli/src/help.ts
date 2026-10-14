@@ -49,7 +49,7 @@ export const COMMAND_HELP: readonly CommandHelp[] = [
     name: 'ui',
     summary: 'launch the interactive visual web dashboard',
     details:
-      '  ui                        launch the visual web dashboard in browser\n                            (--port <number>, --no-open, --root <dir>)',
+      '  ui                        launch the visual web dashboard in browser\n                            (--port <number>, --no-open, --root <dir>, --search <q>,\n                            --mode <fused|semantic|structural>, --wql <expr>, --symbol <name>,\n                            --view <search|graph|wql|status>, --repomap, --routes)',
   },
   {
     section: 'Get started',

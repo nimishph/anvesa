@@ -325,6 +325,37 @@ export function initSearchStudio(state, api) {
       .join('');
   }
 
+  // Expose search parameter applicator for URL routing & agent triggers
+  window.applySearchParameters = (params) => {
+    if (!params) return;
+    if (params.query !== undefined && searchInput) {
+      searchInput.value = params.query;
+    }
+    if (params.mode !== undefined && searchModeSelect) {
+      searchModeSelect.value = params.mode;
+    }
+    if (params.wql !== undefined && filterWql) {
+      filterWql.value = params.wql;
+    }
+    if (params.scope !== undefined && filterScope) {
+      filterScope.value = params.scope;
+    }
+    if (params.weightCode !== undefined && weightCode && valWeightCode) {
+      weightCode.value = params.weightCode;
+      valWeightCode.textContent = Number(params.weightCode).toFixed(1);
+    }
+    if (params.weightDocs !== undefined && weightDocs && valWeightDocs) {
+      weightDocs.value = params.weightDocs;
+      valWeightDocs.textContent = Number(params.weightDocs).toFixed(1);
+    }
+    if (params.weightWql !== undefined && weightWql && valWeightWql) {
+      weightWql.value = params.weightWql;
+      valWeightWql.textContent = Number(params.weightWql).toFixed(1);
+    }
+    updateCliCommand();
+    triggerSearch();
+  };
+
   // Initial load
   updateCliCommand();
   renderDefaultResults();

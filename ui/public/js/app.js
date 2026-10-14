@@ -244,4 +244,65 @@ document.addEventListener('DOMContentLoaded', () => {
   initSearchStudio(state, api);
   initGraphVisualizer(state, api);
   initStatusAndWql(state, api);
+
+  // Parse and apply URL query parameters (Agent UI Showcase)
+  function applyUrlParameters() {
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get('q') || params.get('search');
+    const mode = params.get('mode');
+    const wql = params.get('wql');
+    const scope = params.get('scope');
+    const weightCode = params.get('weightCode');
+    const weightDocs = params.get('weightDocs');
+    const weightWql = params.get('weightWql');
+    const symbol = params.get('symbol');
+    const view = params.get('view');
+    const repomap = params.get('repomap');
+    const routes = params.get('routes');
+
+    if (view && ['search', 'graph', 'wql', 'status'].includes(view.toLowerCase())) {
+      switchView(view.toLowerCase());
+    } else if (
+      symbol ||
+      repomap === 'true' ||
+      repomap === '1' ||
+      routes === 'true' ||
+      routes === '1'
+    ) {
+      switchView('graph');
+    } else if (wql && !q) {
+      switchView('wql');
+    }
+
+    if (q || mode || wql || scope || weightCode || weightDocs || weightWql) {
+      window.applySearchParameters?.({
+        ...(q ? { query: q } : {}),
+        ...(mode ? { mode } : {}),
+        ...(wql ? { wql } : {}),
+        ...(scope ? { scope } : {}),
+        ...(weightCode ? { weightCode } : {}),
+        ...(weightDocs ? { weightDocs } : {}),
+        ...(weightWql ? { weightWql } : {}),
+      });
+    }
+
+    if (symbol) {
+      window.navigateToGraphSymbol?.(symbol);
+    }
+
+    if (repomap === 'true' || repomap === '1') {
+      document.getElementById('btnSubRepomap')?.click();
+    } else if (routes === 'true' || routes === '1') {
+      document.getElementById('btnSubRoutes')?.click();
+    }
+
+    if (wql && document.getElementById('wqlPlaygroundInput')) {
+      document.getElementById('wqlPlaygroundInput').value = wql;
+      if (view === 'wql') {
+        document.getElementById('btnRunWql')?.click();
+      }
+    }
+  }
+
+  applyUrlParameters();
 });
