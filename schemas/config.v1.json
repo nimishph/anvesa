@@ -181,6 +181,34 @@
           "description": "Quarantine any card suspected of containing prompt injections or adversarial payload."
         }
       }
+    },
+    "telemetry": {
+      "oneOf": [
+        {
+          "type": "boolean",
+          "description": "Enable or disable anonymous, non-IP telemetry (opt-out)."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Anonymous non-IP telemetry settings.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": true,
+              "description": "Whether anonymous telemetry collection is active."
+            },
+            "endpoint": {
+              "type": "string",
+              "description": "Custom telemetry ingest endpoint URL."
+            },
+            "logFile": {
+              "type": "string",
+              "description": "Local file path to append anonymous telemetry events for local auditing or offline debugging."
+            }
+          }
+        }
+      ]
     }
   }
 }

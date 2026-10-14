@@ -50,6 +50,12 @@ export interface RedTeamTuningConfig {
   readonly quarantineOnSuspect?: boolean;
 }
 
+export interface TelemetryTuningConfig {
+  readonly enabled?: boolean;
+  readonly endpoint?: string;
+  readonly logFile?: string;
+}
+
 export interface ProjectConfig {
   readonly $schema?: string;
   /** A built-in model id. Unset means the tier the machine suits, among those installed. */
@@ -68,6 +74,7 @@ export interface ProjectConfig {
   readonly indexing?: IndexingTuningConfig;
   readonly syntax?: SyntaxTuningConfig;
   readonly redteam?: RedTeamTuningConfig;
+  readonly telemetry?: TelemetryTuningConfig | boolean;
 }
 
 export function defaultProjectConfig(): ProjectConfig {
@@ -116,6 +123,7 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
         'search',
         'syntax',
         'redteam',
+        'telemetry',
       ].includes(key)
     )
       fail(key, 'is not a known setting');
@@ -381,6 +389,36 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
     };
   }
 
+  let telemetry: TelemetryTuningConfig | boolean | undefined;
+  if (raw.telemetry !== undefined) {
+    if (typeof raw.telemetry === 'boolean') {
+      telemetry = raw.telemetry;
+    } else if (isRecord(raw.telemetry)) {
+      const tel = raw.telemetry as Record<string, unknown>;
+      for (const key of Object.keys(tel)) {
+        if (!['enabled', 'endpoint', 'logFile'].includes(key)) {
+          fail(`telemetry.${key}`, 'is not a known setting');
+        }
+      }
+      if (tel.enabled !== undefined && typeof tel.enabled !== 'boolean') {
+        fail('telemetry.enabled', 'must be a boolean');
+      }
+      if (tel.endpoint !== undefined && typeof tel.endpoint !== 'string') {
+        fail('telemetry.endpoint', 'must be a string URL');
+      }
+      if (tel.logFile !== undefined && typeof tel.logFile !== 'string') {
+        fail('telemetry.logFile', 'must be a string path');
+      }
+      telemetry = {
+        ...(tel.enabled !== undefined ? { enabled: tel.enabled as boolean } : {}),
+        ...(tel.endpoint !== undefined ? { endpoint: tel.endpoint as string } : {}),
+        ...(tel.logFile !== undefined ? { logFile: tel.logFile as string } : {}),
+      };
+    } else {
+      fail('telemetry', 'must be a boolean or an object of telemetry settings');
+    }
+  }
+
   return {
     ...(raw.$schema !== undefined ? { $schema: raw.$schema as string } : {}),
     model: model as string | undefined,
@@ -394,6 +432,7 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
       : {}),
     ...(syntax !== undefined && Object.keys(syntax).length > 0 ? { syntax } : {}),
     ...(redteam !== undefined && Object.keys(redteam).length > 0 ? { redteam } : {}),
+    ...(telemetry !== undefined ? { telemetry } : {}),
   };
 }
 
@@ -436,6 +475,7 @@ export async function writeProjectConfig(root: string, config: ProjectConfig): P
     ...(config.redteam && Object.keys(config.redteam).length > 0
       ? { redteam: config.redteam }
       : {}),
+    ...(config.telemetry !== undefined ? { telemetry: config.telemetry } : {}),
   };
   await writeFile(path, `${JSON.stringify(raw, null, 2)}\n`);
 }

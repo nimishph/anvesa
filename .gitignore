@@ -4,6 +4,7 @@ node_modules/
 .anvesa/
 target/
 *.node
+.cargo/
 
 
 # Copied in at release from skills/ (the one source).

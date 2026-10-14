@@ -1,7 +1,12 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
-import { InvalidArgumentError, type PageRequest } from '@cntxt-labs/anvesa-core';
+import {
+  countBucket,
+  durationBucket,
+  InvalidArgumentError,
+  type PageRequest,
+} from '@cntxt-labs/anvesa-core';
 import {
   type Assistant,
   auditMapping,
@@ -42,6 +47,7 @@ import { getPrimer, renderPrimer } from './primer.ts';
 import { renderIndexBar } from './progress.ts';
 import { findProjectRoot, isProjectRoot } from './project-root.ts';
 import * as show from './render.ts';
+import { createTelemetryCollector, getGlobalTelemetry, setGlobalTelemetry } from './telemetry.ts';
 import { VERSION } from './version.ts';
 
 export interface Context {
@@ -108,10 +114,19 @@ export async function openSession(
         `note: ${backup.path} upgraded from schema ${backup.from} to ${backup.to}; the index as it was is at ${backup.backupPath}\n`,
       );
     }
+    const telemetry = createTelemetryCollector({
+      root: projectRoot,
+      config,
+      noNetwork: ctx.parsed.values['no-network'] === true,
+      env: ctx.environment.env,
+    });
+    setGlobalTelemetry(telemetry);
+
     return {
       retriever,
       embedderReason,
       close: async () => {
+        await telemetry.close();
         await retriever.close();
         await embedder?.dispose();
       },
@@ -514,6 +529,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
           `note: no embedder (${embedderReason}); indexing facts and graph only\n`,
         );
       const inScope = pathScope(ctx.parsed.values.scope, '--scope');
+      const startedAt = performance.now();
       const progress = indexProgress(ctx);
       const result = await retriever
         .index({
@@ -523,6 +539,17 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
           ...(inScope ? { scope: inScope } : {}),
         })
         .finally(progress.stop);
+      const elapsed = performance.now() - startedAt;
+      const embeddedCount =
+        result.report.dense?.ingested ?? result.report.files.added + result.report.files.modified;
+      getGlobalTelemetry().record({
+        type: 'index',
+        name: 'index',
+        durationMsBucket: durationBucket(elapsed),
+        ...(retriever.embedder?.info.id ? { modelId: retriever.embedder.info.id } : {}),
+        hasScope: Boolean(ctx.parsed.values.scope),
+        nodeCountBucket: countBucket(embeddedCount),
+      });
       const info = retriever.embedder?.info;
       // The model the index was embedded with is recorded, so every later run, on any machine,
       // searches with it instead of whatever that machine would pick.
@@ -654,6 +681,18 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         ...(weights ? { weights } : {}),
         ...(ctx.parsed.values.wql ? { wql: ctx.parsed.values.wql } : {}),
         ...scopeOption(ctx),
+      });
+      const elapsed = performance.now() - startedAt;
+      getGlobalTelemetry().record({
+        type: 'search',
+        name: 'search',
+        searchMode: 'fused',
+        durationMsBucket: durationBucket(elapsed),
+        resultCountBucket: countBucket(page.items.length),
+        ...(retriever.embedder?.info.id ? { modelId: retriever.embedder.info.id } : {}),
+        hasWqlFilter: Boolean(ctx.parsed.values.wql),
+        hasScope: Boolean(ctx.parsed.values.scope),
+        channelCount: Object.keys(retriever.config.channels).length,
       });
       const facts = await searchFacts(ctx, retriever, query, startedAt);
       emitResults(ctx, page, facts, (options) => show.renderSearch(page, options));

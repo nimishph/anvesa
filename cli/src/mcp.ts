@@ -1,4 +1,4 @@
-import { toCodeLensError } from '@cntxt-labs/anvesa-core';
+import { durationBucket, sanitizeErrorCode, toCodeLensError } from '@cntxt-labs/anvesa-core';
 import { fenceUntrusted, type Retriever, splitConjunction } from '@cntxt-labs/anvesa-retriever';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { type Context, openSession, resultFacts } from './commands.ts';
 import { getPrimer } from './primer.ts';
 import { extractDocSummary, metaOf, toJson } from './render.ts';
+import { getGlobalTelemetry } from './telemetry.ts';
 import { VERSION } from './version.ts';
 
 /**
@@ -23,12 +24,26 @@ export function createMcpServer(retriever: Retriever): McpServer {
   const server = new McpServer({ name: 'anvesa', version: VERSION });
 
   /** A tool result: the payload as JSON, or the error a model can act on. */
-  const respond = async (run: () => Promise<unknown>) => {
+  const respond = async (run: () => Promise<unknown>, toolName = 'mcp_tool') => {
+    const startedAt = performance.now();
     try {
       const value = await run();
+      const elapsed = performance.now() - startedAt;
+      getGlobalTelemetry().record({
+        type: 'mcp_tool_call',
+        name: toolName,
+        durationMsBucket: durationBucket(elapsed),
+      });
       return { content: [{ type: 'text' as const, text: toJson(fenceCards(value)) }] };
     } catch (failure) {
       const error = toCodeLensError(failure, 'answer a tool call');
+      const elapsed = performance.now() - startedAt;
+      getGlobalTelemetry().record({
+        type: 'mcp_tool_call',
+        name: toolName,
+        durationMsBucket: durationBucket(elapsed),
+        errorCode: sanitizeErrorCode(error),
+      });
       return {
         isError: true,
         content: [{ type: 'text' as const, text: toJson({ error }) }],
@@ -440,5 +455,6 @@ export async function serveMcp(
   );
   onServing?.();
   await closed;
+  await getGlobalTelemetry().flush();
   await session.close();
 }
