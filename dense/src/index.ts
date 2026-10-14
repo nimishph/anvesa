@@ -24,8 +24,14 @@ export {
   validateCard,
 } from './card.ts';
 export { ChannelRegistry } from './channel.ts';
-export type { Embedder, EmbedderInfo } from './embedder.ts';
-export { budgetSourceOf, embedAll } from './embedder.ts';
+export type {
+  BucketBatchOptions,
+  BucketBatchStats,
+  EmbedAllOptions,
+  Embedder,
+  EmbedderInfo,
+} from './embedder.ts';
+export { budgetSourceOf, embedAll, embedAllBucketed } from './embedder.ts';
 export * from './errors.ts';
 export type {
   IngesterOptions,
@@ -77,10 +83,15 @@ export type { DocsOptions } from './transformers/docs.ts';
 export { docsTransformer } from './transformers/docs.ts';
 export type { SymbolsOptions } from './transformers/symbols.ts';
 export { symbolsTransformer } from './transformers/symbols.ts';
+export type { AnisotropyMetrics } from './vectors.ts';
 export {
   batchDotProduct,
   batchScanTopK,
+  calibrateBatchCentroid,
+  calibrateCentroid,
+  computeCentroid,
   dot,
   isUsableVector,
+  measureAnisotropy,
   normalize,
 } from './vectors.ts';

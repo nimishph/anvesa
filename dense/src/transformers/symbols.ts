@@ -9,6 +9,8 @@ export interface SymbolsOptions {
   readonly channel?: string;
   /** Which files count as source code. Defaults to the built-in language registry. */
   readonly languages?: LanguageRegistry;
+  /** Whether to synthesize and prepend topological context into the card block. */
+  readonly graphPreamble?: boolean;
 }
 
 /**
@@ -48,7 +50,11 @@ export function symbolsTransformer(options: SymbolsOptions = {}): Transformer {
           .join(' — ');
 
         const doc = symbol.doc ? normalizeDoc(symbol.doc) : '';
+        const preambleText = options.graphPreamble
+          ? `[scope: ${symbol.parentName ? `${symbol.parentName} ` : ''}${file.path} | symbol: ${symbol.kind} ${symbol.name}]`
+          : undefined;
         const blocks = [
+          ...(preambleText ? [{ text: preambleText }] : []),
           ...(doc ? [{ text: doc }] : []),
           ...(symbol.signature ? [{ text: symbol.signature }] : []),
         ];
@@ -63,6 +69,7 @@ export function symbolsTransformer(options: SymbolsOptions = {}): Transformer {
           kind: symbol.kind,
           symbol: symbol.name,
           hasDoc: String(doc.length > 0),
+          ...(options.graphPreamble ? { hasPreamble: 'true' } : {}),
           ...(symbol.signature ? { signature: symbol.signature } : {}),
         };
 
