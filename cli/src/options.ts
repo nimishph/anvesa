@@ -61,6 +61,8 @@ const OPTIONS = {
   expand: { type: 'boolean' },
   'agents-file': { type: 'string' },
   'no-agents-file': { type: 'boolean' },
+  port: { type: 'string' },
+  'no-open': { type: 'boolean' },
 } as const;
 
 export interface Parsed {
@@ -122,6 +124,8 @@ export interface Parsed {
     readonly expand?: boolean;
     readonly 'agents-file'?: string;
     readonly 'no-agents-file'?: boolean;
+    readonly port?: string;
+    readonly 'no-open'?: boolean;
   };
 }
 

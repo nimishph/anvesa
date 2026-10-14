@@ -45,6 +45,14 @@ export const COMMAND_HELP: readonly CommandHelp[] = [
   },
   {
     section: 'Get started',
+    keys: ['ui'],
+    name: 'ui',
+    summary: 'launch the interactive visual web dashboard',
+    details:
+      '  ui                        launch the visual web dashboard in browser\n                            (--port <number>, --no-open, --root <dir>)',
+  },
+  {
+    section: 'Get started',
     keys: ['where'],
     name: 'where [root|config|index|models]',
     summary: 'the project in use, and its config, index and models paths',

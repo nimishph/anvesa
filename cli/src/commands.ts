@@ -640,6 +640,17 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
     });
   },
 
+  ui: async (ctx) => {
+    const port = integerOption('port', ctx.parsed.values.port);
+    const noOpen = ctx.parsed.values['no-open'] === true;
+    const { startUiServer } = await import('../../ui/src/server.ts');
+    await startUiServer({
+      ...(port !== undefined ? { port } : {}),
+      root: root(ctx),
+      open: !noOpen,
+    });
+  },
+
   search: (ctx) =>
     withProject(ctx, { embed: true }, async ({ retriever }) => {
       const channels = ctx.parsed.values.channel;
