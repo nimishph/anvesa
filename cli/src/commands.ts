@@ -23,6 +23,7 @@ import {
   modelsDirectory,
   openProjectEmbedder,
   PROJECT_CONFIG_PATH,
+  type ProjectWatcher,
   pathScope,
   pinChannelModule,
   Retriever,
@@ -31,6 +32,7 @@ import {
   trainLanguage,
   verifyMappings,
   verifyModel,
+  type WatchEvent,
   writeProjectConfig,
 } from '@cntxt-labs/anvesa-retriever';
 import { agentTargets, applyAgentSection, renderAgentFiles } from './agent-instructions.ts';
@@ -550,6 +552,96 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       emit(ctx, { ...result, embedder, channels }, () =>
         show.renderIndex({ ...result, embedder, embedderReason, channels }),
       );
+    }),
+
+  watch: (ctx) =>
+    withProject(ctx, { embed: true }, async ({ retriever, embedderReason }) => {
+      if (!retriever.embedder) {
+        ctx.environment.stderr(
+          `note: no embedder (${embedderReason}); watching facts and graph only\n`,
+        );
+      }
+      const inScope = pathScope(ctx.parsed.values.scope, '--scope');
+      const debounceMs = integerOption('debounce', ctx.parsed.values.debounce) ?? 300;
+      const initialIndex = ctx.parsed.values['no-initial'] !== true;
+      const once = ctx.parsed.values.once === true;
+      const isJson = ctx.parsed.values.json === true;
+
+      return new Promise<void>((resolve, reject) => {
+        let watcher: ProjectWatcher | undefined;
+
+        const onEvent = (event: WatchEvent): void => {
+          if (isJson) {
+            ctx.environment.stdout(`${JSON.stringify(event)}\n`);
+            if (event.kind === 'closed') {
+              resolve();
+            }
+            return;
+          }
+
+          const now = new Date().toTimeString().split(' ')[0] ?? '';
+          switch (event.kind) {
+            case 'ready':
+              ctx.environment.stdout(
+                `anvesa watch: watching ${event.root} (debounce: ${event.debounceMs}ms)\n`,
+              );
+              break;
+            case 'change-detected': {
+              const [first, second, third] = event.paths;
+              const preview = [first, second, third].filter((p): p is string => p !== undefined);
+              const pathsList = preview.join(', ');
+              const remaining = event.paths.length - preview.length;
+              const more = remaining > 0 ? ` (+${remaining} more)` : '';
+              ctx.environment.stdout(`[${now}] change detected: ${pathsList}${more}\n`);
+              break;
+            }
+            case 'index-start':
+              if (event.trigger === 'initial') {
+                ctx.environment.stdout(`[${now}] initial index pass starting...\n`);
+              }
+              break;
+            case 'index-complete': {
+              const rep = event.report.files;
+              const summary = `+${rep.modified} modified, +${rep.added} added, -${rep.removed} removed`;
+              ctx.environment.stdout(
+                `[${now}] index up to date (${summary}) in ${Math.round(event.elapsedMs)}ms\n`,
+              );
+              break;
+            }
+            case 'index-error':
+              ctx.environment.stderr(`[${now}] error during indexing: ${event.error.message}\n`);
+              break;
+            case 'closed':
+              if (!once) {
+                ctx.environment.stdout(`anvesa watch: stopped.\n`);
+              }
+              resolve();
+              break;
+          }
+        };
+
+        watcher = retriever.watch({
+          debounceMs,
+          initialIndex,
+          ...(ctx.parsed.values.force ? { force: true } : {}),
+          ...(inScope ? { scope: inScope } : {}),
+          ...(once ? { once: true } : {}),
+          onEvent,
+        });
+
+        const onSignal = () => {
+          process.removeListener('SIGINT', onSignal);
+          process.removeListener('SIGTERM', onSignal);
+          if (watcher?.active) {
+            void watcher.close().then(resolve, reject);
+          } else {
+            resolve();
+          }
+        };
+
+        process.once('SIGINT', onSignal);
+        process.once('SIGTERM', onSignal);
+      });
     }),
 
   // Paths only: nothing is opened, so it answers even where the index or the config is broken.

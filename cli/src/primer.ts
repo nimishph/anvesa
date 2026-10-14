@@ -138,6 +138,7 @@ Anvesa stores index data in \`.anvesa/index.db\` (or fragmented databases for la
 
 ### Indexing Options
 - \`anvesa index\` — Incremental run; only processes modified or added files.
+- \`anvesa watch\` — Continuously watch and incrementally re-index on file changes.
 - \`anvesa index --force\` — Rebuilds AST outlines and cards from scratch.
 - \`anvesa index --scope <path>\` — Limit indexing to a specific subdirectory.
 - \`anvesa index --no-embed\` (alias \`--no-dense\`) — Structural AST and graph only (no embedding pass).

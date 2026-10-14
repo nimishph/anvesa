@@ -61,6 +61,14 @@ export const COMMAND_HELP: readonly CommandHelp[] = [
   },
   {
     section: 'Index',
+    keys: ['watch'],
+    name: 'watch [path]',
+    summary: 'continuously re-index on file system changes',
+    details:
+      '  watch [path]              watch for file changes and incrementally update the index\n                            (--debounce <ms>: debounce window in ms, default 300;\n                            --once: index after first change batch and exit;\n                            --no-initial: skip initial indexing pass;\n                            --no-embed or --no-dense: structure and graph only;\n                            --scope <path>: only watch files in scope;\n                            --json: stream events as NDJSON to stdout)',
+  },
+  {
+    section: 'Index',
     keys: ['fragments'],
     name: 'fragments <subcommand>',
     summary: 'keep the index in one database per fragment',

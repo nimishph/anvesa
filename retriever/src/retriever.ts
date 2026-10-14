@@ -120,6 +120,7 @@ import { PatternRunner } from './pattern-runner.ts';
 import { gateForProject, loadPolicies } from './redteam.ts';
 import { bothScopes, pathScope } from './scope.ts';
 import { type StructuralCoverage, StructuralLane } from './structural-lane.ts';
+import { type ProjectWatcher, type WatchOptions, watchProject } from './watch.ts';
 import { workspaceSource } from './workspace-source.ts';
 
 /** One rule in force, with what each trust level does about it. */
@@ -521,6 +522,13 @@ export class Retriever {
     } finally {
       this.#indexedModels = undefined;
     }
+  }
+
+  /**
+   * Watches the workspace directory for file modifications and incrementally re-indexes.
+   */
+  watch(options: WatchOptions = {}): ProjectWatcher {
+    return watchProject(this, options);
   }
 
   /**

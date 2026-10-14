@@ -45,4 +45,5 @@ export { fenceUntrusted } from './render.ts';
 export * from './retriever.ts';
 export { pathScope } from './scope.ts';
 export { type StructuralCoverage, StructuralLane } from './structural-lane.ts';
+export * from './watch.ts';
 export { workspaceSource } from './workspace-source.ts';
