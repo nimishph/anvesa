@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'bun:test';
 import type { Retriever } from '@cntxt-labs/anvesa-retriever';
-import { closeRunningUi } from '../../ui/src/server.ts';
+import { closeRunningUi } from '@cntxt-labs/anvesa-ui';
 import { createMcpServer } from './mcp.ts';
 
 describe('anvesa MCP Server & Showcase Tool', () => {

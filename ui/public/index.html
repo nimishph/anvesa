@@ -440,22 +440,27 @@
     <section id="view-status" class="view-section">
       <div class="status-monitor-container">
 
+        <div class="status-section" id="statusSourceBanner" style="display:none;">
+          <span class="badge badge-amber">DEMO DATA</span>
+          <span class="section-desc" id="statusSourceMessage">No index is connected, so this tab shows sample figures.</span>
+        </div>
+
         <!-- 4 Top Metrics -->
         <div class="telemetry-grid">
           <div class="telemetry-card">
             <div class="card-header-row">
-              <span class="card-label">Active Model</span>
+              <span class="card-label">Embedding Model</span>
               <div class="card-icon-badge">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M12 2a10 10 0 1 0 10 10H12V2z"></path>
                 </svg>
               </div>
             </div>
-            <div class="card-primary-val" id="valActiveModel">bge-base-en-v1.5</div>
-            <div class="card-secondary-desc" id="valModelDims">768 dims · mean pooling</div>
+            <div class="card-primary-val" id="valActiveModel">—</div>
+            <div class="card-secondary-desc" id="valModelDims">—</div>
             <div class="card-stats-sublist">
-              <div class="sublist-item"><span>Max Tokens:</span> <strong>512</strong></div>
-              <div class="sublist-item"><span>Hardware Runtime:</span> <strong>ONNX CPU</strong></div>
+              <div class="sublist-item"><span>Models in Index:</span> <strong id="valIndexedModels">—</strong></div>
+              <div class="sublist-item"><span>Last Run:</span> <strong id="valInterrupted">—</strong></div>
             </div>
           </div>
 
@@ -469,17 +474,17 @@
                 </svg>
               </div>
             </div>
-            <div class="card-primary-val" id="valIndexedSymbols">2,418</div>
-            <div class="card-secondary-desc" id="valIndexedFiles">148 files (4,102 calls)</div>
+            <div class="card-primary-val" id="valIndexedSymbols">—</div>
+            <div class="card-secondary-desc" id="valIndexedFiles">—</div>
             <div class="card-stats-sublist">
-              <div class="sublist-item"><span>Graph Edges:</span> <strong>5,992</strong></div>
-              <div class="sublist-item"><span>Database Size:</span> <strong>19.8 MB</strong></div>
+              <div class="sublist-item"><span>Graph Edges:</span> <strong id="valGraphEdges">—</strong></div>
+              <div class="sublist-item"><span>Imports:</span> <strong id="valImports">—</strong></div>
             </div>
           </div>
 
           <div class="telemetry-card">
             <div class="card-header-row">
-              <span class="card-label">Tree-Sitter Grammars</span>
+              <span class="card-label">Languages</span>
               <div class="card-icon-badge">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
@@ -487,40 +492,39 @@
                 </svg>
               </div>
             </div>
-            <div class="card-primary-val" id="valGrammarCount">14 Installed</div>
-            <div class="card-secondary-desc">8 Native Addons · 6 WASM</div>
+            <div class="card-primary-val" id="valLanguageCount">—</div>
+            <div class="card-secondary-desc" id="valStructuralFiles">—</div>
             <div class="card-stats-sublist">
-              <div class="sublist-item"><span>Missing Parsers:</span> <strong>0</strong></div>
-              <div class="sublist-item"><span>Offline Ready:</span> <strong>Yes</strong></div>
+              <div class="sublist-item"><span>Missing Outlines:</span> <strong id="valMissingOutlines">—</strong></div>
             </div>
           </div>
 
           <div class="telemetry-card">
             <div class="card-header-row">
-              <span class="card-label">Red-Team Gate</span>
+              <span class="card-label">Quarantine</span>
               <div class="card-icon-badge">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
                 </svg>
               </div>
             </div>
-            <div class="card-primary-val" id="valRedteamStatus" style="color:var(--accent-emerald);">Enforced</div>
-            <div class="card-secondary-desc">Prompt Screen & Fencing</div>
+            <div class="card-primary-val" id="valQuarantinedFiles">—</div>
+            <div class="card-secondary-desc">files held out of the index</div>
             <div class="card-stats-sublist">
-              <div class="sublist-item"><span>Quarantined Cards:</span> <strong>0</strong></div>
-              <div class="sublist-item"><span>Checksum Pinned:</span> <strong>100%</strong></div>
+              <div class="sublist-item"><span>Quarantined Cards:</span> <strong id="valQuarantinedCards">—</strong></div>
+              <div class="sublist-item"><span>Pinned Channels:</span> <strong id="valPinnedChannels">—</strong></div>
             </div>
           </div>
         </div>
 
-        <!-- Grammars Matrix Table -->
+        <!-- Languages Table -->
         <div class="status-section">
           <div class="section-header">
             <div>
               <div class="section-title">
-                <span>Tree-Sitter Grammar & Language Matrix</span>
+                <span>Indexed Languages</span>
               </div>
-              <div class="section-desc">Languages compiled into native binaries or downloaded as offline WebAssembly parsers.</div>
+              <div class="section-desc">Files in the index, by language.</div>
             </div>
           </div>
 
@@ -529,37 +533,43 @@
               <thead>
                 <tr>
                   <th>Language</th>
-                  <th>Parser Engine</th>
-                  <th>Parser Version</th>
-                  <th>Runtime Status</th>
+                  <th>Files</th>
                 </tr>
               </thead>
-              <tbody id="grammarsTableBody">
+              <tbody id="languagesTableBody">
                 <!-- Dynamically populated via status.js -->
               </tbody>
             </table>
           </div>
         </div>
 
-        <!-- Red-Team Security Gate Audit Panel -->
-        <div class="redteam-panel">
-          <div class="redteam-header">
-            <div class="redteam-brand">
-              <svg class="shield-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-              </svg>
-              <div>
-                <h3 style="font-size:1.125rem;font-weight:700;color:#fff;">Red-Team Safety & Prompt Injection Screening</h3>
-                <p style="font-size:0.8125rem;color:var(--text-secondary);">
-                  Every card passes an active security screen before embedding and comes back fenced as untrusted data for LLMs.
-                </p>
+        <!-- Channels Table -->
+        <div class="status-section">
+          <div class="section-header">
+            <div>
+              <div class="section-title">
+                <span>Channels</span>
               </div>
+              <div class="section-desc">What each channel holds, how it is trusted, and whether its module is pinned to a checksum.</div>
             </div>
-            <span class="badge badge-emerald">GATE STATUS: PASS</span>
           </div>
 
-          <div class="redteam-rules-grid" id="redteamRulesGrid">
-            <!-- Dynamically populated via status.js -->
+          <div class="table-wrapper">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Channel</th>
+                  <th>State</th>
+                  <th>Trust</th>
+                  <th>Cards</th>
+                  <th>Sources</th>
+                  <th>Quarantined</th>
+                </tr>
+              </thead>
+              <tbody id="channelsTableBody">
+                <!-- Dynamically populated via status.js -->
+              </tbody>
+            </table>
           </div>
         </div>
 

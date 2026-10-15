@@ -1,8 +1,37 @@
 import { describe, expect, test } from 'bun:test';
+import { createServer } from 'node:http';
+import { connect } from 'node:net';
+import { readFileSync } from 'node:fs';
+import { ASSETS } from './assets.ts';
 import { buildDashboardUrl, ensureUiRunning, startUiServer } from './server.ts';
 
 interface ApiResponse {
   readonly success: boolean;
+}
+
+/** The status of a GET whose path is sent exactly as given. */
+function rawStatus(port: number, path: string): Promise<number> {
+  return new Promise((resolveStatus, rejectStatus) => {
+    const socket = connect(port, '127.0.0.1', () => {
+      socket.write(`GET ${path} HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nConnection: close\r\n\r\n`);
+    });
+    let response = '';
+    socket.on('data', (chunk) => {
+      response += chunk.toString('latin1');
+    });
+    socket.on('end', () => resolveStatus(Number(response.split(' ')[1])));
+    socket.on('error', rejectStatus);
+  });
+}
+
+/** Holds a port, as another program would. */
+async function occupy(port: number): Promise<() => Promise<void>> {
+  const blocker = createServer();
+  await new Promise<void>((done, fail) => {
+    blocker.once('error', fail);
+    blocker.listen(port, '127.0.0.1', done);
+  });
+  return () => new Promise((done) => blocker.close(() => done()));
 }
 
 describe('anvesa-ui server', () => {
@@ -98,23 +127,74 @@ describe('anvesa-ui server', () => {
       });
       expect(resBadHost.status).toBe(403);
 
-      // Raw path traversal attempts are blocked with 403
-      const traversalStatus = await new Promise<number>((resolve) => {
-        const { get } = require('node:http');
-        get(
-          { host: '127.0.0.1', port: 3897, path: '/../package.json' },
-          (res: { statusCode: number }) => {
-            resolve(res.statusCode);
-          },
-        );
-      });
-      expect(traversalStatus).toBe(403);
+      // HTTP clients normalise `..` away, so the request line is written by hand. Bun's parser
+      // may refuse it (400) before the handler does (403); either way nothing is read.
+      for (const path of ['/../package.json', '/%2e%2e/package.json', '/js/../../package.json']) {
+        const status = await rawStatus(3897, path);
+        expect([400, 403, 404]).toContain(status);
+      }
+
+      // Only the dashboard's own files are served
+      expect(await rawStatus(3897, '/package.json')).toBe(404);
+      expect(await rawStatus(3897, '/js/app.js')).toBe(200);
 
       // Non-existent static files with extensions return 404
       const resNotFound = await fetch('http://127.0.0.1:3897/nonexistent.js');
       expect(resNotFound.status).toBe(404);
     } finally {
       await instance.close();
+    }
+  });
+
+  test('a port asked for that is taken is an error, and nothing is left running', async () => {
+    const release = await occupy(3896);
+    try {
+      await expect(startUiServer({ port: 3896, open: false })).rejects.toThrow(/port/);
+      // The failed start did not register itself, so the next call starts afresh.
+      const started = await ensureUiRunning({ port: 3895, open: false });
+      try {
+        expect(started.port).toBe(3895);
+      } finally {
+        await started.close();
+      }
+    } finally {
+      await release();
+    }
+  });
+
+  test('with no port asked for, a taken default falls back to a free port', async () => {
+    const previous = process.env.ANVESA_PORT;
+    delete process.env.ANVESA_PORT;
+    // When something else already holds the default port, that is the case under test.
+    const release = await occupy(3847).catch((err: NodeJS.ErrnoException) => {
+      if (err.code !== 'EADDRINUSE') throw err;
+      return undefined;
+    });
+    try {
+      const instance = await startUiServer({ open: false });
+      try {
+        expect(instance.port).not.toBe(3847);
+        expect(instance.port).toBeGreaterThan(0);
+        const res = await fetch(`http://127.0.0.1:${instance.port}/api/status`, {
+          headers: { 'X-Anvesa-Token': instance.token },
+        });
+        expect(res.status).toBe(200);
+      } finally {
+        await instance.close();
+      }
+    } finally {
+      await release?.();
+      if (previous !== undefined) process.env.ANVESA_PORT = previous;
+    }
+  });
+
+  test('every dashboard script parses as a module', () => {
+    // The browser scripts are outside lint and typecheck, so a syntax error would ship silently.
+    const transpiler = new Bun.Transpiler({ loader: 'js' });
+    const scripts = [...ASSETS].filter(([path]) => path.endsWith('.js'));
+    expect(scripts.length).toBeGreaterThan(0);
+    for (const [, file] of scripts) {
+      expect(() => transpiler.transformSync(readFileSync(file, 'utf8'))).not.toThrow();
     }
   });
 });

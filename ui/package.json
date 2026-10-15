@@ -9,8 +9,8 @@
     "anvesa-ui": "src/bin.ts"
   },
   "scripts": {
-    "start": "bun run src/server.ts",
-    "dev": "bun run src/server.ts"
+    "start": "bun run src/bin.ts",
+    "dev": "bun run src/bin.ts"
   },
   "devDependencies": {
     "@cntxt-labs/anvesa-core": "workspace:*",

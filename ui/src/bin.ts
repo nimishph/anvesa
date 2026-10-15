@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { toCodeLensError } from '@cntxt-labs/anvesa-core';
 import { startUiServer } from './server.ts';
 
 const args = process.argv.slice(2);
@@ -16,8 +17,13 @@ for (let i = 0; i < args.length; i++) {
   }
 }
 
-startUiServer({
-  ...(port !== undefined ? { port } : {}),
-  ...(root !== undefined ? { root } : {}),
-  open,
-});
+try {
+  await startUiServer({
+    ...(port !== undefined ? { port } : {}),
+    ...(root !== undefined ? { root } : {}),
+    open,
+  });
+} catch (err) {
+  process.stderr.write(`anvesa-ui: ${toCodeLensError(err, 'start the dashboard').message}\n`);
+  process.exit(1);
+}

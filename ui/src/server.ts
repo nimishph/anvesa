@@ -1,14 +1,14 @@
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync, statSync } from 'node:fs';
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { dirname, extname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { InvalidArgumentError, toCodeLensError } from '../../core/src/index.ts';
+import { readFileSync } from 'node:fs';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { extname, resolve } from 'node:path';
+import { InvalidArgumentError, toCodeLensError } from '@cntxt-labs/anvesa-core';
+import type { Retriever } from '@cntxt-labs/anvesa-retriever';
+import { ASSETS } from './assets.ts';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const PUBLIC_DIR = resolve(__dirname, '..', 'public');
+const DEFAULT_PORT = 3847;
 
 export interface ServerOptions {
   readonly port?: number;
@@ -27,17 +27,44 @@ interface SearchPayload {
   readonly limit?: number;
 }
 
-export interface LiveRetriever {
-  close(): Promise<void>;
-  status(): Promise<unknown>;
-  search(query: string, opts: unknown): Promise<unknown>;
-  query(wql: string, opts: unknown): Promise<unknown>;
-  callers(symbol: string): Promise<unknown>;
-  callees(symbol: string): Promise<unknown>;
-  neighbors(symbol: string): Promise<unknown>;
-  dependents(path: string): Promise<unknown>;
-  repoMap(opts: unknown): Promise<unknown>;
-  routes(opts: unknown): Promise<unknown>;
+/** What the dashboard asks of a retriever. */
+export type LiveRetriever = Pick<
+  Retriever,
+  | 'close'
+  | 'status'
+  | 'search'
+  | 'query'
+  | 'callers'
+  | 'callees'
+  | 'neighbors'
+  | 'dependents'
+  | 'repoMap'
+  | 'routes'
+>;
+
+/** The port asked for: the option, then `ANVESA_PORT`. Undefined when neither names one. */
+function requestedPort(options: ServerOptions): number | undefined {
+  if (options.port !== undefined) return options.port;
+  const fromEnv = Number(process.env.ANVESA_PORT);
+  return Number.isInteger(fromEnv) && fromEnv > 0 ? fromEnv : undefined;
+}
+
+function listen(server: Server, port: number): Promise<number> {
+  return new Promise((resolveListen, rejectListen) => {
+    const onError = (err: Error) => rejectListen(err);
+    server.once('error', onError);
+    server.listen(port, '127.0.0.1', () => {
+      server.off('error', onError);
+      resolveListen((server.address() as AddressInfo).port);
+    });
+  });
+}
+
+/** Drops keys whose value is undefined, so optional options stay absent rather than undefined. */
+function defined<T extends object>(value: T): { [K in keyof T]?: Exclude<T[K], undefined> } {
+  return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as {
+    [K in keyof T]?: Exclude<T[K], undefined>;
+  };
 }
 
 const MIME_TYPES: Readonly<Record<string, string>> = {
@@ -124,8 +151,12 @@ async function readBody<T = unknown>(req: IncomingMessage): Promise<T> {
   });
 }
 
+/**
+ * Start the dashboard on 127.0.0.1. With no port asked for, it takes 3847, or a free port when
+ * 3847 is taken; a port asked for that is taken is an error.
+ */
 export async function startUiServer(options: ServerOptions = {}) {
-  const port = options.port ?? (Number(process.env.ANVESA_PORT) || 3847);
+  const asked = requestedPort(options);
   const projectRoot = resolve(options.root ?? process.cwd());
   const shouldOpen = options.open !== false;
   const sessionToken = options.token ?? randomBytes(16).toString('hex');
@@ -133,25 +164,8 @@ export async function startUiServer(options: ServerOptions = {}) {
   let retriever: LiveRetriever | null = options.retriever ?? null;
   let ownRetriever = false;
   let retrieverLoadError: string | null = null;
-
-  if (!retriever) {
-    try {
-      const { loadProjectConfig, Retriever } = await import('../../retriever/src/index.ts');
-      try {
-        const config = await loadProjectConfig(projectRoot);
-        const opened = await Retriever.open({
-          root: projectRoot,
-          config,
-        });
-        retriever = opened as unknown as LiveRetriever;
-        ownRetriever = true;
-      } catch (err) {
-        retrieverLoadError = err instanceof Error ? err.message : String(err);
-      }
-    } catch {
-      retrieverLoadError = 'Retriever package not linked yet or running standalone';
-    }
-  }
+  // Set once listening; no request arrives before then.
+  let port = 0;
 
   const server = createServer(async (req, res) => {
     // 1. Host header validation to prevent DNS rebinding attacks
@@ -211,12 +225,15 @@ export async function startUiServer(options: ServerOptions = {}) {
           const query = body.query ?? '';
           if (live && query) {
             try {
-              const result = await live.search(query, {
-                wql: body.wql,
-                weights: body.weights,
-                scope: body.scope,
-                limit: body.limit ?? 20,
-              });
+              const result = await live.search(
+                query,
+                defined({
+                  wql: body.wql,
+                  weights: body.weights,
+                  scope: body.scope,
+                  limit: body.limit ?? 20,
+                }),
+              );
               return sendJson(res, { success: true, live: true, result });
             } catch (err) {
               const error = toCodeLensError(err, 'search');
@@ -241,10 +258,10 @@ export async function startUiServer(options: ServerOptions = {}) {
           const wql = body.wql ?? '';
           if (live && wql) {
             try {
-              const result = await live.query(wql, {
-                scope: body.scope,
-                limit: body.limit ?? 20,
-              });
+              const result = await live.query(
+                wql,
+                defined({ scope: body.scope, limit: body.limit ?? 20 }),
+              );
               return sendJson(res, { success: true, live: true, result });
             } catch (err) {
               const error = toCodeLensError(err, 'query wql');
@@ -345,10 +362,9 @@ export async function startUiServer(options: ServerOptions = {}) {
           const scope = parsedUrl.searchParams.get('scope') ?? undefined;
           if (live) {
             try {
-              const repomap = await live.repoMap({
-                budget: budget ? Number(budget) : undefined,
-                scope,
-              });
+              const repomap = await live.repoMap(
+                defined({ budget: budget ? Number(budget) : undefined, scope }),
+              );
               return sendJson(res, { success: true, live: true, repomap });
             } catch (err) {
               const error = toCodeLensError(err, 'get repomap');
@@ -368,7 +384,7 @@ export async function startUiServer(options: ServerOptions = {}) {
           const routePath = parsedUrl.searchParams.get('path') ?? undefined;
           if (live) {
             try {
-              const routes = await live.routes({ method, path: routePath });
+              const routes = await live.routes(defined({ method, path: routePath }));
               return sendJson(res, { success: true, live: true, routes });
             } catch (err) {
               const error = toCodeLensError(err, 'get routes');
@@ -391,43 +407,22 @@ export async function startUiServer(options: ServerOptions = {}) {
     }
 
     // --- Static File Serving ---
-    const rawUrl = req.url ?? '';
-    let decodedUrl = '';
-    try {
-      decodedUrl = decodeURIComponent(rawUrl);
-    } catch {
-      // Malformed URI is treated as an empty string for traversal checks
-      decodedUrl = '';
-    }
-
-    if (rawUrl.includes('..') || pathname.includes('..') || decodedUrl.includes('..')) {
+    // Only files in the asset table are served, so no path can reach anything else on disk.
+    if ((req.url ?? '').includes('..')) {
       sendText(res, 'Forbidden: Path traversal not allowed', 403);
       return;
     }
-
-    const relativePath = pathname === '/' ? 'index.html' : pathname.replace(/^\//, '');
-    const resolvedPath = resolve(PUBLIC_DIR, relativePath);
-    if (!resolvedPath.startsWith(PUBLIC_DIR)) {
-      sendText(res, 'Forbidden: Path traversal not allowed', 403);
+    const asset =
+      ASSETS.get(pathname === '/' ? '/index.html' : pathname) ??
+      (extname(pathname) ? undefined : ASSETS.get('/index.html'));
+    if (!asset) {
+      sendText(res, 'File not found', 404);
       return;
     }
-
-    let filePath = resolvedPath;
-    if (!existsSync(filePath) || statSync(filePath).isDirectory()) {
-      if (!extname(pathname)) {
-        filePath = join(PUBLIC_DIR, 'index.html');
-      } else {
-        sendText(res, 'File not found', 404);
-        return;
-      }
-    }
-
     try {
-      const ext = extname(filePath);
-      const mime = MIME_TYPES[ext] ?? 'application/octet-stream';
-      const content = readFileSync(filePath);
+      const content = readFileSync(asset);
       res.writeHead(200, {
-        'Content-Type': mime,
+        'Content-Type': MIME_TYPES[extname(asset)] ?? 'application/octet-stream',
         'Cache-Control': 'no-cache',
       });
       res.end(content);
@@ -436,12 +431,34 @@ export async function startUiServer(options: ServerOptions = {}) {
     }
   });
 
+  try {
+    port = await listen(server, asked ?? DEFAULT_PORT);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw err;
+    if (asked !== undefined) {
+      throw new InvalidArgumentError('port', 'a free port', asked, { cause: err });
+    }
+    port = await listen(server, 0);
+  }
+
+  // Opened only once the port is held, so a failed start leaves nothing open.
+  if (!retriever) {
+    try {
+      const { loadProjectConfig, Retriever } = await import('@cntxt-labs/anvesa-retriever');
+      const config = await loadProjectConfig(projectRoot);
+      retriever = await Retriever.open({ root: projectRoot, config });
+      ownRetriever = true;
+    } catch (err) {
+      retrieverLoadError = toCodeLensError(err, 'open the index').message;
+    }
+  }
+
   const activeInstance = {
     port,
     token: sessionToken,
     root: projectRoot,
     close: async () => {
-      server.close();
+      await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
       if (ownRetriever && retriever) {
         await retriever.close();
       }
@@ -452,30 +469,22 @@ export async function startUiServer(options: ServerOptions = {}) {
   };
   runningInstance = activeInstance;
 
-  await new Promise<void>((resolvePromise, rejectPromise) => {
-    server.once('error', (err: NodeJS.ErrnoException) => {
-      rejectPromise(err);
-    });
-    server.listen(port, '127.0.0.1', () => {
-      const rawUrl = `http://127.0.0.1:${port}`;
-      const displayUrl = buildDashboardUrl(rawUrl, {
-        token: sessionToken,
-        ...options.queryParams,
-      });
-      process.stdout.write(
-        `\n  \x1b[38;2;99;102;241m▲\x1b[0m \x1b[1m\x1b[38;2;255;255;255manvesa ui\x1b[0m — interactive web dashboard\n`,
-      );
-      process.stdout.write(`  \x1b[90mURL:\x1b[0m     \x1b[36m${displayUrl}\x1b[0m\n`);
-      process.stdout.write(`  \x1b[90mRoot:\x1b[0m    ${projectRoot}\n`);
-      process.stdout.write(
-        `  \x1b[90mStatus:\x1b[0m  ${retriever ? '\x1b[32mlive index connected\x1b[0m' : '\x1b[33mpreview mode (ready to index)\x1b[0m'}\n\n`,
-      );
-      resolvePromise();
-      if (shouldOpen) {
-        openBrowser(displayUrl);
-      }
-    });
+  const displayUrl = buildDashboardUrl(`http://127.0.0.1:${port}`, {
+    token: sessionToken,
+    ...options.queryParams,
   });
+  // stderr: under MCP, stdout carries the protocol.
+  process.stderr.write(
+    `\n  \x1b[38;2;99;102;241m▲\x1b[0m \x1b[1m\x1b[38;2;255;255;255manvesa ui\x1b[0m — interactive web dashboard\n`,
+  );
+  process.stderr.write(`  \x1b[90mURL:\x1b[0m     \x1b[36m${displayUrl}\x1b[0m\n`);
+  process.stderr.write(`  \x1b[90mRoot:\x1b[0m    ${projectRoot}\n`);
+  process.stderr.write(
+    `  \x1b[90mStatus:\x1b[0m  ${retriever ? '\x1b[32mlive index connected\x1b[0m' : `\x1b[33mno index (${retrieverLoadError ?? 'not opened'})\x1b[0m`}\n\n`,
+  );
+  if (shouldOpen) {
+    openBrowser(displayUrl);
+  }
 
   return {
     server,
@@ -524,67 +533,21 @@ export async function ensureUiRunning(
     };
   }
 
-  try {
-    const instance = await startUiServer({
-      ...options,
-      open: false,
-    });
-    const baseUrl = `http://127.0.0.1:${instance.port}`;
-    const url = buildDashboardUrl(baseUrl, {
-      token: instance.token,
-      ...options.queryParams,
-    });
-    if (options.open !== false) {
-      openBrowser(url);
-    }
-    return {
-      port: instance.port,
-      token: instance.token,
-      url,
-      close: instance.close,
-    };
-  } catch (err: unknown) {
-    const isAddrInUse = (err as { code?: string })?.code === 'EADDRINUSE';
-    if (isAddrInUse) {
-      const port = options.port ?? (Number(process.env.ANVESA_PORT) || 3847);
-      const baseUrl = `http://127.0.0.1:${port}`;
-      const url = buildDashboardUrl(baseUrl, options.queryParams);
-      if (options.open !== false) {
-        openBrowser(url);
-      }
-      return {
-        port,
-        token: '',
-        url,
-        close: async () => {
-          // Reused instance is managed by its original creator
-        },
-      };
-    }
-    throw err;
-  }
-}
-
-// Direct execution from CLI: bun run src/server.ts
-if (import.meta.main || process.argv[1] === __filename) {
-  const args = process.argv.slice(2);
-  let port: number | undefined;
-  let root: string | undefined;
-  let open = true;
-
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--port' && args[i + 1]) {
-      port = Number(args[++i]);
-    } else if (args[i] === '--root' && args[i + 1]) {
-      root = args[++i];
-    } else if (args[i] === '--no-open') {
-      open = false;
-    }
-  }
-
-  startUiServer({
-    ...(port !== undefined ? { port } : {}),
-    ...(root !== undefined ? { root } : {}),
-    open,
+  const instance = await startUiServer({
+    ...options,
+    open: false,
   });
+  const url = buildDashboardUrl(`http://127.0.0.1:${instance.port}`, {
+    token: instance.token,
+    ...options.queryParams,
+  });
+  if (options.open !== false) {
+    openBrowser(url);
+  }
+  return {
+    port: instance.port,
+    token: instance.token,
+    url,
+    close: instance.close,
+  };
 }

@@ -663,7 +663,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       ...(routes ? { routes: 'true' } : {}),
     };
 
-    const { startUiServer } = await import('../../ui/src/server.ts');
+    const { startUiServer } = await import('@cntxt-labs/anvesa-ui');
     await startUiServer({
       ...(port !== undefined ? { port } : {}),
       root: root(ctx),

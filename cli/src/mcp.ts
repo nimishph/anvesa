@@ -413,40 +413,33 @@ export function createMcpServer(retriever: Retriever): McpServer {
           .describe('Whether to automatically launch browser window (default: false).'),
       },
     },
-    async ({ query, mode, wql, scope, symbol, view, repomap, routes, open }) => {
-      const queryParams: Record<string, string> = {
-        ...(query ? { q: query } : {}),
-        ...(mode ? { mode } : {}),
-        ...(wql ? { wql } : {}),
-        ...(scope ? { scope } : {}),
-        ...(symbol ? { symbol } : {}),
-        ...(view ? { view } : {}),
-        ...(repomap ? { repomap: 'true' } : {}),
-        ...(routes ? { routes: 'true' } : {}),
-      };
+    ({ query, mode, wql, scope, symbol, view, repomap, routes, open }) =>
+      respond(async () => {
+        const queryParams: Record<string, string> = {
+          ...(query ? { q: query } : {}),
+          ...(mode ? { mode } : {}),
+          ...(wql ? { wql } : {}),
+          ...(scope ? { scope } : {}),
+          ...(symbol ? { symbol } : {}),
+          ...(view ? { view } : {}),
+          ...(repomap ? { repomap: 'true' } : {}),
+          ...(routes ? { routes: 'true' } : {}),
+        };
 
-      const { ensureUiRunning } = await import('../../ui/src/server.ts');
-      const { url } = await ensureUiRunning({
-        root: retriever.root,
-        retriever: retriever as unknown as import('../../ui/src/server.ts').LiveRetriever,
-        queryParams,
-        open: open ?? false,
-      });
+        const { ensureUiRunning } = await import('@cntxt-labs/anvesa-ui');
+        const { url } = await ensureUiRunning({
+          root: retriever.root,
+          retriever,
+          queryParams,
+          open: open ?? false,
+        });
 
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: toJson({
-              status: 'opened',
-              url,
-              view:
-                view ?? (symbol || repomap || routes ? 'graph' : wql && !query ? 'wql' : 'search'),
-            }),
-          },
-        ],
-      };
-    },
+        return {
+          status: 'opened',
+          url,
+          view: view ?? (symbol || repomap || routes ? 'graph' : wql && !query ? 'wql' : 'search'),
+        };
+      }),
   );
 
   return server;

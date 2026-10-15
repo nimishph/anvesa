@@ -334,39 +334,4 @@ window.ANVESA_MOCK = {
       framework: 'Built-in HTTP',
     },
   ],
-
-  grammars: [
-    { language: 'typescript', engine: 'Native Addon', version: '0.23.2', status: 'Ready' },
-    { language: 'javascript', engine: 'Native Addon', version: '0.25.0', status: 'Ready' },
-    { language: 'tsx', engine: 'Native Addon', version: '0.23.2', status: 'Ready' },
-    { language: 'python', engine: 'Native Addon', version: '0.21.0', status: 'Ready' },
-    { language: 'rust', engine: 'Native Addon', version: '0.21.2', status: 'Ready' },
-    { language: 'go', engine: 'Native Addon', version: '0.25.0', status: 'Ready' },
-    { language: 'c-sharp', engine: 'WASM Grammar', version: '0.23.5', status: 'Ready' },
-    { language: 'java', engine: 'WASM Grammar', version: '0.21.0', status: 'Ready' },
-    { language: 'ruby', engine: 'WASM Grammar', version: '0.20.0', status: 'Ready' },
-  ],
-
-  redteamPolicies: [
-    {
-      name: 'Prompt Injection Screen',
-      status: 'Active (Strict)',
-      desc: 'Prevents adversarial text injection from altering agent control flow before indexing.',
-    },
-    {
-      name: 'Secret & Credential Mask',
-      status: 'Active',
-      desc: 'Auto-detects API tokens, RSA keys, and secrets to fence untrusted values.',
-    },
-    {
-      name: 'Untrusted Card Fencing',
-      status: 'Active (Mandatory)',
-      desc: 'Guarantees any retrieved text passed to an AI model is fenced within safe delimiters.',
-    },
-    {
-      name: 'Module Checksum Verification',
-      status: 'Enforced',
-      desc: 'Requires SHA-256 validation for any custom dense channel or syntax module.',
-    },
-  ],
 };

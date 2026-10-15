@@ -2,6 +2,93 @@
  * ANVESA UI — Search Studio Controller
  */
 
+export function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function detectLanguage(path, cardLang) {
+  if (cardLang && typeof cardLang === 'string') return cardLang;
+  if (!path) return 'Text';
+  const ext = path.split('.').pop()?.toLowerCase();
+  switch (ext) {
+    case 'ts':
+    case 'tsx':
+    case 'mts':
+    case 'cts':
+      return 'TypeScript';
+    case 'js':
+    case 'jsx':
+    case 'mjs':
+    case 'cjs':
+      return 'JavaScript';
+    case 'rs':
+      return 'Rust';
+    case 'py':
+      return 'Python';
+    case 'go':
+      return 'Go';
+    case 'json':
+      return 'JSON';
+    case 'md':
+      return 'Markdown';
+    case 'html':
+      return 'HTML';
+    case 'css':
+      return 'CSS';
+    default:
+      return ext ? ext.toUpperCase() : 'Text';
+  }
+}
+
+function extractDocSummary(text) {
+  if (!text) return '';
+  const match = text.match(/\/\*\*[\s\S]*?\*\//);
+  if (match) {
+    const cleaned = match[0].replace(/^\/\*\*|\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim();
+    return cleaned.split('\n')[0]?.trim() || '';
+  }
+  const lineComment = text.match(/^\s*\/\/\s*(.+)$/m);
+  if (lineComment) return lineComment[1]?.trim() || '';
+  return '';
+}
+
+function normalizeHit(hit) {
+  const name = hit.title || hit.name || 'unnamed';
+  const lineStr =
+    hit.lines ||
+    (hit.line !== undefined
+      ? hit.endLine !== undefined
+        ? `${hit.line}-${hit.endLine}`
+        : `${hit.line}`
+      : '');
+  const container = hit.container || hit.card?.attrs?.container || '';
+  const docSummary = hit.docSummary || extractDocSummary(hit.card?.text) || '';
+  const code = hit.code || hit.card?.text || '// No preview available';
+  const lanes = hit.foundBy
+    ? hit.foundBy.map((c) => `${c.lane}#${c.rank}`)
+    : hit.lanes || ['dense:symbols'];
+  const language = hit.language || detectLanguage(hit.path, hit.card?.attrs?.lang);
+
+  return {
+    name,
+    container,
+    path: hit.path || '',
+    lines: lineStr,
+    docSummary,
+    code,
+    lanes,
+    language,
+    score: hit.score,
+    bestScore: hit.bestScore,
+  };
+}
+
 export function initSearchStudio(state, api) {
   const searchInput = document.getElementById('searchQueryInput');
   const searchModeSelect = document.getElementById('searchModeSelect');
@@ -133,93 +220,6 @@ export function initSearchStudio(state, api) {
       },
     };
 
-export function escapeHtml(str) {
-  if (str === null || str === undefined) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-function detectLanguage(path, cardLang) {
-  if (cardLang && typeof cardLang === 'string') return cardLang;
-  if (!path) return 'Text';
-  const ext = path.split('.').pop()?.toLowerCase();
-  switch (ext) {
-    case 'ts':
-    case 'tsx':
-    case 'mts':
-    case 'cts':
-      return 'TypeScript';
-    case 'js':
-    case 'jsx':
-    case 'mjs':
-    case 'cjs':
-      return 'JavaScript';
-    case 'rs':
-      return 'Rust';
-    case 'py':
-      return 'Python';
-    case 'go':
-      return 'Go';
-    case 'json':
-      return 'JSON';
-    case 'md':
-      return 'Markdown';
-    case 'html':
-      return 'HTML';
-    case 'css':
-      return 'CSS';
-    default:
-      return ext ? ext.toUpperCase() : 'Text';
-  }
-}
-
-function extractDocSummary(text) {
-  if (!text) return '';
-  const match = text.match(/\/\*\*[\s\S]*?\*\//);
-  if (match) {
-    const cleaned = match[0].replace(/^\/\*\*|\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim();
-    return cleaned.split('\n')[0]?.trim() || '';
-  }
-  const lineComment = text.match(/^\s*\/\/\s*(.+)$/m);
-  if (lineComment) return lineComment[1]?.trim() || '';
-  return '';
-}
-
-function normalizeHit(hit) {
-  const name = hit.title || hit.name || 'unnamed';
-  const lineStr =
-    hit.lines ||
-    (hit.line !== undefined
-      ? hit.endLine !== undefined
-        ? `${hit.line}-${hit.endLine}`
-        : `${hit.line}`
-      : '');
-  const container = hit.container || hit.card?.attrs?.container || '';
-  const docSummary = hit.docSummary || extractDocSummary(hit.card?.text) || '';
-  const code = hit.code || hit.card?.text || '// No preview available';
-  const lanes = hit.foundBy
-    ? hit.foundBy.map((c) => `${c.lane}#${c.rank}`)
-    : hit.lanes || ['dense:symbols'];
-  const language = hit.language || detectLanguage(hit.path, hit.card?.attrs?.lang);
-
-  return {
-    name,
-    container,
-    path: hit.path || '',
-    lines: lineStr,
-    docSummary,
-    code,
-    lanes,
-    language,
-    score: hit.score,
-    bestScore: hit.bestScore,
-  };
-}
-
     const startTime = performance.now();
     try {
       const resp = await api.search(payload);
@@ -237,11 +237,12 @@ function normalizeHit(hit) {
             h.docSummary.toLowerCase().includes(query.toLowerCase()) ||
             h.path.toLowerCase().includes(query.toLowerCase()),
         );
-        renderResults(filtered.length ? filtered : hits, elapsed, true);
+        // Say why the index did not answer, so sample results are not taken for real ones.
+        renderResults(filtered.length ? filtered : hits, elapsed, true, resp?.error);
       }
-    } catch {
+    } catch (err) {
       const hits = window.ANVESA_MOCK?.searchResults || [];
-      renderResults(hits, 12.4, true);
+      renderResults(hits, 12.4, true, String(err));
     }
   }
 
@@ -250,13 +251,13 @@ function normalizeHit(hit) {
     renderResults(hits, 8.2, true);
   }
 
-  function renderResults(rawHits, elapsedMs, isDemo) {
+  function renderResults(rawHits, elapsedMs, isDemo, reason) {
     if (!resultsContainer) return;
 
     const hits = (rawHits || []).map(normalizeHit);
 
     if (resultsMetaText) {
-      resultsMetaText.innerHTML = `Found <strong>${hits.length}</strong> results in <strong>${escapeHtml(elapsedMs)}ms</strong> · Reciprocal Rank Fusion (k=60) ${isDemo ? '<span class="badge badge-amber" style="margin-left:8px;">Demo Data</span>' : '<span class="badge badge-emerald" style="margin-left:8px;">Live Index</span>'}`;
+      resultsMetaText.innerHTML = `Found <strong>${hits.length}</strong> results in <strong>${escapeHtml(elapsedMs)}ms</strong> · Reciprocal Rank Fusion (k=60) ${isDemo ? `<span class="badge badge-amber" style="margin-left:8px;">Demo Data</span>${reason ? ` · ${escapeHtml(reason)}` : ''}` : '<span class="badge badge-emerald" style="margin-left:8px;">Live Index</span>'}`;
     }
 
     if (hits.length === 0) {

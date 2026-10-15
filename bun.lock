@@ -20,6 +20,7 @@
       "devDependencies": {
         "@cntxt-labs/anvesa-core": "workspace:*",
         "@cntxt-labs/anvesa-retriever": "workspace:*",
+        "@cntxt-labs/anvesa-ui": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.30.0",
         "tree-sitter-c-sharp": "^0.23.5",
         "tree-sitter-go": "^0.25.0",
@@ -156,7 +157,7 @@
       "bin": {
         "anvesa-ui": "src/bin.ts",
       },
-      "dependencies": {
+      "devDependencies": {
         "@cntxt-labs/anvesa-core": "workspace:*",
         "@cntxt-labs/anvesa-retriever": "workspace:*",
       },

@@ -1,79 +1,111 @@
 /**
- * ANVESA UI — System Health, Grammars, Red-Team & WQL Playground Controller
+ * ANVESA UI — Index Status & WQL Playground Controller
  */
 
+import { escapeHtml } from './search.js';
+
 export function initStatusAndWql(state, api) {
-  // Telemetry elements
-  const valActiveModel = document.getElementById('valActiveModel');
-  const valModelDims = document.getElementById('valModelDims');
-  const valIndexedSymbols = document.getElementById('valIndexedSymbols');
-  const valIndexedFiles = document.getElementById('valIndexedFiles');
-  const valGrammarCount = document.getElementById('valGrammarCount');
-  const valRedteamStatus = document.getElementById('valRedteamStatus');
-  const grammarsTableBody = document.getElementById('grammarsTableBody');
-  const redteamRulesGrid = document.getElementById('redteamRulesGrid');
+  const byId = (id) => document.getElementById(id);
+  const setText = (id, text) => {
+    const el = byId(id);
+    if (el) el.textContent = text;
+  };
+  const count = (n) => (typeof n === 'number' ? n.toLocaleString() : '—');
 
   // WQL Playground elements
-  const wqlQueryInput = document.getElementById('wqlPlaygroundInput');
-  const btnRunWql = document.getElementById('btnRunWql');
-  const wqlAstPreview = document.getElementById('wqlAstPreview');
+  const wqlQueryInput = byId('wqlPlaygroundInput');
+  const btnRunWql = byId('btnRunWql');
+  const wqlAstPreview = byId('wqlAstPreview');
 
   async function loadSystemHealth() {
     let statusData = null;
+    let message = '';
     try {
       const resp = await api.getStatus();
-      if (resp && resp.success && resp.status) {
+      if (resp?.success && resp.live && resp.status) {
         statusData = resp.status;
+      } else {
+        message = resp?.error || resp?.message || '';
       }
-    } catch {}
-
-    if (!statusData) {
-      statusData = window.ANVESA_MOCK?.status;
+    } catch (err) {
+      message = String(err);
     }
 
-    // Populate Top Telemetry Metrics
-    if (valActiveModel) valActiveModel.textContent = statusData?.embedder?.id || 'bge-base-en-v1.5';
-    if (valModelDims)
-      valModelDims.textContent = `${statusData?.embedder?.dimensions || 768} dims · ${statusData?.embedder?.pooling || 'mean'} pooling`;
-    if (valIndexedSymbols)
-      valIndexedSymbols.textContent = Number(statusData?.index?.symbols || 2418).toLocaleString();
-    if (valIndexedFiles)
-      valIndexedFiles.textContent = `${statusData?.index?.files || 148} files (${statusData?.index?.calls || 4102} calls)`;
-    if (valGrammarCount) valGrammarCount.textContent = '14 Installed';
-    if (valRedteamStatus) valRedteamStatus.textContent = 'Enforced';
+    // Sample figures are shown only when no index answered, and the tab says so.
+    const live = statusData !== null;
+    if (!live) statusData = window.ANVESA_MOCK?.status ?? {};
+    const banner = byId('statusSourceBanner');
+    // `.status-section` sets `display`, which would override the `hidden` attribute.
+    if (banner) banner.style.display = live ? 'none' : '';
+    if (!live) {
+      setText(
+        'statusSourceMessage',
+        `No index is connected, so this tab shows sample figures.${message ? ` (${message})` : ''}`,
+      );
+    }
 
-    // Populate Grammars Table
-    if (grammarsTableBody) {
-      const grammars = window.ANVESA_MOCK?.grammars || [];
-      grammarsTableBody.innerHTML = grammars
-        .map((g) => {
-          const isNative = g.engine.includes('Native');
-          return `
+    const index = statusData.index ?? {};
+    const channels = Array.isArray(statusData.channels) ? statusData.channels : [];
+    const languages = Array.isArray(index.byLanguage) ? index.byLanguage : [];
+    const models = Array.isArray(statusData.indexedModels) ? statusData.indexedModels : [];
+    const structural = statusData.structural ?? {};
+    const missing = Array.isArray(structural.missing) ? structural.missing.length : undefined;
+
+    setText('valActiveModel', statusData.embedder?.id ?? 'none loaded');
+    setText(
+      'valModelDims',
+      statusData.embedder ? `${count(statusData.embedder.dimensions)} dimensions` : 'structural search only',
+    );
+    setText('valIndexedModels', count(models.length));
+    setText('valInterrupted', statusData.interrupted ? 'interrupted' : 'complete');
+
+    setText('valIndexedSymbols', count(index.symbols));
+    setText('valIndexedFiles', `${count(index.files)} files (${count(index.calls)} calls)`);
+    setText('valGraphEdges', count(index.edges));
+    setText('valImports', count(index.imports));
+
+    setText('valLanguageCount', count(languages.length));
+    setText('valStructuralFiles', `${count(structural.files)} files with outlines`);
+    setText('valMissingOutlines', count(missing));
+
+    setText('valQuarantinedFiles', count(index.quarantinedFiles ?? statusData.quarantinedFiles));
+    setText(
+      'valQuarantinedCards',
+      count(channels.reduce((sum, c) => sum + (Number(c.quarantined) || 0), 0)),
+    );
+    setText('valPinnedChannels', `${count(channels.filter((c) => c.pinned).length)} of ${count(channels.length)}`);
+
+    const languagesBody = byId('languagesTableBody');
+    if (languagesBody) {
+      languagesBody.innerHTML = languages
+        .map(
+          (l) => `
           <tr>
-            <td style="font-weight:600;color:#fff;">${g.language}</td>
-            <td><span class="badge ${isNative ? 'badge-indigo' : 'badge-cyan'}">${g.engine}</span></td>
-            <td>v${g.version}</td>
-            <td><span class="badge badge-emerald">● ${g.status}</span></td>
-          </tr>
-        `;
-        })
+            <td style="font-weight:600;color:#fff;">${escapeHtml(l.language)}</td>
+            <td>${escapeHtml(count(l.files))}</td>
+          </tr>`,
+        )
         .join('');
     }
 
-    // Populate Red-Team Security Gate Rules
-    if (redteamRulesGrid) {
-      const policies = window.ANVESA_MOCK?.redteamPolicies || [];
-      redteamRulesGrid.innerHTML = policies
-        .map((p) => {
+    const channelsBody = byId('channelsTableBody');
+    if (channelsBody) {
+      channelsBody.innerHTML = channels
+        .map((c) => {
+          const state = c.problem
+            ? `<span class="badge badge-amber" title="${escapeHtml(c.problem)}">not loaded</span>`
+            : c.enabled === false
+              ? '<span class="badge badge-indigo">disabled</span>'
+              : '<span class="badge badge-emerald">enabled</span>';
           return `
-          <div class="rule-box">
-            <div class="rule-name">
-              <span>${p.name}</span>
-              <span class="badge badge-emerald">${p.status}</span>
-            </div>
-            <div class="rule-desc">${p.desc}</div>
-          </div>
-        `;
+          <tr>
+            <td style="font-weight:600;color:#fff;">${escapeHtml(c.name)}${c.pinned ? ' <span class="badge badge-cyan">pinned</span>' : ''}</td>
+            <td>${state}</td>
+            <td>${escapeHtml(c.trust ?? '—')}</td>
+            <td>${escapeHtml(count(c.cards))}</td>
+            <td>${escapeHtml(count(c.sources))}</td>
+            <td>${escapeHtml(count(c.quarantined))}</td>
+          </tr>`;
         })
         .join('');
     }
@@ -101,18 +133,29 @@ export function initStatusAndWql(state, api) {
       wqlAstPreview.textContent = 'Evaluating AST query against workspace Tree-Sitter outline...';
     }
 
+    let failure = '';
     try {
       const resp = await api.queryWql({ wql });
-      if (resp && resp.success && resp.result) {
+      if (resp?.live && resp.result) {
         wqlAstPreview.textContent = JSON.stringify(resp.result, null, 2);
         return;
       }
-    } catch {}
+      failure = resp?.error ?? '';
+    } catch (err) {
+      failure = String(err);
+    }
+
+    // A live index rejected the query: show why, rather than a sample that looks like an answer.
+    if (failure) {
+      wqlAstPreview.textContent = `Query failed: ${failure}`;
+      return;
+    }
 
     // Simulated AST matching visualization
     setTimeout(() => {
       if (!wqlAstPreview) return;
       const sampleAst = {
+        note: 'Sample output: no index is connected.',
         query: wql,
         parsedPredicate: {
           tag: wql.includes('class') ? 'class' : 'function',
