@@ -683,10 +683,15 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         ...scopeOption(ctx),
       });
       const elapsed = performance.now() - startedAt;
+      const searchMode: 'fused' | 'semantic' | 'structural' = exclude?.includes('structural')
+        ? 'semantic'
+        : ctx.parsed.values.wql && !query
+          ? 'structural'
+          : 'fused';
       getGlobalTelemetry().record({
         type: 'search',
         name: 'search',
-        searchMode: 'fused',
+        searchMode,
         durationMsBucket: durationBucket(elapsed),
         resultCountBucket: countBucket(page.items.length),
         ...(retriever.embedder?.info.id ? { modelId: retriever.embedder.info.id } : {}),
@@ -707,6 +712,16 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         ...pageRequest(ctx),
         ...scopeOption(ctx),
       });
+      const elapsed = performance.now() - startedAt;
+      getGlobalTelemetry().record({
+        type: 'search',
+        name: 'retrieve',
+        searchMode: 'semantic',
+        durationMsBucket: durationBucket(elapsed),
+        resultCountBucket: countBucket(page.items.length),
+        ...(retriever.embedder?.info.id ? { modelId: retriever.embedder.info.id } : {}),
+        hasScope: Boolean(ctx.parsed.values.scope),
+      });
       const facts = await searchFacts(ctx, retriever, query, startedAt);
       emitResults(ctx, page, facts, (options) => show.renderRetrieved(page, options));
     }),
@@ -722,6 +737,16 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         ...pageRequest(ctx),
         ...(semantic ? { semantic } : {}),
         ...scopeOption(ctx),
+      });
+      const elapsed = performance.now() - startedAt;
+      getGlobalTelemetry().record({
+        type: 'search',
+        name: 'query',
+        searchMode: semantic ? 'fused' : 'structural',
+        durationMsBucket: durationBucket(elapsed),
+        resultCountBucket: countBucket(page.items.length),
+        hasWqlFilter: true,
+        hasScope: Boolean(ctx.parsed.values.scope),
       });
       const facts = await searchFacts(
         ctx,

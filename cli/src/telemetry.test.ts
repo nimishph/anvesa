@@ -39,8 +39,10 @@ describe('cli telemetry collector & transport', () => {
       expect(isTelemetryPermitted({ env: { ANVESA_TELEMETRY: 'false' } })).toBe(false);
     });
 
-    it('refuses when DO_NOT_TRACK=1 is set', () => {
+    it('refuses when DO_NOT_TRACK=1 or true is set', () => {
       expect(isTelemetryPermitted({ env: { DO_NOT_TRACK: '1' } })).toBe(false);
+      expect(isTelemetryPermitted({ env: { DO_NOT_TRACK: 'true' } })).toBe(false);
+      expect(isTelemetryPermitted({ env: { DO_NOT_TRACK: 'TRUE' } })).toBe(false);
     });
 
     it('refuses when ANVESA_NO_NETWORK=1 is set', () => {
@@ -104,38 +106,72 @@ describe('cli telemetry collector & transport', () => {
       expect(received?.events[0]?.type).toBe('search');
       expect(received?.events[0]?.durationMsBucket).toBe('10-50');
       expect(received?.events[0]?.resultCountBucket).toBe('6-20');
+      await collector.close();
     });
 
-    it('writes to local logFile when configured', async () => {
+    it('writes to local logFile when configured via environment variable', async () => {
       const tempLog = join(process.cwd(), '.temp_telemetry_test.log');
       try {
         const collector = new ActiveTelemetryCollector({
-          config: {
-            telemetry: { logFile: tempLog },
-            model: undefined,
-            channels: {},
-            fusionK: undefined,
-            fragments: false,
-          },
-          env: {},
+          env: { ANVESA_TELEMETRY_LOG_FILE: tempLog },
         });
 
         collector.record({
-          type: 'grammar_extract',
-          name: 'inspectTopology',
-          language: 'typescript',
-          nodeCountBucket: countBucket(350),
+          type: 'mcp_tool_call',
+          name: 'callers',
+          durationMsBucket: '<10',
         });
 
         await collector.close();
 
         const content = readFileSync(tempLog, 'utf8');
-        expect(content).toContain('grammar_extract');
-        expect(content).toContain('typescript');
+        expect(content).toContain('mcp_tool_call');
+        expect(content).toContain('callers');
       } finally {
         if (existsSync(tempLog)) {
           unlinkSync(tempLog);
         }
+      }
+    });
+
+    it('delivers payload to HTTP endpoint with zero paths, queries, or source code', async () => {
+      let postedUrl: string | undefined;
+      let postedBody: TelemetryPayload | undefined;
+      const originalFetch = globalThis.fetch;
+      try {
+        globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+          postedUrl = String(url);
+          postedBody = JSON.parse(String(init?.body)) as TelemetryPayload;
+          return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        }) as typeof fetch;
+
+        const collector = new ActiveTelemetryCollector({
+          env: { ANVESA_TELEMETRY_ENDPOINT: 'https://telemetry.anvesa.internal/v1/events' },
+        });
+
+        collector.record({
+          type: 'mcp_tool_call',
+          name: 'callers',
+          durationMsBucket: '10-50',
+        });
+
+        await collector.close();
+
+        expect(postedUrl).toBe('https://telemetry.anvesa.internal/v1/events');
+        expect(postedBody).toBeDefined();
+        expect(postedBody?.schemaVersion).toBe('1.0.0');
+        expect(postedBody?.sessionId).toMatch(/^[0-9a-f-]{36}$/);
+        expect(postedBody?.events).toHaveLength(1);
+        expect(postedBody?.events[0]?.name).toBe('callers');
+
+        // Verify zero leakage of file paths, queries, or source code
+        const payloadStr = JSON.stringify(postedBody);
+        expect(payloadStr).not.toContain('/home/');
+        expect(payloadStr).not.toContain('C:\\');
+        expect(payloadStr).not.toContain('const ');
+        expect(payloadStr).not.toContain('SELECT ');
+      } finally {
+        globalThis.fetch = originalFetch;
       }
     });
 

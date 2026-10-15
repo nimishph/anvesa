@@ -140,21 +140,22 @@ describe('config.v1.json Schema & IDE Autocomplete', () => {
     const configured = validateProjectConfig({
       telemetry: {
         enabled: true,
-        endpoint: 'https://telemetry.example.com/events',
-        logFile: '.anvesa/audit.log',
       },
     });
     expect(configured.telemetry).toEqual({
       enabled: true,
-      endpoint: 'https://telemetry.example.com/events',
-      logFile: '.anvesa/audit.log',
     });
+
+    // Endpoint and logFile are forbidden in committed project config (security boundary)
+    expect(() =>
+      validateProjectConfig({ telemetry: { endpoint: 'https://telemetry.example.com/events' } }),
+    ).toThrow(ProjectConfigError);
+    expect(() => validateProjectConfig({ telemetry: { logFile: '.anvesa/audit.log' } })).toThrow(
+      ProjectConfigError,
+    );
 
     expect(() => validateProjectConfig({ telemetry: 'off' })).toThrow(ProjectConfigError);
     expect(() => validateProjectConfig({ telemetry: { enabled: 'no' } })).toThrow(
-      ProjectConfigError,
-    );
-    expect(() => validateProjectConfig({ telemetry: { endpoint: 123 } })).toThrow(
       ProjectConfigError,
     );
   });

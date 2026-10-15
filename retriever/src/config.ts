@@ -52,8 +52,6 @@ export interface RedTeamTuningConfig {
 
 export interface TelemetryTuningConfig {
   readonly enabled?: boolean;
-  readonly endpoint?: string;
-  readonly logFile?: string;
 }
 
 export interface ProjectConfig {
@@ -396,23 +394,27 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
     } else if (isRecord(raw.telemetry)) {
       const tel = raw.telemetry as Record<string, unknown>;
       for (const key of Object.keys(tel)) {
-        if (!['enabled', 'endpoint', 'logFile'].includes(key)) {
+        if (key === 'endpoint') {
+          fail(
+            'telemetry.endpoint',
+            'cannot be configured in project config; set ANVESA_TELEMETRY_ENDPOINT environment variable instead',
+          );
+        }
+        if (key === 'logFile') {
+          fail(
+            'telemetry.logFile',
+            'cannot be configured in project config; set ANVESA_TELEMETRY_LOG_FILE environment variable instead',
+          );
+        }
+        if (key !== 'enabled') {
           fail(`telemetry.${key}`, 'is not a known setting');
         }
       }
       if (tel.enabled !== undefined && typeof tel.enabled !== 'boolean') {
         fail('telemetry.enabled', 'must be a boolean');
       }
-      if (tel.endpoint !== undefined && typeof tel.endpoint !== 'string') {
-        fail('telemetry.endpoint', 'must be a string URL');
-      }
-      if (tel.logFile !== undefined && typeof tel.logFile !== 'string') {
-        fail('telemetry.logFile', 'must be a string path');
-      }
       telemetry = {
         ...(tel.enabled !== undefined ? { enabled: tel.enabled as boolean } : {}),
-        ...(tel.endpoint !== undefined ? { endpoint: tel.endpoint as string } : {}),
-        ...(tel.logFile !== undefined ? { logFile: tel.logFile as string } : {}),
       };
     } else {
       fail('telemetry', 'must be a boolean or an object of telemetry settings');

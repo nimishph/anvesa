@@ -6,7 +6,7 @@ import { createHash, randomBytes } from 'node:crypto';
  * Guarantees:
  * 1. Zero-IP: Edge proxies discard client IP addresses.
  * 2. Zero-PII: No file paths, code snippets, query strings, git commits, or usernames.
- * 3. Daily Ephemeral Session ID: Rotated every 24 hours. No hardware UUIDs or MAC address hashes.
+ * 3. Ephemeral Session ID: Process-scoped in-memory random UUID. Zero disk persistence, zero machine fingerprinting.
  * 4. Zero Disruption: Non-blocking, fails silently, never throws or degrades performance.
  */
 
@@ -97,8 +97,8 @@ export function memoryBucket(bytes: number): MemoryBucket {
 }
 
 /**
- * Generates an ephemeral session UUID rotated daily.
- * Never persists hardware identifiers or MAC addresses.
+ * Generates an ephemeral session UUID.
+ * Never persists hardware identifiers, MAC addresses, or disk state.
  */
 let dailyEphemeralSalt: string | undefined;
 

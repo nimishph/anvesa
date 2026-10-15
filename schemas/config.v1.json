@@ -197,14 +197,6 @@
               "type": "boolean",
               "default": true,
               "description": "Whether anonymous telemetry collection is active."
-            },
-            "endpoint": {
-              "type": "string",
-              "description": "Custom telemetry ingest endpoint URL."
-            },
-            "logFile": {
-              "type": "string",
-              "description": "Local file path to append anonymous telemetry events for local auditing or offline debugging."
             }
           }
         }

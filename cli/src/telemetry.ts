@@ -30,7 +30,13 @@ export function isTelemetryPermitted(options: TelemetryClientOptions = {}): bool
   const env = options.env ?? process.env;
   if (env.ANVESA_NO_TELEMETRY === '1' || env.ANVESA_NO_TELEMETRY === 'true') return false;
   if (env.ANVESA_TELEMETRY === '0' || env.ANVESA_TELEMETRY === 'false') return false;
-  if (env.DO_NOT_TRACK === '1') return false;
+  if (
+    env.DO_NOT_TRACK === '1' ||
+    env.DO_NOT_TRACK === 'true' ||
+    env.DO_NOT_TRACK?.toLowerCase() === 'true'
+  ) {
+    return false;
+  }
   if (env.ANVESA_NO_NETWORK === '1' || env.ANVESA_NO_NETWORK === 'true') return false;
 
   const cfg = options.config?.telemetry;
@@ -67,81 +73,97 @@ export class ActiveTelemetryCollector implements TelemetryCollector {
   private readonly events: TelemetryEvent[] = [];
   private readonly options: TelemetryClientOptions;
   private readonly platform: TelemetryPlatform;
-  private isFlushing = false;
+  private flushTimer: ReturnType<typeof setInterval> | undefined;
+  private activeFlushPromise: Promise<void> | null = null;
   lastDeliveryError: string | undefined;
 
   constructor(options: TelemetryClientOptions = {}) {
     this.options = options;
     this.platform = getPlatformInfo();
+
+    // Periodic flush for long-running processes (e.g. MCP server), unref'd so it never blocks exit
+    this.flushTimer = setInterval(() => {
+      void this.flush();
+    }, 30000);
+    this.flushTimer.unref?.();
   }
 
   record(event: TelemetryEvent): void {
-    if (this.events.length >= MAX_BUFFER_EVENTS) {
-      this.events.shift(); // Maintain ring buffer bound
-    }
     this.events.push(event);
+    if (this.events.length >= MAX_BUFFER_EVENTS) {
+      void this.flush();
+    }
   }
 
   async flush(): Promise<void> {
-    if (this.events.length === 0 || this.isFlushing) return;
-    this.isFlushing = true;
-    const batch = this.events.splice(0, this.events.length);
+    while (this.activeFlushPromise) {
+      await this.activeFlushPromise;
+    }
+    if (this.events.length === 0) return;
 
-    const payload: TelemetryPayload = {
-      schemaVersion: '1.0.0',
-      sessionId: generateEphemeralSessionId(),
-      timestamp: Date.now(),
-      anvesaVersion: VERSION,
-      platform: this.platform,
-      events: batch,
-    };
+    this.activeFlushPromise = (async () => {
+      const batch = this.events.splice(0, this.events.length);
+      const payload: TelemetryPayload = {
+        schemaVersion: '1.0.0',
+        sessionId: generateEphemeralSessionId(),
+        timestamp: Date.now(),
+        anvesaVersion: VERSION,
+        platform: this.platform,
+        events: batch,
+      };
 
-    try {
-      // 1. In-memory / Test listener
-      if (this.options.onPayload) {
-        await this.options.onPayload(payload);
-      }
-
-      // 2. Local file audit sink (if configured)
-      const env = this.options.env ?? process.env;
-      const logFile =
-        (typeof this.options.config?.telemetry === 'object'
-          ? this.options.config.telemetry.logFile
-          : undefined) ?? env.ANVESA_TELEMETRY_LOG;
-
-      if (logFile) {
-        try {
-          await mkdir(dirname(logFile), { recursive: true });
-          await appendFile(logFile, `${JSON.stringify(payload)}\n`, 'utf8');
-        } catch (failure) {
-          this.lastDeliveryError = failure instanceof Error ? failure.message : String(failure);
+      try {
+        // 1. In-memory / Test listener
+        if (this.options.onPayload) {
+          await this.options.onPayload(payload);
         }
-      }
 
-      // 3. Remote HTTP endpoint (if configured & network allowed)
-      const endpoint =
-        (typeof this.options.config?.telemetry === 'object'
-          ? this.options.config.telemetry.endpoint
-          : undefined) ?? env.ANVESA_TELEMETRY_ENDPOINT;
+        // 2. Local file audit sink (strictly from environment variable to protect against untrusted repos)
+        const env = this.options.env ?? process.env;
+        const logFile = env.ANVESA_TELEMETRY_LOG_FILE ?? env.ANVESA_TELEMETRY_LOG;
 
-      if (endpoint && !this.options.noNetwork) {
-        try {
-          await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-            signal: AbortSignal.timeout(FLUSH_TIMEOUT_MS),
-          });
-        } catch (failure) {
-          this.lastDeliveryError = failure instanceof Error ? failure.message : String(failure);
+        if (logFile) {
+          try {
+            await mkdir(dirname(logFile), { recursive: true });
+            await appendFile(logFile, `${JSON.stringify(payload)}\n`, 'utf8');
+          } catch (failure) {
+            this.lastDeliveryError = failure instanceof Error ? failure.message : String(failure);
+          }
         }
+
+        // 3. Remote HTTP endpoint (strictly from environment variable to protect against untrusted repos)
+        const endpoint = env.ANVESA_TELEMETRY_ENDPOINT;
+
+        if (endpoint && !this.options.noNetwork) {
+          try {
+            await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+              signal: AbortSignal.timeout(FLUSH_TIMEOUT_MS),
+            });
+          } catch (failure) {
+            this.lastDeliveryError = failure instanceof Error ? failure.message : String(failure);
+          }
+        }
+      } catch (failure) {
+        this.lastDeliveryError = failure instanceof Error ? failure.message : String(failure);
       }
-    } finally {
-      this.isFlushing = false;
+    })().finally(() => {
+      this.activeFlushPromise = null;
+    });
+
+    await this.activeFlushPromise;
+    if (this.events.length >= MAX_BUFFER_EVENTS) {
+      await this.flush();
     }
   }
 
   async close(): Promise<void> {
+    if (this.flushTimer) {
+      clearInterval(this.flushTimer);
+      this.flushTimer = undefined;
+    }
     await this.flush();
   }
 }
