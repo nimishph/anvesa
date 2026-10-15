@@ -22,6 +22,9 @@ export {
   builtinModel,
   estimatePeakRssMb,
   MODEL_CATALOG,
+  MODEL_RANKING,
+  MODELS_BY_RANK,
+  modelRank,
   PEAK_RSS_MEASUREMENTS,
   TIERS,
 } from './models.ts';

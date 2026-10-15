@@ -47,7 +47,7 @@ Models and wasm grammars work offline once installed:
 
 ```sh
 anvesa init                               # scaffolds, then proposes an encoder and parsers to download
-anvesa model list                         # the built-in models and which are installed
+anvesa model list                         # the built-in models, best first, and which are installed
 anvesa model install bge-base-en-v1.5 --from ./models/bge-base   # offline; or --download
 anvesa grammar list
 anvesa grammar install python --from ./tree-sitter-python.wasm   # file, folder or npm tarball
@@ -69,10 +69,23 @@ file with `--agents-file <path>`, or pass `--no-agents-file`. The section sits b
 Re-run `anvesa init` after upgrading: files it already made are kept, and the section is replaced
 with the one the new version ships.
 
-Built-in encoders, smallest first: `all-MiniLM-L6-v2` (23 MB), `all-MiniLM-L12-v2`, `bge-small-en-v1.5`,
-`gte-small`, `gte-base`, `jina-embeddings-v2-base-code` (trained on code, 1024-token window),
-`bge-base-en-v1.5` and `bge-large-en-v1.5`. The three BGE/MiniLM models are what automatic choice
-picks from; the others are yours to choose with `--model`.
+Built-in encoders, best for searching code first. The order is a judgement (the model trained on
+code, then the general ones by their published retrieval scores) until the eval measures each one.
+`anvesa model list` shows the same table with what is installed.
+
+| # | Model | Good for | Dims | Window | Disk |
+|--:|---|---|--:|--:|--:|
+| 1 | `jina-embeddings-v2-base-code` | trained on code; whole functions | 768 | 1024 | 154 MB |
+| 2 | `bge-large-en-v1.5` | largest general; slowest | 1024 | 512 | 1275 MB |
+| 3 | `bge-base-en-v1.5` | strong general retriever | 768 | 512 | 416 MB |
+| 4 | `gte-base` | bge-base class, 1/4 download | 768 | 512 | 105 MB |
+| 5 | `bge-small-en-v1.5` | best small model; for laptops | 384 | 512 | 32 MB |
+| 6 | `gte-small` | small alternative to bge-small | 384 | 512 | 32 MB |
+| 7 | `all-MiniLM-L12-v2` | light and CPU-friendly | 384 | 256 | 32 MB |
+| 8 | `all-MiniLM-L6-v2` | lightest; runs anywhere | 384 | 256 | 22 MB |
+
+Automatic choice takes `all-MiniLM-L6-v2`, `bge-base-en-v1.5` or `bge-large-en-v1.5`, whichever the
+machine can run (`anvesa model doctor` says which); the others are yours to choose with `--model`.
 
 Bring your own model: an ONNX file with its Hugging Face `tokenizer.json` (WordPiece, byte-level
 BPE or SentencePiece unigram, each verified against the reference tokenizers):
