@@ -10,7 +10,8 @@
       "!crates",
       "!eval/golden/*/corpus",
       "!.beads",
-      "!site"
+      "!site",
+      "!ui/public"
     ]
   },
   "formatter": {

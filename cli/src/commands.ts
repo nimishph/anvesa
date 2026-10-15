@@ -640,6 +640,38 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
     });
   },
 
+  ui: async (ctx) => {
+    const port = integerOption('port', ctx.parsed.values.port);
+    const noOpen = ctx.parsed.values['no-open'] === true;
+    const search = ctx.parsed.values.search || rest(ctx, 0);
+    const mode = ctx.parsed.values.mode;
+    const wql = ctx.parsed.values.wql;
+    const scope = ctx.parsed.values.scope;
+    const symbol = ctx.parsed.values.symbol;
+    const view = ctx.parsed.values.view;
+    const repomap = ctx.parsed.values.repomap;
+    const routes = ctx.parsed.values.routes;
+
+    const queryParams: Record<string, string> = {
+      ...(search ? { q: search } : {}),
+      ...(mode ? { mode } : {}),
+      ...(wql ? { wql } : {}),
+      ...(scope ? { scope } : {}),
+      ...(symbol ? { symbol } : {}),
+      ...(view ? { view } : {}),
+      ...(repomap ? { repomap: 'true' } : {}),
+      ...(routes ? { routes: 'true' } : {}),
+    };
+
+    const { startUiServer } = await import('@cntxt-labs/anvesa-ui');
+    await startUiServer({
+      ...(port !== undefined ? { port } : {}),
+      root: root(ctx),
+      open: !noOpen,
+      queryParams,
+    });
+  },
+
   search: (ctx) =>
     withProject(ctx, { embed: true }, async ({ retriever }) => {
       const channels = ctx.parsed.values.channel;

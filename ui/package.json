@@ -1,0 +1,20 @@
+{
+  "name": "@cntxt-labs/anvesa-ui",
+  "version": "0.7.4",
+  "private": true,
+  "description": "Interactive web dashboard for anvesa: hybrid search studio, visual code graph, and index monitor",
+  "type": "module",
+  "main": "src/server.ts",
+  "bin": {
+    "anvesa-ui": "src/bin.ts"
+  },
+  "scripts": {
+    "start": "bun run src/bin.ts",
+    "dev": "bun run src/bin.ts"
+  },
+  "devDependencies": {
+    "@cntxt-labs/anvesa-core": "workspace:*",
+    "@cntxt-labs/anvesa-retriever": "workspace:*"
+  },
+  "license": "MIT"
+}
