@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { connect } from 'node:net';
-import { readFileSync } from 'node:fs';
 import { ASSETS } from './assets.ts';
 import { buildDashboardUrl, ensureUiRunning, startUiServer } from './server.ts';
 
