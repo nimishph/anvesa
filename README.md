@@ -311,6 +311,24 @@ naming the destination, even if it caught the error itself. `--download` cannot 
 Loopback and local sockets are allowed. The guard covers this process; it does not police programs the
 CLI starts (a browser for `issue`, `git`).
 
+### Telemetry
+
+anvesa counts what it does, coarsely, so releases can be compared on speed and result quality. By
+default nothing leaves the machine: there is no built-in endpoint, and events are only sent when you
+set `ANVESA_TELEMETRY_ENDPOINT` to a URL, or written when you set `ANVESA_TELEMETRY_LOG_FILE` to a
+path (one JSON line per batch, for reading what would be sent). A project's `.anvesa/config.json`
+cannot set either; it can only turn telemetry off.
+
+An event records which command or MCP tool ran (custom channels as `retrieve_custom`, never by name),
+its duration and result count in buckets (`10-50` ms, `6-20` results), the built-in model id, whether
+a WQL filter or scope was used, how many channels are configured, and an error code. A batch adds
+the anvesa version, OS, CPU architecture and core count, a memory bucket, the runtime, and a random
+id that lives only as long as the process. Queries, paths, code, file names, user and machine names
+are never recorded, and nothing is stored between runs.
+
+Any of these turns it off: `DO_NOT_TRACK=1`, `ANVESA_NO_TELEMETRY=1`, `ANVESA_TELEMETRY=0`,
+`--no-network` (or `ANVESA_NO_NETWORK=1`), or `"telemetry": false` in `.anvesa/config.json`.
+
 ### MCP
 
 ```json

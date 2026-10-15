@@ -133,6 +133,33 @@ describe('config.v1.json Schema & IDE Autocomplete', () => {
     );
   });
 
+  it('validates telemetry settings and opt-out flags', () => {
+    const disabled = validateProjectConfig({ telemetry: false });
+    expect(disabled.telemetry).toBe(false);
+
+    const configured = validateProjectConfig({
+      telemetry: {
+        enabled: true,
+      },
+    });
+    expect(configured.telemetry).toEqual({
+      enabled: true,
+    });
+
+    // Endpoint and logFile are forbidden in committed project config (security boundary)
+    expect(() =>
+      validateProjectConfig({ telemetry: { endpoint: 'https://telemetry.example.com/events' } }),
+    ).toThrow(ProjectConfigError);
+    expect(() => validateProjectConfig({ telemetry: { logFile: '.anvesa/audit.log' } })).toThrow(
+      ProjectConfigError,
+    );
+
+    expect(() => validateProjectConfig({ telemetry: 'off' })).toThrow(ProjectConfigError);
+    expect(() => validateProjectConfig({ telemetry: { enabled: 'no' } })).toThrow(
+      ProjectConfigError,
+    );
+  });
+
   it('writeProjectConfig writes and preserves $schema', async () => {
     const tempDir = await mkdtemp(join(tmpdir(), 'anvesa-schema-test-'));
     try {

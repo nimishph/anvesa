@@ -277,6 +277,11 @@ export type { ChannelInfo };
 
 const BUILTIN_CHANNELS = ['symbols', 'docs'] as const;
 
+/** Whether a channel ships with anvesa, rather than being one a project defined. */
+export function isBuiltinChannel(name: string): boolean {
+  return (BUILTIN_CHANNELS as readonly string[]).includes(name);
+}
+
 /** A structural page size with no practical bound, for a WQL result that is used as a set. */
 const EVERY_MATCH = Number.MAX_SAFE_INTEGER - 1;
 
@@ -1085,7 +1090,7 @@ export class Retriever {
       const stats = await this.vectors.stats(name);
       info.push({
         name,
-        builtin: (BUILTIN_CHANNELS as readonly string[]).includes(name),
+        builtin: isBuiltinChannel(name),
         module: this.#modules.get(name) ?? settings?.module,
         enabled: settings?.enabled ?? this.registry.has(name),
         weight: settings?.weight ?? 1,
