@@ -6,7 +6,16 @@ import {
   parseVmStat,
   probeHardware,
 } from './hardware.ts';
-import { BUILTIN_MODELS, builtinModel, estimatePeakRssMb, MODEL_CATALOG, TIERS } from './models.ts';
+import {
+  BUILTIN_MODELS,
+  builtinModel,
+  estimatePeakRssMb,
+  MODEL_CATALOG,
+  MODEL_RANKING,
+  MODELS_BY_RANK,
+  modelRank,
+  TIERS,
+} from './models.ts';
 
 const machine = (availableMemoryMb: number): HardwareProbe => ({
   platform: 'linux',
@@ -145,6 +154,19 @@ describe('the built-in catalog and what init proposes', () => {
       expect(builtinModel(spec.id)).toBe(spec);
     }
     expect(ids).toContain('jina-embeddings-v2-base-code');
+  });
+
+  test('the ranking names every built-in model once, and each has a summary', () => {
+    expect([...MODEL_RANKING].sort()).toEqual(MODEL_CATALOG.map((spec) => spec.id).sort());
+    expect(MODELS_BY_RANK.map((spec) => spec.id)).toEqual([...MODEL_RANKING]);
+    expect(modelRank(MODEL_RANKING[0] as string)).toBe(1);
+    expect(modelRank('my-own-model')).toBeUndefined();
+    for (const spec of MODEL_CATALOG) expect(spec.summary?.length).toBeGreaterThan(0);
+  });
+
+  test('models are offered best for code first', () => {
+    const offered = adviseModels(probeOf(8, 16_000)).models.map((model) => model.spec.id);
+    expect(offered).toEqual([...MODEL_RANKING]);
   });
 
   test('the catalog is ordered smallest download first', () => {

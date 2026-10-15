@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'bun:test';
-import type { SearchPage, SearchResult } from '@cntxt-labs/anvesa-retriever';
+import type { ModelRow, SearchPage, SearchResult } from '@cntxt-labs/anvesa-retriever';
 import {
   extractDocSummary,
   jumpLink,
   renderHitRows,
+  renderModels,
   renderSearch,
   renderSearchHeader,
   renderStructural,
   scoreBar,
+  table,
 } from './render.ts';
 
 const sampleHit: SearchResult = {
@@ -190,5 +192,56 @@ describe('Multi-Mode Results Formatting (anv-80l)', () => {
 
     const locations = renderStructural(structuralPage, { mode: 'locations' });
     expect(locations.trim()).toBe('src/config.ts:45:1: function parseConfig');
+  });
+});
+
+describe('tables', () => {
+  it('aligns each column to its widest cell, numbers to the right', () => {
+    const rows = table(
+      [
+        { header: 'Name', cell: (r: { n: string; v: number }) => r.n },
+        { header: 'Value', cell: (r) => String(r.v), align: 'right' },
+      ],
+      [
+        { n: 'a', v: 5 },
+        { n: 'longer', v: 1234 },
+      ],
+    );
+    expect(rows).toEqual(['Name    Value', '──────  ─────', 'a           5', 'longer   1234']);
+  });
+
+  it('lists models as a table, in the order given, marking what is installed', () => {
+    const row = (over: Partial<ModelRow>): ModelRow => ({
+      rank: 1,
+      id: 'model',
+      builtin: true,
+      tier: undefined,
+      dimensions: 384,
+      maxTokens: 512,
+      sizeMb: 32,
+      installed: false,
+      estimatedMemoryMb: 166,
+      license: 'MIT',
+      notes: '',
+      summary: 'small',
+      ...over,
+    });
+    const out = renderModels([
+      row({ rank: 1, id: 'best-model', summary: 'code', installed: true }),
+      row({ rank: 2, id: 'good-model' }),
+      row({
+        rank: undefined,
+        id: 'mine',
+        builtin: false,
+        summary: 'custom model, brought in by you',
+      }),
+    ]).split('\n');
+    expect(out[0]).toMatch(
+      /^#\s+Model\s+Good for\s+Dims\s+Window\s+Disk\s+Memory\s+License\s+Installed$/,
+    );
+    expect(out[2]).toMatch(/^1\s+best-model\s+code\s+384\s+512\s+32 MB\s+~166 MB\s+MIT\s+✓$/);
+    expect(out[3]).toMatch(/^2\s+good-model .*MIT$/);
+    expect(out[4]).toMatch(/^-\s+mine\s+custom model/);
+    expect(out.join('\n')).toContain('anvesa model doctor');
   });
 });

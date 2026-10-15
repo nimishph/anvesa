@@ -19,6 +19,7 @@ import {
 import type { Environment } from './environment.ts';
 import type { Parsed } from './options.ts';
 import { DownloadProgress, formatBytes } from './progress.ts';
+import { table } from './render.ts';
 
 /** What one step of setup did. `skipped` is a choice or a missing permission; `failed` is neither. */
 export type StepState = 'installed' | 'already' | 'skipped' | 'failed';
@@ -106,15 +107,38 @@ export async function setupProject(
   };
 }
 
-function describeChoice(advice: ModelAdvice, installed: ReadonlySet<string>): string {
-  const flags = [
-    advice.recommended ? 'recommended' : undefined,
-    installed.has(advice.spec.id) ? 'installed' : undefined,
-    advice.fits ? undefined : 'too large for the memory available',
-  ]
-    .filter(Boolean)
-    .join(', ');
-  return `${advice.spec.id.padEnd(30)} ${formatBytes(advice.downloadMb * MB).padStart(9)} download  ~${String(Math.round(advice.estimatedPeakMb)).padStart(4)} MB memory  ${String(advice.spec.dimensions).padStart(4)}d${flags ? `  (${flags})` : ''}`;
+/** The encoders on offer, numbered as the prompt takes them, best for code first. */
+function choiceTable(models: readonly ModelAdvice[], installed: ReadonlySet<string>): string[] {
+  const numbered = models.map((advice, index) => ({ advice, number: index + 1 }));
+  return table<(typeof numbered)[number]>(
+    [
+      { header: '#', cell: (row) => String(row.number), align: 'right' },
+      { header: 'Model', cell: (row) => row.advice.spec.id },
+      { header: 'Good for', cell: (row) => row.advice.spec.summary ?? '' },
+      {
+        header: 'Download',
+        cell: (row) => formatBytes(row.advice.downloadMb * MB),
+        align: 'right',
+      },
+      {
+        header: 'Memory',
+        cell: (row) => `~${Math.round(row.advice.estimatedPeakMb)} MB`,
+        align: 'right',
+      },
+      {
+        header: 'Note',
+        cell: (row) =>
+          [
+            row.advice.recommended ? 'recommended' : undefined,
+            installed.has(row.advice.spec.id) ? 'installed' : undefined,
+            row.advice.fits ? undefined : 'too large for the memory available',
+          ]
+            .filter(Boolean)
+            .join(', '),
+      },
+    ],
+    numbered,
+  );
 }
 
 async function chooseModel(
@@ -159,9 +183,7 @@ async function chooseModel(
   let chosen: ModelAdvice | undefined = explicit === undefined ? undefined : known.get(explicit);
   if (chosen === undefined && interactive) {
     say(ctx, `\nEncoder for meaning-based search. ${advice.reason}.\n`);
-    advice.models.forEach((entry, index) => {
-      say(ctx, `  ${String(index + 1).padStart(2)}) ${describeChoice(entry, installed)}`);
-    });
+    for (const line of choiceTable(advice.models, installed)) say(ctx, `  ${line}`);
     const answer = await ask(
       ctx,
       `\nInstall which? [Enter = ${advice.recommended.spec.id}, a number or name, s = skip] `,

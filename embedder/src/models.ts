@@ -41,6 +41,8 @@ export interface ModelSpec {
   readonly paramsM: number | undefined;
   readonly license: string;
   readonly notes: string;
+  /** What the model is good for, in a few words, for a table row. Built-in models have one. */
+  readonly summary?: string;
 }
 
 /** Same tokenizer file for the two BGE models: one SHA-256 pinned once. */
@@ -74,6 +76,7 @@ export const BUILTIN_MODELS: Readonly<Record<Tier, ModelSpec>> = {
       'Runs anywhere, CPU only. An English sentence encoder whose vocabulary fragments ' +
       'identifiers; its 256-token window fits symbol cards (signature, documentation, path) ' +
       'but not raw function bodies.',
+    summary: 'lightest; runs anywhere',
   },
   medium: {
     id: 'bge-base-en-v1.5',
@@ -93,6 +96,7 @@ export const BUILTIN_MODELS: Readonly<Record<Tier, ModelSpec>> = {
     notes:
       'A strong general retriever; the 512-token window takes nearly every symbol card whole. ' +
       'English-centric: identifiers ride on word decomposition, not code training.',
+    summary: 'strong general retriever',
   },
   high: {
     id: 'bge-large-en-v1.5',
@@ -112,6 +116,7 @@ export const BUILTIN_MODELS: Readonly<Record<Tier, ModelSpec>> = {
     notes:
       'The largest and slowest built-in. The extra parameters buy finer separation on large ' +
       'mixed corpora (code and prose); it is not a better code searcher by construction.',
+    summary: 'largest general; slowest',
   },
 };
 
@@ -142,6 +147,7 @@ export const ADDITIONAL_MODELS: readonly ModelSpec[] = [
     notes:
       'MiniLM with twice the layers of the low tier, quantised, still CPU-friendly. A modest step up ' +
       'in accuracy for about 10 MB more memory than all-MiniLM-L6-v2.',
+    summary: 'light and CPU-friendly',
   },
   {
     id: 'bge-small-en-v1.5',
@@ -161,6 +167,7 @@ export const ADDITIONAL_MODELS: readonly ModelSpec[] = [
     notes:
       'The small BGE retriever, quantised: a 512-token window (whole symbol cards) at low-tier cost. ' +
       'The best default for a laptop that cannot spare the base model.',
+    summary: 'best small model; for laptops',
   },
   {
     id: 'gte-small',
@@ -178,6 +185,7 @@ export const ADDITIONAL_MODELS: readonly ModelSpec[] = [
     paramsM: 33,
     license: 'MIT',
     notes: 'General text embeddings from Alibaba DAMO, small and quantised; a 512-token window.',
+    summary: 'small alternative to bge-small',
   },
   {
     id: 'gte-base',
@@ -197,6 +205,7 @@ export const ADDITIONAL_MODELS: readonly ModelSpec[] = [
     notes:
       'Base-size GTE, quantised: a quarter of the download of bge-base-en-v1.5 for a similar class ' +
       'of retrieval.',
+    summary: 'bge-base class, 1/4 download',
   },
   {
     id: 'jina-embeddings-v2-base-code',
@@ -221,6 +230,7 @@ export const ADDITIONAL_MODELS: readonly ModelSpec[] = [
       'Trained on code and docstrings in thirty programming languages, so identifiers are not ' +
       'fragmented the way an English sentence encoder does. Its window is 8192 tokens; 1024 is ' +
       'used here, which holds whole functions.',
+    summary: 'trained on code; whole functions',
   },
 ];
 
@@ -229,6 +239,34 @@ export const MODEL_CATALOG: readonly ModelSpec[] = [
   ...TIERS.map((tier) => BUILTIN_MODELS[tier]),
   ...ADDITIONAL_MODELS,
 ].sort((a, b) => a.model.bytes - b.model.bytes);
+
+/**
+ * The built-in models, best for searching code first. Until the eval has measured each model on
+ * code retrieval, the order is a judgement: the model trained on code first, then the general
+ * encoders by their published MTEB retrieval averages (larger before smaller within a family).
+ * A measured order replaces this one; nothing chooses a model by it, it only orders what is shown.
+ */
+export const MODEL_RANKING: readonly string[] = [
+  'jina-embeddings-v2-base-code',
+  'bge-large-en-v1.5',
+  'bge-base-en-v1.5',
+  'gte-base',
+  'bge-small-en-v1.5',
+  'gte-small',
+  'all-MiniLM-L12-v2',
+  'all-MiniLM-L6-v2',
+];
+
+/** A model's place in `MODEL_RANKING`, from 1. Undefined for a model the user brought in. */
+export function modelRank(id: string): number | undefined {
+  const index = MODEL_RANKING.indexOf(id);
+  return index === -1 ? undefined : index + 1;
+}
+
+/** Every built-in model, best first. A test holds the ranking to naming each one exactly once. */
+export const MODELS_BY_RANK: readonly ModelSpec[] = MODEL_RANKING.flatMap((id) =>
+  MODEL_CATALOG.filter((spec) => spec.id === id),
+);
 
 export function builtinModel(id: string): ModelSpec | undefined {
   return MODEL_CATALOG.find((spec) => spec.id === id);

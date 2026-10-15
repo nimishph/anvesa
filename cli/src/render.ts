@@ -754,13 +754,55 @@ export function renderDiagnosis(d: Diagnosis): string {
   );
 }
 
+export interface Column<Row> {
+  readonly header: string;
+  readonly cell: (row: Row) => string;
+  /** Numbers read best right-aligned. */
+  readonly align?: 'left' | 'right';
+}
+
+/** Rows under a header and a rule, each column as wide as its widest cell. */
+export function table<Row>(columns: readonly Column<Row>[], rows: readonly Row[]): string[] {
+  const cells = rows.map((row) => columns.map((column) => column.cell(row)));
+  const widths = columns.map((column, i) =>
+    Math.max(column.header.length, ...cells.map((row) => (row[i] ?? '').length)),
+  );
+  const line = (values: readonly string[]) =>
+    values
+      .map((value, i) =>
+        columns[i]?.align === 'right'
+          ? value.padStart(widths[i] ?? 0)
+          : value.padEnd(widths[i] ?? 0),
+      )
+      .join('  ')
+      .trimEnd();
+  return [
+    line(columns.map((column) => column.header)),
+    line(widths.map((width) => '─'.repeat(width))),
+    ...cells.map(line),
+  ];
+}
+
+const MODEL_COLUMNS: readonly Column<ModelRow>[] = [
+  { header: '#', cell: (m) => (m.rank === undefined ? '-' : String(m.rank)), align: 'right' },
+  { header: 'Model', cell: (m) => m.id },
+  { header: 'Good for', cell: (m) => m.summary },
+  { header: 'Dims', cell: (m) => String(m.dimensions), align: 'right' },
+  { header: 'Window', cell: (m) => String(m.maxTokens), align: 'right' },
+  { header: 'Disk', cell: (m) => `${m.sizeMb} MB`, align: 'right' },
+  { header: 'Memory', cell: (m) => `~${m.estimatedMemoryMb} MB`, align: 'right' },
+  { header: 'License', cell: (m) => m.license },
+  { header: 'Installed', cell: (m) => (m.installed ? '✓' : '') },
+];
+
 export function renderModels(models: readonly ModelRow[]): string {
   return lines(
-    ...models.map(
-      (m) =>
-        `${m.installed ? '*' : ' '} ${m.id}  ${m.tier ?? (m.builtin ? 'extra' : 'custom')}  ${m.dimensions}d  ${m.maxTokens} tokens  ${m.sizeMb} MB on disk, ~${m.estimatedMemoryMb} MB in memory  ${m.license}`,
-    ),
-    '* installed',
+    ...table(MODEL_COLUMNS, models),
+    '',
+    'Best for searching code first; the order is a judgement until the eval measures each model.',
+    'Window: input size in tokens. Memory: expected peak while embedding. A model you brought in has no rank.',
+    'Automatic choice takes all-MiniLM-L6-v2, bge-base-en-v1.5 or bge-large-en-v1.5, whichever the',
+    'machine can run (anvesa model doctor says which). Install: anvesa model install <model> --download',
   );
 }
 
@@ -771,6 +813,7 @@ export function renderDoctor(d: ModelDoctor): string {
     'problem' in d.resolved
       ? `would use: nothing — ${d.resolved.problem}`
       : `would use: ${d.resolved.id} — ${d.resolved.reason}`,
+    '',
     renderModels(d.models).trimEnd(),
   );
 }

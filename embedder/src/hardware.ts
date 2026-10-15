@@ -4,7 +4,7 @@ import { arch, cpus, freemem, platform, totalmem } from 'node:os';
 import {
   BUILTIN_MODELS,
   estimatePeakRssMb,
-  MODEL_CATALOG,
+  MODELS_BY_RANK,
   type ModelSpec,
   TIERS,
   type Tier,
@@ -168,7 +168,8 @@ function paramsCapFor(cores: number): number | undefined {
 }
 
 /**
- * Every built-in model ranked for this machine, and which one to propose. The proposal is the most
+ * Every built-in model, best for code first, with how each fits this machine, and which one to
+ * propose. The proposal is the most
  * capable of the three standard tiers that fits in memory and is not too heavy for the cores; the
  * other models are offered as alternatives with the same facts. Only measured things decide: memory
  * available and cores, never a guessed accelerator.
@@ -187,7 +188,7 @@ export function adviseModels(
     ...(cap === undefined ? {} : { maxParamsM: cap }),
   });
   const budgetMb = choice.budgetMb;
-  const models = MODEL_CATALOG.map((spec): ModelAdvice => {
+  const models = MODELS_BY_RANK.map((spec): ModelAdvice => {
     const estimatedPeakMb = estimatePeakRssMb(spec.model.bytes);
     return {
       spec,
