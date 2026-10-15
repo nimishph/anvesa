@@ -1,8 +1,13 @@
-import { describe, expect, it } from 'bun:test';
+import { afterAll, describe, expect, it } from 'bun:test';
 import type { Retriever } from '@cntxt-labs/anvesa-retriever';
+import { closeRunningUi } from '../../ui/src/server.ts';
 import { createMcpServer } from './mcp.ts';
 
 describe('anvesa MCP Server & Showcase Tool', () => {
+  afterAll(async () => {
+    await closeRunningUi();
+  });
+
   const fakeRetriever = {
     root: '/workspace/test-repo',
     registry: {
@@ -22,15 +27,14 @@ describe('anvesa MCP Server & Showcase Tool', () => {
       server as unknown as {
         _registeredTools?: Record<
           string,
-          { execute?: (args: unknown) => Promise<{ content: [{ text: string }] }> }
+          { handler?: (args: unknown, extra: unknown) => Promise<{ content: [{ text: string }] }> }
         >;
       }
     )._registeredTools;
-    if (registeredTools) {
-      expect(registeredTools.show_in_ui).toBeDefined();
-      expect(registeredTools.search).toBeDefined();
-      expect(registeredTools.primer).toBeDefined();
-    }
+    expect(registeredTools).toBeDefined();
+    expect(registeredTools?.show_in_ui).toBeDefined();
+    expect(registeredTools?.search).toBeDefined();
+    expect(registeredTools?.primer).toBeDefined();
   });
 
   it('executes show_in_ui tool and returns dashboard URL and target view', async () => {
@@ -40,7 +44,7 @@ describe('anvesa MCP Server & Showcase Tool', () => {
         _registeredTools?: Record<
           string,
           {
-            execute: (
+            handler?: (
               args: Record<string, unknown>,
               extra: unknown,
             ) => Promise<{ content: [{ text: string }] }>;
@@ -49,20 +53,25 @@ describe('anvesa MCP Server & Showcase Tool', () => {
       }
     )._registeredTools;
 
-    if (registeredTools?.show_in_ui?.execute) {
-      const result = await registeredTools.show_in_ui.execute(
-        {
-          query: 'jwt token',
-          mode: 'fused',
-          symbol: 'verifyJwt',
-          view: 'graph',
-        },
-        {},
-      );
-      expect(result.content[0]?.text).toContain('opened');
-      expect(result.content[0]?.text).toContain('http://localhost:');
-      expect(result.content[0]?.text).toContain('q=jwt+token');
-      expect(result.content[0]?.text).toContain('symbol=verifyJwt');
-    }
+    const tool = registeredTools?.show_in_ui;
+    expect(tool).toBeDefined();
+    expect(typeof tool?.handler).toBe('function');
+
+    const result = await tool?.handler?.(
+      {
+        query: 'jwt token',
+        mode: 'fused',
+        symbol: 'verifyJwt',
+        view: 'graph',
+      },
+      {},
+    );
+    expect(result).toBeDefined();
+    const text = result?.content[0]?.text ?? '';
+    expect(text).toContain('opened');
+    expect(text).toMatch(/http:\/\/(localhost|127\.0\.0\.1):/);
+    expect(text).toContain('q=jwt+token');
+    expect(text).toContain('symbol=verifyJwt');
+    expect(text).toContain('token=');
   });
 });

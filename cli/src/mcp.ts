@@ -407,9 +407,13 @@ export function createMcpServer(retriever: Retriever): McpServer {
           .optional()
           .describe('Whether to open the PageRank architectural repomap view.'),
         routes: z.boolean().optional().describe('Whether to open the HTTP routes view.'),
+        open: z
+          .boolean()
+          .optional()
+          .describe('Whether to automatically launch browser window (default: false).'),
       },
     },
-    async ({ query, mode, wql, scope, symbol, view, repomap, routes }) => {
+    async ({ query, mode, wql, scope, symbol, view, repomap, routes, open }) => {
       const queryParams: Record<string, string> = {
         ...(query ? { q: query } : {}),
         ...(mode ? { mode } : {}),
@@ -424,7 +428,9 @@ export function createMcpServer(retriever: Retriever): McpServer {
       const { ensureUiRunning } = await import('../../ui/src/server.ts');
       const { url } = await ensureUiRunning({
         root: retriever.root,
+        retriever: retriever as unknown as import('../../ui/src/server.ts').LiveRetriever,
         queryParams,
+        open: open ?? false,
       });
 
       return {

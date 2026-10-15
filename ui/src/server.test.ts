@@ -42,20 +42,35 @@ describe('anvesa-ui server', () => {
     }
   });
 
-  test('serves web assets and JSON API endpoints', async () => {
+  test('serves web assets and requires session token for JSON API endpoints', async () => {
     const instance = await startUiServer({ port: 3898, open: false });
 
     try {
-      const resIndex = await fetch('http://localhost:3898/');
+      // Static assets are accessible without token
+      const resIndex = await fetch('http://127.0.0.1:3898/');
       expect(resIndex.status).toBe(200);
       expect(resIndex.headers.get('content-type')).toContain('text/html');
 
-      const resStatus = await fetch('http://localhost:3898/api/status');
+      // API calls without token are rejected with 401
+      const resUnauth = await fetch('http://127.0.0.1:3898/api/status');
+      expect(resUnauth.status).toBe(401);
+
+      // API calls with invalid token are rejected with 401
+      const resBadToken = await fetch('http://127.0.0.1:3898/api/status', {
+        headers: { 'X-Anvesa-Token': 'invalid-token' },
+      });
+      expect(resBadToken.status).toBe(401);
+
+      // API calls with valid token in header succeed
+      const resStatus = await fetch('http://127.0.0.1:3898/api/status', {
+        headers: { 'X-Anvesa-Token': instance.token },
+      });
       expect(resStatus.status).toBe(200);
       const statusJson = (await resStatus.json()) as ApiResponse;
       expect(statusJson.success).toBe(true);
 
-      const resSearch = await fetch('http://localhost:3898/api/search', {
+      // API calls with valid token in query param succeed
+      const resSearch = await fetch(`http://127.0.0.1:3898/api/search?token=${instance.token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: 'parse' }),
@@ -64,10 +79,40 @@ describe('anvesa-ui server', () => {
       const searchJson = (await resSearch.json()) as ApiResponse;
       expect(searchJson.success).toBe(true);
 
-      const resRoutes = await fetch('http://localhost:3898/api/routes');
+      const resRoutes = await fetch(`http://127.0.0.1:3898/api/routes?token=${instance.token}`);
       expect(resRoutes.status).toBe(200);
       const routesJson = (await resRoutes.json()) as ApiResponse;
       expect(routesJson.success).toBe(true);
+    } finally {
+      await instance.close();
+    }
+  });
+
+  test('rejects requests with invalid Host header and blocks path traversal', async () => {
+    const instance = await startUiServer({ port: 3897, open: false });
+
+    try {
+      // Invalid Host header returns 403 Forbidden
+      const resBadHost = await fetch('http://127.0.0.1:3897/', {
+        headers: { Host: 'evil-site.com' },
+      });
+      expect(resBadHost.status).toBe(403);
+
+      // Raw path traversal attempts are blocked with 403
+      const traversalStatus = await new Promise<number>((resolve) => {
+        const { get } = require('node:http');
+        get(
+          { host: '127.0.0.1', port: 3897, path: '/../package.json' },
+          (res: { statusCode: number }) => {
+            resolve(res.statusCode);
+          },
+        );
+      });
+      expect(traversalStatus).toBe(403);
+
+      // Non-existent static files with extensions return 404
+      const resNotFound = await fetch('http://127.0.0.1:3897/nonexistent.js');
+      expect(resNotFound.status).toBe(404);
     } finally {
       await instance.close();
     }

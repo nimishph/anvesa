@@ -3,6 +3,8 @@
  * Physics-based interactive force graph on HTML5 Canvas.
  */
 
+import { escapeHtml } from './search.js';
+
 export function initGraphVisualizer(state, api) {
   const canvas = document.getElementById('graphCanvas');
   const symbolInput = document.getElementById('graphSymbolInput');
@@ -477,6 +479,8 @@ export function initGraphVisualizer(state, api) {
     repomapTree.innerHTML = files
       .map((file) => {
         const prPct = (file.pageRank * 100).toFixed(1) + '%';
+        const safePath = escapeHtml(file.path);
+        const safePrPct = escapeHtml(prPct);
         return `
         <div class="repomap-file-card">
           <div class="repomap-file-header">
@@ -485,11 +489,11 @@ export function initGraphVisualizer(state, api) {
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                 <polyline points="14 2 14 8 20 8"></polyline>
               </svg>
-              ${file.path}
+              ${safePath}
             </span>
             <div class="symbol-rank-meter">
-              <span style="font-size:0.75rem;font-family:var(--font-mono);color:var(--text-secondary);">Weight: ${prPct}</span>
-              <div class="rank-bar-bg"><div class="rank-bar-fill" style="width:${prPct}"></div></div>
+              <span style="font-size:0.75rem;font-family:var(--font-mono);color:var(--text-secondary);">Weight: ${safePrPct}</span>
+              <div class="rank-bar-bg"><div class="rank-bar-fill" style="width:${safePrPct}"></div></div>
             </div>
           </div>
           <div class="repomap-symbols-list">
@@ -498,11 +502,11 @@ export function initGraphVisualizer(state, api) {
                 (sym) => `
               <div class="repomap-symbol-item">
                 <div class="symbol-left">
-                  <span class="symbol-kind-tag">${sym.kind}</span>
-                  <a href="javascript:void(0)" class="symbol-name-text" onclick="window.navigateToGraphSymbol('${sym.name}')">${sym.name}</a>
+                  <span class="symbol-kind-tag">${escapeHtml(sym.kind)}</span>
+                  <a href="javascript:void(0)" class="symbol-name-text" data-symbol="${escapeHtml(sym.name)}">${escapeHtml(sym.name)}</a>
                 </div>
                 <div style="font-size:0.75rem;font-family:var(--font-mono);color:var(--text-tertiary);">
-                  ${sym.callers} callers
+                  ${escapeHtml(sym.callers)} callers
                 </div>
               </div>
             `,
@@ -513,6 +517,15 @@ export function initGraphVisualizer(state, api) {
       `;
       })
       .join('');
+
+    repomapTree.querySelectorAll('.symbol-name-text').forEach((el) => {
+      el.addEventListener('click', () => {
+        const sym = el.getAttribute('data-symbol');
+        if (sym && window.navigateToGraphSymbol) {
+          window.navigateToGraphSymbol(sym);
+        }
+      });
+    });
   }
 
   // Render Routes
@@ -529,14 +542,15 @@ export function initGraphVisualizer(state, api) {
     function renderRoutesList(list) {
       routesTableBody.innerHTML = list
         .map((r) => {
-          const mClass = 'm-' + r.method.toLowerCase();
+          const safeMethod = escapeHtml(r.method);
+          const mClass = 'm-' + safeMethod.toLowerCase();
           return `
           <tr>
-            <td><span class="method-pill ${mClass}">${r.method}</span></td>
-            <td><span class="route-pattern">${r.path}</span></td>
-            <td><span class="route-handler">${r.handler}</span></td>
-            <td style="color:var(--text-secondary);">${r.file}</td>
-            <td><span class="badge badge-indigo">${r.framework}</span></td>
+            <td><span class="method-pill ${mClass}">${safeMethod}</span></td>
+            <td><span class="route-pattern">${escapeHtml(r.path)}</span></td>
+            <td><span class="route-handler">${escapeHtml(r.handler)}</span></td>
+            <td style="color:var(--text-secondary);">${escapeHtml(r.file)}</td>
+            <td><span class="badge badge-indigo">${escapeHtml(r.framework)}</span></td>
           </tr>
         `;
         })

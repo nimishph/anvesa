@@ -9,26 +9,43 @@ import { initStatusAndWql } from './status.js';
 class ApiClient {
   constructor(baseUrl = '') {
     this.baseUrl = baseUrl;
+    const urlParams = new URLSearchParams(window.location.search);
+    this.token = urlParams.get('token') || '';
+  }
+
+  _headers(extra = {}) {
+    return {
+      ...(this.token ? { 'X-Anvesa-Token': this.token } : {}),
+      ...extra,
+    };
+  }
+
+  _withToken(url) {
+    if (!this.token) return url;
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}token=${encodeURIComponent(this.token)}`;
   }
 
   async getStatus() {
-    const res = await fetch(`${this.baseUrl}/api/status`);
+    const res = await fetch(this._withToken(`${this.baseUrl}/api/status`), {
+      headers: this._headers(),
+    });
     return res.json();
   }
 
   async search(payload) {
-    const res = await fetch(`${this.baseUrl}/api/search`, {
+    const res = await fetch(this._withToken(`${this.baseUrl}/api/search`), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this._headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(payload),
     });
     return res.json();
   }
 
   async queryWql(payload) {
-    const res = await fetch(`${this.baseUrl}/api/query`, {
+    const res = await fetch(this._withToken(`${this.baseUrl}/api/query`), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this._headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(payload),
     });
     return res.json();
@@ -36,7 +53,8 @@ class ApiClient {
 
   async getNeighbors(symbol) {
     const res = await fetch(
-      `${this.baseUrl}/api/graph/neighbors?symbol=${encodeURIComponent(symbol)}`,
+      this._withToken(`${this.baseUrl}/api/graph/neighbors?symbol=${encodeURIComponent(symbol)}`),
+      { headers: this._headers() },
     );
     return res.json();
   }
@@ -47,7 +65,7 @@ class ApiClient {
     if (budget) params.push(`budget=${budget}`);
     if (scope) params.push(`scope=${encodeURIComponent(scope)}`);
     if (params.length) url += `?${params.join('&')}`;
-    const res = await fetch(url);
+    const res = await fetch(this._withToken(url), { headers: this._headers() });
     return res.json();
   }
 
@@ -57,7 +75,7 @@ class ApiClient {
     if (method) params.push(`method=${method}`);
     if (path) params.push(`path=${encodeURIComponent(path)}`);
     if (params.length) url += `?${params.join('&')}`;
-    const res = await fetch(url);
+    const res = await fetch(this._withToken(url), { headers: this._headers() });
     return res.json();
   }
 }

@@ -133,13 +133,101 @@ export function initSearchStudio(state, api) {
       },
     };
 
+export function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function detectLanguage(path, cardLang) {
+  if (cardLang && typeof cardLang === 'string') return cardLang;
+  if (!path) return 'Text';
+  const ext = path.split('.').pop()?.toLowerCase();
+  switch (ext) {
+    case 'ts':
+    case 'tsx':
+    case 'mts':
+    case 'cts':
+      return 'TypeScript';
+    case 'js':
+    case 'jsx':
+    case 'mjs':
+    case 'cjs':
+      return 'JavaScript';
+    case 'rs':
+      return 'Rust';
+    case 'py':
+      return 'Python';
+    case 'go':
+      return 'Go';
+    case 'json':
+      return 'JSON';
+    case 'md':
+      return 'Markdown';
+    case 'html':
+      return 'HTML';
+    case 'css':
+      return 'CSS';
+    default:
+      return ext ? ext.toUpperCase() : 'Text';
+  }
+}
+
+function extractDocSummary(text) {
+  if (!text) return '';
+  const match = text.match(/\/\*\*[\s\S]*?\*\//);
+  if (match) {
+    const cleaned = match[0].replace(/^\/\*\*|\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim();
+    return cleaned.split('\n')[0]?.trim() || '';
+  }
+  const lineComment = text.match(/^\s*\/\/\s*(.+)$/m);
+  if (lineComment) return lineComment[1]?.trim() || '';
+  return '';
+}
+
+function normalizeHit(hit) {
+  const name = hit.title || hit.name || 'unnamed';
+  const lineStr =
+    hit.lines ||
+    (hit.line !== undefined
+      ? hit.endLine !== undefined
+        ? `${hit.line}-${hit.endLine}`
+        : `${hit.line}`
+      : '');
+  const container = hit.container || hit.card?.attrs?.container || '';
+  const docSummary = hit.docSummary || extractDocSummary(hit.card?.text) || '';
+  const code = hit.code || hit.card?.text || '// No preview available';
+  const lanes = hit.foundBy
+    ? hit.foundBy.map((c) => `${c.lane}#${c.rank}`)
+    : hit.lanes || ['dense:symbols'];
+  const language = hit.language || detectLanguage(hit.path, hit.card?.attrs?.lang);
+
+  return {
+    name,
+    container,
+    path: hit.path || '',
+    lines: lineStr,
+    docSummary,
+    code,
+    lanes,
+    language,
+    score: hit.score,
+    bestScore: hit.bestScore,
+  };
+}
+
     const startTime = performance.now();
     try {
       const resp = await api.search(payload);
       const elapsed = (performance.now() - startTime).toFixed(1);
 
-      if (resp && resp.success && resp.result && resp.result.hits) {
-        renderResults(resp.result.hits, elapsed, false);
+      const items = resp?.result?.items || resp?.result?.hits;
+      if (resp && resp.success && resp.result && Array.isArray(items)) {
+        renderResults(items, elapsed, false);
       } else {
         // Fallback or filter mock items
         const hits = window.ANVESA_MOCK?.searchResults || [];
@@ -162,11 +250,13 @@ export function initSearchStudio(state, api) {
     renderResults(hits, 8.2, true);
   }
 
-  function renderResults(hits, elapsedMs, isDemo) {
+  function renderResults(rawHits, elapsedMs, isDemo) {
     if (!resultsContainer) return;
 
+    const hits = (rawHits || []).map(normalizeHit);
+
     if (resultsMetaText) {
-      resultsMetaText.innerHTML = `Found <strong>${hits.length}</strong> results in <strong>${elapsedMs}ms</strong> · Model: <strong>bge-base-en-v1.5 (768d)</strong> · Reciprocal Rank Fusion (k=60) ${isDemo ? '<span class="badge badge-amber" style="margin-left:8px;">Demo Data</span>' : '<span class="badge badge-emerald" style="margin-left:8px;">Live Index</span>'}`;
+      resultsMetaText.innerHTML = `Found <strong>${hits.length}</strong> results in <strong>${escapeHtml(elapsedMs)}ms</strong> · Reciprocal Rank Fusion (k=60) ${isDemo ? '<span class="badge badge-amber" style="margin-left:8px;">Demo Data</span>' : '<span class="badge badge-emerald" style="margin-left:8px;">Live Index</span>'}`;
     }
 
     if (hits.length === 0) {
@@ -185,36 +275,50 @@ export function initSearchStudio(state, api) {
 
     resultsContainer.innerHTML = hits
       .map((hit, index) => {
-        const bestScorePct = hit.bestScore ? (hit.bestScore * 100).toFixed(1) + '%' : 'N/A';
-        const rrfScore = hit.score ? Number(hit.score).toFixed(3) : '0.850';
+        const bestScorePct =
+          hit.bestScore !== undefined && hit.bestScore !== null
+            ? (hit.bestScore * 100).toFixed(1) + '%'
+            : 'N/A';
+        const rrfScore =
+          hit.score !== undefined && hit.score !== null ? Number(hit.score).toFixed(3) : '0.850';
         const lanesBadges = (hit.lanes || ['dense:symbols'])
           .map((lane) => {
-            if (lane.includes('wql')) return `<span class="badge badge-cyan">${lane}</span>`;
-            if (lane.includes('docs')) return `<span class="badge badge-purple">${lane}</span>`;
-            return `<span class="badge badge-indigo">${lane}</span>`;
+            const safeLane = escapeHtml(lane);
+            if (lane.includes('wql') || lane.includes('structural'))
+              return `<span class="badge badge-cyan">${safeLane}</span>`;
+            if (lane.includes('docs')) return `<span class="badge badge-purple">${safeLane}</span>`;
+            return `<span class="badge badge-indigo">${safeLane}</span>`;
           })
           .join(' ');
 
         const formattedCode = syntaxHighlight(hit.code || '// No preview available');
+        const safeName = escapeHtml(hit.name);
+        const safeContainer = escapeHtml(hit.container);
+        const safePath = escapeHtml(hit.path);
+        const safeLines = escapeHtml(hit.lines);
+        const safeDocSummary = escapeHtml(hit.docSummary);
+        const safeLanguage = escapeHtml(hit.language || 'Text');
+        const locString = safeLines ? `${safePath}:${safeLines}` : safePath;
+        const displayName = safeContainer ? `${safeContainer}.${safeName}` : safeName;
 
         return `
-        <div class="result-card" data-symbol="${hit.name}" data-path="${hit.path}">
+        <div class="result-card" data-symbol="${safeName}" data-path="${safePath}">
           <div class="result-header">
             <div class="result-title-group">
               <span class="result-rank-num">#${index + 1}</span>
-              <a href="javascript:void(0)" class="result-location" title="${hit.path}:${hit.lines}">
-                <span class="result-symbol-name">${hit.container ? hit.container + '.' : ''}${hit.name}</span>
-                <span style="opacity:0.6;font-weight:400;">(${hit.path}:${hit.lines})</span>
+              <a href="javascript:void(0)" class="result-location" title="${locString}">
+                <span class="result-symbol-name">${displayName}</span>
+                <span style="opacity:0.6;font-weight:400;">(${locString})</span>
               </a>
             </div>
             <div class="result-badges-group">
               ${lanesBadges}
-              <span class="badge badge-emerald" title="Screened by Red-Team filter">🛡️ RRF: ${rrfScore}</span>
-              <span class="badge badge-indigo" title="Cosine similarity">Similarity: ${bestScorePct}</span>
+              <span class="badge badge-emerald" title="Reciprocal Rank Fusion score">RRF: ${escapeHtml(rrfScore)}</span>
+              <span class="badge badge-indigo" title="Cosine similarity">Similarity: ${escapeHtml(bestScorePct)}</span>
             </div>
           </div>
           <div class="result-body">
-            ${hit.docSummary ? `<div class="result-docstring">${hit.docSummary}</div>` : ''}
+            ${safeDocSummary ? `<div class="result-docstring">${safeDocSummary}</div>` : ''}
             <div class="code-fence-wrapper">
               <div class="code-fence-header">
                 <span class="fence-security-tag">
@@ -222,16 +326,16 @@ export function initSearchStudio(state, api) {
                     <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                     <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                   </svg>
-                  UNTRUSTED RETRIEVAL FENCE (RED-TEAM SCREENED)
+                  UNTRUSTED RETRIEVAL FENCE
                 </span>
-                <span>Language: TypeScript</span>
+                <span>Language: ${safeLanguage}</span>
               </div>
               <pre class="code-pre"><code>${formattedCode}</code></pre>
             </div>
           </div>
           <div class="result-footer">
             <div class="result-footer-left">
-              <button class="btn-card-action btn-inspect-graph" data-symbol="${hit.name}">
+              <button class="btn-card-action btn-inspect-graph" data-symbol="${safeName}">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <circle cx="18" cy="5" r="3"></circle>
                   <circle cx="6" cy="12" r="3"></circle>
@@ -241,7 +345,7 @@ export function initSearchStudio(state, api) {
                 </svg>
                 Explore in Code Graph
               </button>
-              <button class="btn-card-action btn-copy-loc" data-loc="${hit.path}:${hit.lines}">
+              <button class="btn-card-action btn-copy-loc" data-loc="${locString}">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
@@ -249,12 +353,12 @@ export function initSearchStudio(state, api) {
                 Copy Location
               </button>
             </div>
-            <button class="btn-card-action btn-copy-cmd" data-name="${hit.name}">
+            <button class="btn-card-action btn-copy-cmd" data-name="${safeName}">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="4 17 10 11 4 5"></polyline>
                 <line x1="12" y1="19" x2="20" y2="19"></line>
               </svg>
-              anvesa callers "${hit.name}"
+              anvesa callers "${safeName}"
             </button>
           </div>
         </div>

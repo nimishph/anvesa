@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { dirname, extname, join, resolve } from 'node:path';
@@ -14,6 +15,8 @@ export interface ServerOptions {
   readonly root?: string;
   readonly open?: boolean;
   readonly queryParams?: Readonly<Record<string, string>>;
+  readonly token?: string;
+  readonly retriever?: LiveRetriever;
 }
 
 interface SearchPayload {
@@ -24,7 +27,7 @@ interface SearchPayload {
   readonly limit?: number;
 }
 
-interface LiveRetriever {
+export interface LiveRetriever {
   close(): Promise<void>;
   status(): Promise<unknown>;
   search(query: string, opts: unknown): Promise<unknown>;
@@ -52,9 +55,6 @@ const MIME_TYPES: Readonly<Record<string, string>> = {
 function sendJson(res: ServerResponse, data: unknown, status = 200): void {
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
   });
   res.end(JSON.stringify(data));
 }
@@ -67,7 +67,6 @@ function sendText(
 ): void {
   res.writeHead(status, {
     'Content-Type': type,
-    'Access-Control-Allow-Origin': '*',
   });
   res.end(text);
 }
@@ -118,7 +117,7 @@ async function readBody<T = unknown>(req: IncomingMessage): Promise<T> {
       try {
         resolveBody(body ? (JSON.parse(body) as T) : ({} as T));
       } catch {
-        resolveBody({} as T);
+        rejectBody(new InvalidArgumentError('body', 'valid JSON', body));
       }
     });
     req.on('error', (err) => rejectBody(toCodeLensError(err, 'read request body')));
@@ -129,42 +128,58 @@ export async function startUiServer(options: ServerOptions = {}) {
   const port = options.port ?? (Number(process.env.ANVESA_PORT) || 3847);
   const projectRoot = resolve(options.root ?? process.cwd());
   const shouldOpen = options.open !== false;
+  const sessionToken = options.token ?? randomBytes(16).toString('hex');
 
-  let retriever: LiveRetriever | null = null;
+  let retriever: LiveRetriever | null = options.retriever ?? null;
+  let ownRetriever = false;
   let retrieverLoadError: string | null = null;
 
-  try {
-    const { loadProjectConfig, Retriever } = await import('../../retriever/src/index.ts');
+  if (!retriever) {
     try {
-      const config = await loadProjectConfig(projectRoot);
-      const opened = await Retriever.open({
-        root: projectRoot,
-        config,
-      });
-      retriever = opened as unknown as LiveRetriever;
-    } catch (err) {
-      retrieverLoadError = err instanceof Error ? err.message : String(err);
+      const { loadProjectConfig, Retriever } = await import('../../retriever/src/index.ts');
+      try {
+        const config = await loadProjectConfig(projectRoot);
+        const opened = await Retriever.open({
+          root: projectRoot,
+          config,
+        });
+        retriever = opened as unknown as LiveRetriever;
+        ownRetriever = true;
+      } catch (err) {
+        retrieverLoadError = err instanceof Error ? err.message : String(err);
+      }
+    } catch {
+      retrieverLoadError = 'Retriever package not linked yet or running standalone';
     }
-  } catch {
-    retrieverLoadError = 'Retriever package not linked yet or running standalone';
   }
 
   const server = createServer(async (req, res) => {
+    // 1. Host header validation to prevent DNS rebinding attacks
+    const host = req.headers.host;
+    const hostName = host?.split(':')[0]?.toLowerCase();
+    if (hostName !== 'localhost' && hostName !== '127.0.0.1') {
+      sendText(res, 'Forbidden: Invalid Host header', 403);
+      return;
+    }
+
     if (req.method === 'OPTIONS') {
-      res.writeHead(204, {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      });
+      res.writeHead(204);
       res.end();
       return;
     }
 
-    const parsedUrl = new URL(req.url ?? '/', `http://localhost:${port}`);
+    const parsedUrl = new URL(req.url ?? '/', `http://127.0.0.1:${port}`);
     const pathname = parsedUrl.pathname;
 
     // --- REST API Endpoints ---
     if (pathname.startsWith('/api/')) {
+      // 2. Token authentication for all API endpoints to prevent cross-site queries
+      const token = req.headers['x-anvesa-token'] ?? parsedUrl.searchParams.get('token');
+      if (!token || token !== sessionToken) {
+        sendJson(res, { error: 'Unauthorized: Missing or invalid session token' }, 401);
+        return;
+      }
+
       try {
         const live = retriever;
         if (pathname === '/api/status' && req.method === 'GET') {
@@ -376,11 +391,35 @@ export async function startUiServer(options: ServerOptions = {}) {
     }
 
     // --- Static File Serving ---
-    const relativePath = pathname === '/' ? 'index.html' : pathname.replace(/^\//, '');
-    let filePath = join(PUBLIC_DIR, relativePath);
+    const rawUrl = req.url ?? '';
+    let decodedUrl = '';
+    try {
+      decodedUrl = decodeURIComponent(rawUrl);
+    } catch {
+      // Malformed URI is treated as an empty string for traversal checks
+      decodedUrl = '';
+    }
 
+    if (rawUrl.includes('..') || pathname.includes('..') || decodedUrl.includes('..')) {
+      sendText(res, 'Forbidden: Path traversal not allowed', 403);
+      return;
+    }
+
+    const relativePath = pathname === '/' ? 'index.html' : pathname.replace(/^\//, '');
+    const resolvedPath = resolve(PUBLIC_DIR, relativePath);
+    if (!resolvedPath.startsWith(PUBLIC_DIR)) {
+      sendText(res, 'Forbidden: Path traversal not allowed', 403);
+      return;
+    }
+
+    let filePath = resolvedPath;
     if (!existsSync(filePath) || statSync(filePath).isDirectory()) {
-      filePath = join(PUBLIC_DIR, 'index.html');
+      if (!extname(pathname)) {
+        filePath = join(PUBLIC_DIR, 'index.html');
+      } else {
+        sendText(res, 'File not found', 404);
+        return;
+      }
     }
 
     try {
@@ -399,10 +438,11 @@ export async function startUiServer(options: ServerOptions = {}) {
 
   const activeInstance = {
     port,
+    token: sessionToken,
     root: projectRoot,
     close: async () => {
       server.close();
-      if (retriever) {
+      if (ownRetriever && retriever) {
         await retriever.close();
       }
       if (runningInstance === activeInstance) {
@@ -412,25 +452,35 @@ export async function startUiServer(options: ServerOptions = {}) {
   };
   runningInstance = activeInstance;
 
-  server.listen(port, () => {
-    const rawUrl = `http://localhost:${port}`;
-    const displayUrl = buildDashboardUrl(rawUrl, options.queryParams);
-    process.stdout.write(
-      `\n  \x1b[38;2;99;102;241m▲\x1b[0m \x1b[1m\x1b[38;2;255;255;255manvesa ui\x1b[0m — interactive web dashboard\n`,
-    );
-    process.stdout.write(`  \x1b[90mURL:\x1b[0m     \x1b[36m${displayUrl}\x1b[0m\n`);
-    process.stdout.write(`  \x1b[90mRoot:\x1b[0m    ${projectRoot}\n`);
-    process.stdout.write(
-      `  \x1b[90mStatus:\x1b[0m  ${retriever ? '\x1b[32mlive index connected\x1b[0m' : '\x1b[33mpreview mode (ready to index)\x1b[0m'}\n\n`,
-    );
-    if (shouldOpen) {
-      openBrowser(displayUrl);
-    }
+  await new Promise<void>((resolvePromise, rejectPromise) => {
+    server.once('error', (err: NodeJS.ErrnoException) => {
+      rejectPromise(err);
+    });
+    server.listen(port, '127.0.0.1', () => {
+      const rawUrl = `http://127.0.0.1:${port}`;
+      const displayUrl = buildDashboardUrl(rawUrl, {
+        token: sessionToken,
+        ...options.queryParams,
+      });
+      process.stdout.write(
+        `\n  \x1b[38;2;99;102;241m▲\x1b[0m \x1b[1m\x1b[38;2;255;255;255manvesa ui\x1b[0m — interactive web dashboard\n`,
+      );
+      process.stdout.write(`  \x1b[90mURL:\x1b[0m     \x1b[36m${displayUrl}\x1b[0m\n`);
+      process.stdout.write(`  \x1b[90mRoot:\x1b[0m    ${projectRoot}\n`);
+      process.stdout.write(
+        `  \x1b[90mStatus:\x1b[0m  ${retriever ? '\x1b[32mlive index connected\x1b[0m' : '\x1b[33mpreview mode (ready to index)\x1b[0m'}\n\n`,
+      );
+      resolvePromise();
+      if (shouldOpen) {
+        openBrowser(displayUrl);
+      }
+    });
   });
 
   return {
     server,
     port,
+    token: sessionToken,
     close: activeInstance.close,
   };
 }
@@ -438,10 +488,17 @@ export async function startUiServer(options: ServerOptions = {}) {
 let runningInstance:
   | {
       port: number;
+      token: string;
       root: string;
       close: () => Promise<void>;
     }
   | undefined;
+
+export async function closeRunningUi(): Promise<void> {
+  if (runningInstance) {
+    await runningInstance.close();
+  }
+}
 
 /**
  * Ensure the Anvesa UI server is running. If already running, reuses the instance
@@ -449,34 +506,63 @@ let runningInstance:
  */
 export async function ensureUiRunning(
   options: ServerOptions = {},
-): Promise<{ port: number; url: string; close: () => Promise<void> }> {
-  if (runningInstance) {
-    const baseUrl = `http://localhost:${runningInstance.port}`;
-    const url = buildDashboardUrl(baseUrl, options.queryParams);
+): Promise<{ port: number; url: string; token: string; close: () => Promise<void> }> {
+  if (runningInstance && (options.port === undefined || runningInstance.port === options.port)) {
+    const baseUrl = `http://127.0.0.1:${runningInstance.port}`;
+    const url = buildDashboardUrl(baseUrl, {
+      token: runningInstance.token,
+      ...options.queryParams,
+    });
     if (options.open !== false) {
       openBrowser(url);
     }
     return {
       port: runningInstance.port,
+      token: runningInstance.token,
       url,
       close: runningInstance.close,
     };
   }
 
-  const instance = await startUiServer({
-    ...options,
-    open: false,
-  });
-  const baseUrl = `http://localhost:${instance.port}`;
-  const url = buildDashboardUrl(baseUrl, options.queryParams);
-  if (options.open !== false) {
-    openBrowser(url);
+  try {
+    const instance = await startUiServer({
+      ...options,
+      open: false,
+    });
+    const baseUrl = `http://127.0.0.1:${instance.port}`;
+    const url = buildDashboardUrl(baseUrl, {
+      token: instance.token,
+      ...options.queryParams,
+    });
+    if (options.open !== false) {
+      openBrowser(url);
+    }
+    return {
+      port: instance.port,
+      token: instance.token,
+      url,
+      close: instance.close,
+    };
+  } catch (err: unknown) {
+    const isAddrInUse = (err as { code?: string })?.code === 'EADDRINUSE';
+    if (isAddrInUse) {
+      const port = options.port ?? (Number(process.env.ANVESA_PORT) || 3847);
+      const baseUrl = `http://127.0.0.1:${port}`;
+      const url = buildDashboardUrl(baseUrl, options.queryParams);
+      if (options.open !== false) {
+        openBrowser(url);
+      }
+      return {
+        port,
+        token: '',
+        url,
+        close: async () => {
+          // Reused instance is managed by its original creator
+        },
+      };
+    }
+    throw err;
   }
-  return {
-    port: instance.port,
-    url,
-    close: instance.close,
-  };
 }
 
 // Direct execution from CLI: bun run src/server.ts
