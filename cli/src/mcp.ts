@@ -1,5 +1,10 @@
 import { durationBucket, sanitizeErrorCode, toCodeLensError } from '@cntxt-labs/anvesa-core';
-import { fenceUntrusted, type Retriever, splitConjunction } from '@cntxt-labs/anvesa-retriever';
+import {
+  fenceUntrusted,
+  isBuiltinChannel,
+  type Retriever,
+  splitConjunction,
+} from '@cntxt-labs/anvesa-retriever';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
@@ -163,6 +168,8 @@ export function createMcpServer(retriever: Retriever): McpServer {
 
   for (const channel of retriever.registry.channels()) {
     const channelTool = `retrieve_${channel.replaceAll('-', '_')}`;
+    // A project names its own channels, so telemetry records those under one generic name.
+    const telemetryName = isBuiltinChannel(channel) ? channelTool : 'retrieve_custom';
     server.registerTool(
       channelTool,
       {
@@ -179,7 +186,7 @@ export function createMcpServer(retriever: Retriever): McpServer {
                 ...(cursor ? { cursor } : {}),
               }),
             ),
-          channelTool,
+          telemetryName,
         ),
     );
   }

@@ -1,13 +1,21 @@
 import { describe, expect, it } from 'bun:test';
 import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import type { TelemetryPayload } from '@cntxt-labs/anvesa-core';
-import { countBucket, durationBucket } from '@cntxt-labs/anvesa-core';
+import type { TelemetryEvent, TelemetryPayload } from '@cntxt-labs/anvesa-core';
+import {
+  countBucket,
+  durationBucket,
+  InvalidArgumentError,
+  NoopTelemetryCollector,
+} from '@cntxt-labs/anvesa-core';
+import type { Retriever } from '@cntxt-labs/anvesa-retriever';
+import { createMcpServer } from './mcp.ts';
 import {
   ActiveTelemetryCollector,
   createTelemetryCollector,
   getPlatformInfo,
   isTelemetryPermitted,
+  setGlobalTelemetry,
 } from './telemetry.ts';
 
 describe('cli telemetry collector & transport', () => {
@@ -181,5 +189,42 @@ describe('cli telemetry collector & transport', () => {
       });
       expect(collector.enabled).toBe(false);
     });
+  });
+});
+
+describe('MCP tool telemetry names', () => {
+  it('records a built-in channel tool by name and a project-defined one as retrieve_custom', async () => {
+    const recorded: TelemetryEvent[] = [];
+    class Capture extends NoopTelemetryCollector {
+      override record(event: TelemetryEvent): void {
+        recorded.push(event);
+      }
+    }
+    setGlobalTelemetry(new Capture());
+    try {
+      // The calls fail in this fake; a failed call is recorded too, under the same name.
+      const retriever = {
+        root: '/workspace/repo',
+        registry: { channels: () => ['symbols', 'acme-secret-runbooks'] },
+        retrieve: async () => {
+          throw new InvalidArgumentError('channel', 'an indexed channel', 'not indexed');
+        },
+      } as unknown as Retriever;
+      const tools = (
+        createMcpServer(retriever) as unknown as {
+          readonly _registeredTools: Record<
+            string,
+            { readonly handler: (args: unknown, extra: unknown) => Promise<unknown> }
+          >;
+        }
+      )._registeredTools;
+      await tools.retrieve_symbols?.handler({ query: 'parse' }, {});
+      await tools.retrieve_acme_secret_runbooks?.handler({ query: 'parse' }, {});
+
+      expect(recorded.map((event) => event.name)).toEqual(['retrieve_symbols', 'retrieve_custom']);
+      expect(JSON.stringify(recorded)).not.toContain('acme');
+    } finally {
+      setGlobalTelemetry(new NoopTelemetryCollector());
+    }
   });
 });
