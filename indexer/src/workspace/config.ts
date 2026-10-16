@@ -12,6 +12,18 @@ export interface ConfiguredPackage {
   readonly dependsOn: readonly string[];
 }
 
+export interface FederatedRepository {
+  readonly name: string;
+  readonly path: string;
+  readonly defaultLanes?: readonly string[];
+  readonly weight?: number;
+}
+
+export interface FederationConfig {
+  readonly enabled: boolean;
+  readonly repositories: readonly FederatedRepository[];
+}
+
 export interface WorkspaceConfig {
   /** Packages declared by hand. They win over anything discovery finds at the same directory. */
   readonly packages: readonly ConfiguredPackage[];
@@ -25,6 +37,8 @@ export interface WorkspaceConfig {
   /** `undefined` means "match the platform's file system convention". */
   readonly caseInsensitive: boolean | undefined;
   readonly followSymlinks: boolean;
+  /** Multi-repository federation settings for polyrepos and microservices. */
+  readonly federation?: FederationConfig;
 }
 
 export function defaultConfig(): WorkspaceConfig {
@@ -36,6 +50,7 @@ export function defaultConfig(): WorkspaceConfig {
     nestedRepos: 'include',
     caseInsensitive: undefined,
     followSymlinks: false,
+    federation: undefined,
   };
 }
 
@@ -89,6 +104,7 @@ const KNOWN_KEYS = new Set([
   'nestedRepos',
   'caseInsensitive',
   'followSymlinks',
+  'federation',
 ]);
 
 export function validateWorkspaceConfig(raw: unknown, path = CONFIG_PATH): WorkspaceConfig {
@@ -150,6 +166,53 @@ export function validateWorkspaceConfig(raw: unknown, path = CONFIG_PATH): Works
     nestedRepos = record.nestedRepos as 'include' | 'skip';
   }
 
+  let federation: FederationConfig | undefined;
+  if (record.federation !== undefined) {
+    if (
+      typeof record.federation !== 'object' ||
+      record.federation === null ||
+      Array.isArray(record.federation)
+    ) {
+      bad('federation', 'expected an object');
+    }
+    const fed = record.federation as Record<string, unknown>;
+    const enabled = fed.enabled === undefined ? true : boolean('federation.enabled', fed.enabled);
+    if (!Array.isArray(fed.repositories)) {
+      bad('federation.repositories', 'expected an array');
+    }
+    const repositories: FederatedRepository[] = [];
+    for (const [index, entry] of (fed.repositories as unknown[]).entries()) {
+      const where = `federation.repositories[${index}]`;
+      if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+        bad(where, 'expected an object');
+      }
+      const item = entry as Record<string, unknown>;
+      if (typeof item.name !== 'string' || item.name.trim() === '') {
+        bad(`${where}.name`, 'expected a non-empty string');
+      }
+      if (typeof item.path !== 'string' || item.path.trim() === '') {
+        bad(`${where}.path`, 'expected a non-empty string');
+      }
+      let weight: number | undefined;
+      if (item.weight !== undefined) {
+        if (typeof item.weight !== 'number' || !Number.isFinite(item.weight) || item.weight <= 0) {
+          bad(`${where}.weight`, 'expected a positive number');
+        }
+        weight = item.weight;
+      }
+      repositories.push({
+        name: item.name.trim(),
+        path: item.path.trim(),
+        defaultLanes:
+          item.defaultLanes === undefined
+            ? undefined
+            : stringArray(`${where}.defaultLanes`, item.defaultLanes),
+        weight,
+      });
+    }
+    federation = { enabled, repositories };
+  }
+
   return {
     packages,
     discover: record.discover === undefined ? true : boolean('discover', record.discover),
@@ -164,5 +227,6 @@ export function validateWorkspaceConfig(raw: unknown, path = CONFIG_PATH): Works
       record.followSymlinks === undefined
         ? false
         : boolean('followSymlinks', record.followSymlinks),
+    federation,
   };
 }
