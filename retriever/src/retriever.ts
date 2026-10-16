@@ -193,6 +193,8 @@ export interface RetrieverOptions {
 
 /** One found thing, whichever lane found it. */
 export interface SearchResult {
+  /** The originating repository when results come from a federated workspace search. */
+  readonly repo?: string | undefined;
   /** Same thing across lanes: `path:line` for anything with a place, else the card id. */
   readonly key: string;
   readonly path: string;

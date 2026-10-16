@@ -373,9 +373,18 @@ describe('configuration', () => {
     [{ exclude: [''] }, 'exclude[0]'],
     [{ federation: 'nope' }, 'federation'],
     [{ federation: { repositories: 'nope' } }, 'federation.repositories'],
-    [{ federation: { repositories: [{ name: '', path: 'a' }] } }, 'federation.repositories[0].name'],
-    [{ federation: { repositories: [{ name: 'a', path: '' }] } }, 'federation.repositories[0].path'],
-    [{ federation: { repositories: [{ name: 'a', path: 'b', weight: -1 }] } }, 'federation.repositories[0].weight'],
+    [
+      { federation: { repositories: [{ name: '', path: 'a' }] } },
+      'federation.repositories[0].name',
+    ],
+    [
+      { federation: { repositories: [{ name: 'a', path: '' }] } },
+      'federation.repositories[0].path',
+    ],
+    [
+      { federation: { repositories: [{ name: 'a', path: 'b', weight: -1 }] } },
+      'federation.repositories[0].weight',
+    ],
   ])('a bad config names the field: %j', (raw, location) => {
     try {
       validateWorkspaceConfig(raw);

@@ -15,8 +15,8 @@ export interface ConfiguredPackage {
 export interface FederatedRepository {
   readonly name: string;
   readonly path: string;
-  readonly defaultLanes?: readonly string[];
-  readonly weight?: number;
+  readonly defaultLanes?: readonly string[] | undefined;
+  readonly weight?: number | undefined;
 }
 
 export interface FederationConfig {
@@ -38,7 +38,7 @@ export interface WorkspaceConfig {
   readonly caseInsensitive: boolean | undefined;
   readonly followSymlinks: boolean;
   /** Multi-repository federation settings for polyrepos and microservices. */
-  readonly federation?: FederationConfig;
+  readonly federation?: FederationConfig | undefined;
 }
 
 export function defaultConfig(): WorkspaceConfig {
@@ -193,16 +193,18 @@ export function validateWorkspaceConfig(raw: unknown, path = CONFIG_PATH): Works
       if (typeof item.path !== 'string' || item.path.trim() === '') {
         bad(`${where}.path`, 'expected a non-empty string');
       }
+      const repoName = item.name as string;
+      const repoPath = item.path as string;
       let weight: number | undefined;
       if (item.weight !== undefined) {
         if (typeof item.weight !== 'number' || !Number.isFinite(item.weight) || item.weight <= 0) {
           bad(`${where}.weight`, 'expected a positive number');
         }
-        weight = item.weight;
+        weight = item.weight as number;
       }
       repositories.push({
-        name: item.name.trim(),
-        path: item.path.trim(),
+        name: repoName.trim(),
+        path: repoPath.trim(),
         defaultLanes:
           item.defaultLanes === undefined
             ? undefined
