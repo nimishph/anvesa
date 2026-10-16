@@ -2395,4 +2395,86 @@ app.post('/api/checkout', (req, res) => res.json({ ok: true }));
       'not source: 20 .x00, 19 .x01, 18 .x02, 17 .x03, 16 .x04, 15 .x05, 14 .x06, 13 .x07, 33 more in 3 other kinds',
     );
   });
+
+  describe('workspace federation CLI (anv-fn9)', () => {
+    test('anvesa federation status reports repository statuses', async () => {
+      const child = makeProject();
+      expect((await cli(child, 'index')).code).toBe(0);
+
+      const host = makeProject();
+      mkdirSync(join(host, '.anvesa'), { recursive: true });
+      writeFileSync(
+        join(host, '.anvesa', 'workspace.json'),
+        JSON.stringify({
+          federation: {
+            enabled: true,
+            repositories: [{ name: 'child-repo', path: child }],
+          },
+        }),
+      );
+      expect((await cli(host, 'index')).code).toBe(0);
+
+      const status = await cli(host, 'federation', 'status');
+      expect(status.code).toBe(0);
+      expect(status.out).toContain('child-repo');
+      expect(status.out).toContain('[ready]');
+
+      const json = await cli(host, 'federation', 'status', '--json');
+      expect(json.code).toBe(0);
+      const parsed = JSON.parse(json.out);
+      expect(parsed[0].name).toBe('child-repo');
+      expect(parsed[0].status).toBe('ready');
+    });
+
+    test('anvesa search --federated fans out across federated repositories', async () => {
+      const child = makeProject();
+      expect((await cli(child, 'index')).code).toBe(0);
+
+      const host = makeProject();
+      mkdirSync(join(host, '.anvesa'), { recursive: true });
+      writeFileSync(
+        join(host, '.anvesa', 'workspace.json'),
+        JSON.stringify({
+          federation: {
+            enabled: true,
+            repositories: [{ name: 'sub-service', path: child }],
+          },
+        }),
+      );
+      expect((await cli(host, 'index')).code).toBe(0);
+
+      const search = await cli(host, 'search', 'server', '--federated');
+      expect(search.code).toBe(0);
+      expect(search.out).toContain('sub-service');
+
+      const json = await cli(host, 'search', 'server', '--federated', '--json');
+      expect(json.code).toBe(0);
+      const parsed = JSON.parse(json.out);
+      expect(parsed.items.some((item: { repo?: string }) => item.repo === 'sub-service')).toBe(
+        true,
+      );
+    });
+
+    test('anvesa dependents --federated finds cross-repository dependents', async () => {
+      const child = makeProject();
+      expect((await cli(child, 'index')).code).toBe(0);
+
+      const host = makeProject();
+      mkdirSync(join(host, '.anvesa'), { recursive: true });
+      writeFileSync(
+        join(host, '.anvesa', 'workspace.json'),
+        JSON.stringify({
+          federation: {
+            enabled: true,
+            repositories: [{ name: 'child', path: child }],
+          },
+        }),
+      );
+      expect((await cli(host, 'index')).code).toBe(0);
+
+      const deps = await cli(host, 'dependents', 'src/config.ts', '--federated');
+      expect(deps.code).toBe(0);
+      expect(deps.out).toContain('cross-repo dependent(s) found across federation');
+    });
+  });
 });

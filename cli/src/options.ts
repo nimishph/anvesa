@@ -69,6 +69,8 @@ const OPTIONS = {
   view: { type: 'string' },
   repomap: { type: 'boolean' },
   routes: { type: 'boolean' },
+  federated: { type: 'boolean' },
+  repo: { type: 'string', multiple: true },
 } as const;
 
 export interface Parsed {
@@ -138,6 +140,8 @@ export interface Parsed {
     readonly view?: string;
     readonly repomap?: boolean;
     readonly routes?: boolean;
+    readonly federated?: boolean | undefined;
+    readonly repo?: string[] | undefined;
   };
 }
 
