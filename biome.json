@@ -10,8 +10,10 @@
       "!crates",
       "!eval/golden/*/corpus",
       "!.beads",
+      "!**/.anvesa",
       "!site",
-      "!ui/public"
+      "!ui/public",
+      "!eval/fixtures"
     ]
   },
   "formatter": {
