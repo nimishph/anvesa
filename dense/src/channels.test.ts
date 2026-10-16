@@ -109,6 +109,42 @@ describe('symbols transformer', () => {
     const parts = (await draftsFor(long, 'src/w.ts', 24)).filter((d) => d.key === 'wide');
     for (const part of parts) expect(part.text.startsWith('function wide')).toBe(true);
   });
+
+  describe('experimental: the W-expression path in the card', () => {
+    const nested = `export class ConfigLoader {
+  load(name: string) {
+    const parse = (text: string) => text.trim();
+    return parse(name);
+  }
+}
+`;
+    const cardsWith = async (path?: 'words' | 'wql') =>
+      (await symbolsTransformer(path ? { path } : {}).transform(
+        inputFile('src/loader.ts', nested),
+        context(),
+      )) as CardDraft[];
+
+    test('off by default: the card and the transformer version are as before', async () => {
+      const card = (await cardsWith()).find((d) => d.key === 'ConfigLoader.load') as CardDraft;
+      expect(card.text).not.toContain('in export');
+      expect(symbolsTransformer().version).toBe('2');
+    });
+
+    test('as words, the enclosing nodes outermost first, the symbol itself left out', async () => {
+      const drafts = await cardsWith('words');
+      const load = drafts.find((d) => d.key === 'ConfigLoader.load') as CardDraft;
+      expect(load.text).toContain('in export, class config loader');
+      expect(symbolsTransformer({ path: 'words' }).version).toBe('2+path-words');
+    });
+
+    test('as WQL, a path a query could follow, ending at the symbol', async () => {
+      const drafts = await cardsWith('wql');
+      const load = drafts.find((d) => d.key === 'ConfigLoader.load') as CardDraft;
+      expect(load.text).toContain(
+        '/export/class[@name="ConfigLoader"]/method[@name="ConfigLoader.load"]',
+      );
+    });
+  });
 });
 
 describe('docs transformer', () => {

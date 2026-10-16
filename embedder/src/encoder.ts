@@ -17,6 +17,8 @@ export interface EncoderOptions {
    * of a batch: derive it from what the machine has (see `batchTokensFor`), do not guess.
    */
   readonly maxBatchTokens: number;
+  /** Experimental: batch only texts of one length, so nothing is padded (see `embed`). */
+  readonly exactBatches?: boolean;
 }
 
 /**
@@ -88,7 +90,14 @@ export class LocalEmbedder implements Embedder {
     while (next < order.length) {
       options.deadline?.throwIfExpired(`embed with ${id}`);
       const length = encoded[order[next] as number]?.length as number;
-      const rows = Math.max(1, Math.min(order.length - next, Math.floor(maxBatchTokens / length)));
+      let rows = Math.max(1, Math.min(order.length - next, Math.floor(maxBatchTokens / length)));
+      if (this.#options.exactBatches) {
+        // Padding, even masked, moves a vector (by ~1% for MiniLM): only texts of one length share
+        // a batch, so a text's vector is the one it has alone, whatever it is embedded with.
+        let same = 1;
+        while (same < rows && encoded[order[next + same] as number]?.length === length) same += 1;
+        rows = same;
+      }
       const members = order.slice(next, next + rows);
       const output = await this.#options.backend.run(
         pad(

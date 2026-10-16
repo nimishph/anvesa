@@ -50,6 +50,27 @@ export interface RedTeamTuningConfig {
   readonly quarantineOnSuspect?: boolean;
 }
 
+/**
+ * Switches for experiments that are not yet part of the product. Each is off when absent, so a
+ * project without this block indexes exactly as before.
+ */
+export interface ExperimentalConfig {
+  /** Add the W-expression path of a symbol (its enclosing declarations) to its card. */
+  readonly cardPath?: 'words' | 'wql';
+  /** A SCIP index (path relative to the root): its references replace the linker's call edges. */
+  readonly scip?: string;
+  /** Mix each symbol vector with its graph neighbours': `v + alpha * mean(neighbours)`. */
+  readonly propagate?: PropagateConfig;
+  /** Batch only texts of one length, so no text is padded and a text's vector never varies. */
+  readonly exactBatches?: boolean;
+}
+
+export interface PropagateConfig {
+  readonly alpha: number;
+  /** Edge kinds that make two symbols neighbours. Containment (a member and its parent) always does. */
+  readonly edges: readonly string[];
+}
+
 export interface ProjectConfig {
   readonly $schema?: string;
   /** A built-in model id. Unset means the tier the machine suits, among those installed. */
@@ -68,6 +89,7 @@ export interface ProjectConfig {
   readonly indexing?: IndexingTuningConfig;
   readonly syntax?: SyntaxTuningConfig;
   readonly redteam?: RedTeamTuningConfig;
+  readonly experimental?: ExperimentalConfig;
 }
 
 export function defaultProjectConfig(): ProjectConfig {
@@ -116,6 +138,7 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
         'search',
         'syntax',
         'redteam',
+        'experimental',
       ].includes(key)
     )
       fail(key, 'is not a known setting');
@@ -381,6 +404,9 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
     };
   }
 
+  const experimental =
+    raw.experimental === undefined ? undefined : validateExperimental(raw.experimental, fail);
+
   return {
     ...(raw.$schema !== undefined ? { $schema: raw.$schema as string } : {}),
     model: model as string | undefined,
@@ -394,6 +420,50 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
       : {}),
     ...(syntax !== undefined && Object.keys(syntax).length > 0 ? { syntax } : {}),
     ...(redteam !== undefined && Object.keys(redteam).length > 0 ? { redteam } : {}),
+    ...(experimental !== undefined && Object.keys(experimental).length > 0 ? { experimental } : {}),
+  };
+}
+
+function validateExperimental(
+  raw: unknown,
+  fail: (location: string, problem: string) => never,
+): ExperimentalConfig {
+  if (!isRecord(raw)) return fail('experimental', 'must be an object');
+  for (const key of Object.keys(raw)) {
+    if (!['cardPath', 'scip', 'propagate', 'exactBatches'].includes(key)) {
+      fail(`experimental.${key}`, 'is not a known setting');
+    }
+  }
+  const { cardPath, scip, propagate, exactBatches } = raw;
+  if (cardPath !== undefined && cardPath !== 'words' && cardPath !== 'wql') {
+    fail('experimental.cardPath', 'must be "words" or "wql"');
+  }
+  if (scip !== undefined && (typeof scip !== 'string' || scip.length === 0)) {
+    fail('experimental.scip', 'must be the path of a SCIP index');
+  }
+  if (exactBatches !== undefined && typeof exactBatches !== 'boolean') {
+    fail('experimental.exactBatches', 'must be true or false');
+  }
+  let propagation: PropagateConfig | undefined;
+  if (propagate !== undefined) {
+    if (!isRecord(propagate)) return fail('experimental.propagate', 'must be an object');
+    const { alpha, edges } = propagate;
+    if (typeof alpha !== 'number' || !Number.isFinite(alpha) || alpha < 0) {
+      fail('experimental.propagate.alpha', 'must be a number of 0 or more');
+    }
+    if (
+      edges !== undefined &&
+      !(Array.isArray(edges) && edges.every((e) => typeof e === 'string'))
+    ) {
+      fail('experimental.propagate.edges', 'must be an array of edge kinds');
+    }
+    propagation = { alpha: alpha as number, edges: (edges as string[] | undefined) ?? ['calls'] };
+  }
+  return {
+    ...(cardPath !== undefined ? { cardPath: cardPath as 'words' | 'wql' } : {}),
+    ...(scip !== undefined ? { scip: scip as string } : {}),
+    ...(propagation !== undefined ? { propagate: propagation } : {}),
+    ...(exactBatches !== undefined ? { exactBatches: exactBatches as boolean } : {}),
   };
 }
 

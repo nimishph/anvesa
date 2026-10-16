@@ -104,6 +104,7 @@ import {
   ProjectConfigError,
   TargetError,
 } from './errors.ts';
+import { runExperiments } from './experimental.ts';
 import { type Contribution, DEFAULT_RRF_K, fuse } from './fuse.ts';
 import { createRuntime, type GrammarHost } from './grammars.ts';
 import {
@@ -433,9 +434,10 @@ export class Retriever {
   }
 
   async #registerChannels(): Promise<void> {
+    const cardPath = this.config.experimental?.cardPath;
     for (const [name, transformer] of [
-      ['symbols', symbolsTransformer],
-      ['docs', docsTransformer],
+      ['symbols', () => symbolsTransformer(cardPath ? { path: cardPath } : {})],
+      ['docs', () => docsTransformer()],
     ] as const) {
       if (this.config.channels[name]?.enabled === false) continue;
       this.registry.register(transformer());
@@ -485,9 +487,17 @@ export class Retriever {
     });
     const indexed = await indexer.index(options);
     const unused = this.#unusedManifestWarning();
-    const report = unused
-      ? { ...indexed, warnings: [...(indexed.warnings ?? []), unused] }
-      : indexed;
+    const experiments = await runExperiments(
+      this.root,
+      this.config.experimental,
+      this.store,
+      this.vectors instanceof SqliteVectorStore ? this.vectors.database : undefined,
+    );
+    const notes = [...(unused ? [unused] : []), ...experiments];
+    const report =
+      notes.length > 0
+        ? { ...indexed, warnings: [...(indexed.warnings ?? []), ...notes] }
+        : indexed;
     const synced: SyncReport[] = [];
     if (this.#ingester) {
       for (const [name, source] of this.#sources) {

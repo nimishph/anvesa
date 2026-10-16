@@ -109,6 +109,9 @@ export class SqliteVectorStore implements VectorStore {
         `INSERT INTO card_vectors (channel, id, model, group_key, dims, vector)
          VALUES (?, ?, ?, ?, ?, ?)`,
       );
+      const insertRaw = db.query(
+        'INSERT OR REPLACE INTO card_vectors_raw (channel, id, vector) VALUES (?, ?, ?)',
+      );
       for (const { card, unit } of prepared) {
         const group = collapseKey(card);
         insertCard.run(
@@ -119,14 +122,9 @@ export class SqliteVectorStore implements VectorStore {
           group,
           JSON.stringify(card),
         );
-        insertVector.run(
-          update.channel,
-          card.id,
-          update.model,
-          group,
-          unit.length,
-          Buffer.from(unit.buffer, unit.byteOffset, unit.byteLength),
-        );
+        const blob = Buffer.from(unit.buffer, unit.byteOffset, unit.byteLength);
+        insertVector.run(update.channel, card.id, update.model, group, unit.length, blob);
+        insertRaw.run(update.channel, card.id, blob);
       }
 
       const insertQuarantine = db.query(

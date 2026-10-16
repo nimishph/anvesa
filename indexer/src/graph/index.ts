@@ -24,3 +24,7 @@ export type {
 export { computeGraphPageRank, generateRepoMap } from './repomap.ts';
 export type { Resolution, ResolvedImport, ResolvedVia, ResolverEnvironment } from './resolver.ts';
 export { ImportResolver, scriptCandidates, splitPackage } from './resolver.ts';
+export type { ScipDocument, ScipOccurrence, ScipSymbolInfo } from './scip/decode.ts';
+export { decodeScip, SCIP_ROLE } from './scip/decode.ts';
+export type { ScipOverlayReport } from './scip/overlay.ts';
+export { applyScipOverlay } from './scip/overlay.ts';

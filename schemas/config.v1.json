@@ -181,6 +181,44 @@
           "description": "Quarantine any card suspected of containing prompt injections or adversarial payload."
         }
       }
+    },
+    "experimental": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Experiments that are not yet part of the product. Each is off when absent.",
+      "properties": {
+        "cardPath": {
+          "enum": ["words", "wql"],
+          "description": "Add the W-expression path of a symbol to its card."
+        },
+        "scip": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A SCIP index, relative to the root; its references replace the linker's call edges."
+        },
+        "propagate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["alpha"],
+          "description": "Mix each symbol vector with its graph neighbours': v + alpha * mean(neighbours).",
+          "properties": {
+            "alpha": {
+              "type": "number",
+              "minimum": 0
+            },
+            "edges": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "exactBatches": {
+          "type": "boolean",
+          "description": "Batch only texts of one length, so no text is padded."
+        }
+      }
     }
   }
 }

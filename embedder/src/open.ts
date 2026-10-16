@@ -19,6 +19,8 @@ export interface OpenOptions {
    */
   readonly batchMemoryBytes?: number;
   readonly probe?: HardwareProbe;
+  /** Experimental: batch only texts of one length (see `EncoderOptions.exactBatches`). */
+  readonly exactBatches?: boolean;
 }
 
 const BYTES_PER_MB = 1024 * 1024;
@@ -57,6 +59,7 @@ export async function openLocalEmbedder(
     tokenizer,
     backend,
     maxBatchTokens: batchTokensFor(spec.dimensions, budget),
+    ...(options.exactBatches ? { exactBatches: true } : {}),
   });
   try {
     await embedder.embed(['dimension probe']);

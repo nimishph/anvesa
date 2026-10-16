@@ -181,7 +181,14 @@ export async function openProjectEmbedder(
     const resolved = await resolveModel(cache, {
       ...(config.model === undefined ? {} : { model: config.model }),
     });
-    return { embedder: await openLocalEmbedder(resolved.spec, { cache }), reason: resolved.reason };
+    const exactBatches = config.experimental?.exactBatches === true;
+    return {
+      embedder: await openLocalEmbedder(resolved.spec, {
+        cache,
+        ...(exactBatches ? { exactBatches } : {}),
+      }),
+      reason: resolved.reason,
+    };
   } catch (failure) {
     if (failure instanceof ModelUnavailableError)
       return { embedder: undefined, reason: failure.message };

@@ -340,6 +340,25 @@ describe('project config', () => {
     expect(validateProjectConfig({ indexing: { fragments: 'off' } }).fragments).toBe(false);
   });
 
+  test('experimental switches are read, with propagation over call edges unless told otherwise', () => {
+    expect(
+      validateProjectConfig({
+        experimental: {
+          cardPath: 'wql',
+          scip: 'index.scip',
+          exactBatches: true,
+          propagate: { alpha: 0.3 },
+        },
+      }).experimental,
+    ).toEqual({
+      cardPath: 'wql',
+      scip: 'index.scip',
+      exactBatches: true,
+      propagate: { alpha: 0.3, edges: ['calls'] },
+    });
+    expect(validateProjectConfig({}).experimental).toBeUndefined();
+  });
+
   test.each([
     [{ nope: 1 }, 'nope'],
     [{ model: 3 }, 'model'],
@@ -350,6 +369,9 @@ describe('project config', () => {
     [{ fusion: { k: 0 } }, 'fusion.k'],
     [{ indexing: { fragments: 'maybe' } }, 'indexing.fragments'],
     [{ indexing: { shards: 3 } }, 'indexing.shards'],
+    [{ experimental: { cardPath: 'tree' } }, 'experimental.cardPath'],
+    [{ experimental: { propagate: { alpha: -1 } } }, 'experimental.propagate.alpha'],
+    [{ experimental: { gnn: true } }, 'experimental.gnn'],
   ])('%j is refused at %s', (raw, location) => {
     try {
       validateProjectConfig(raw);
