@@ -4,6 +4,7 @@ import {
   type ChannelInfo,
   type Diagnosis,
   type Explanation,
+  type FederatedRepoStatus,
   type FragmentManifest,
   type FragmentStatus,
   fenceUntrusted,
@@ -129,15 +130,17 @@ function renderResult(result: SearchResult, index: number, options?: RenderOptio
   const found = result.foundBy.map((c) => `${c.lane}#${c.rank}`).join(' ');
   const signature = result.card?.attrs.signature ? `  ${result.card.attrs.signature}` : '';
 
+  const repoTag = result.repo ? `[${result.repo}] ` : '';
+
   if (mode === 'locations') {
     const kind = result.kind ? `${result.kind} ` : '';
-    return `${jumpLink(result)}: ${kind}${result.title} [${found}]`;
+    return `${repoTag}${jumpLink(result)}: ${kind}${result.title} [${found}]`;
   }
 
   if (mode === 'compact') {
     const scoreStr =
       result.bestScore !== undefined ? `  (score: ${result.bestScore.toFixed(3)})` : '';
-    const head = `${String(index + 1).padStart(2)}. ${result.title}${result.kind ? ` (${result.kind})` : ''}  ${place(result)}${signature}  [${found}]${scoreStr}`;
+    const head = `${String(index + 1).padStart(2)}. ${repoTag}${result.title}${result.kind ? ` (${result.kind})` : ''}  ${place(result)}${signature}  [${found}]${scoreStr}`;
     const docSummary = extractDocSummary(result.card?.text);
     const docLine = docSummary ? `\n      // ${docSummary}` : '';
     if (full && result.card) {
@@ -156,7 +159,7 @@ function renderResult(result: SearchResult, index: number, options?: RenderOptio
   const bar = result.bestScore !== undefined ? `  ${scoreBar(result.bestScore)}` : '';
   const loc = isTTY ? `\x1b[36m${jumpLink(result)}\x1b[0m` : place(result);
   const title = isTTY ? `\x1b[1m${result.title}\x1b[0m` : result.title;
-  const head = `${String(index + 1).padStart(2)}. ${title}${result.kind ? ` (${result.kind})` : ''}  ${loc}${signature}  [${found}]${best}${bar}`;
+  const head = `${String(index + 1).padStart(2)}. ${repoTag}${title}${result.kind ? ` (${result.kind})` : ''}  ${loc}${signature}  [${found}]${best}${bar}`;
   if (!result.card) return head;
   const fenced = fenceUntrusted(result.card.text, {
     source: result.card.source.path,
@@ -1043,5 +1046,27 @@ export function renderPatternResult(result: PatternRunResult): string {
     ...rows,
     `${count}${result.nextCursor ? ` (next cursor: ${result.nextCursor})` : ''}`,
     ...diagRows,
+  );
+}
+
+export function renderFederationStatus(statuses: readonly FederatedRepoStatus[]): string {
+  if (statuses.length === 0) {
+    return 'no federated repositories configured in .anvesa/workspace.json\n';
+  }
+  const rows = statuses.map((st) => {
+    const statusLabel =
+      st.status === 'ready'
+        ? '[ready]'
+        : st.status === 'unindexed'
+          ? '[unindexed]'
+          : st.status === 'missing'
+            ? '[missing]'
+            : '[error]';
+    const err = st.error ? ` — ${st.error}` : '';
+    return `  ${st.name.padEnd(20)} ${statusLabel.padEnd(12)} weight: ${st.weight}  path: ${st.path}${err}`;
+  });
+  return lines(
+    `${statuses.length} federated repositor${statuses.length === 1 ? 'y' : 'ies'}:`,
+    ...rows,
   );
 }
