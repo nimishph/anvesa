@@ -24,14 +24,8 @@ export {
   validateCard,
 } from './card.ts';
 export { ChannelRegistry } from './channel.ts';
-export type {
-  BucketBatchOptions,
-  BucketBatchStats,
-  EmbedAllOptions,
-  Embedder,
-  EmbedderInfo,
-} from './embedder.ts';
-export { budgetSourceOf, embedAll, embedAllBucketed } from './embedder.ts';
+export type { Embedder, EmbedderInfo } from './embedder.ts';
+export { budgetSourceOf, embedAll } from './embedder.ts';
 export * from './errors.ts';
 export type {
   IngesterOptions,

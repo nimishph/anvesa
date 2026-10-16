@@ -9,7 +9,11 @@ export interface SymbolsOptions {
   readonly channel?: string;
   /** Which files count as source code. Defaults to the built-in language registry. */
   readonly languages?: LanguageRegistry;
-  /** Whether to synthesize and prepend topological context into the card block. */
+  /**
+   * Open each card with `[scope: <parent> <path> | symbol: <kind> <name>]`: the raw path and name,
+   * beside the identity line's split words. Off by default; turning it on changes every card, so a
+   * project re-indexes. `eval:real` measures whether it helps.
+   */
   readonly graphPreamble?: boolean;
 }
 

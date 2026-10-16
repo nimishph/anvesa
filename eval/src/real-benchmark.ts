@@ -1,348 +1,285 @@
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { Deadline } from '@cntxt-labs/anvesa-core';
+import { Deadline, InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import {
-  type CardDraft,
+  budgetFor,
+  budgetSourceOf,
   calibrateBatchCentroid,
   calibrateCentroid,
   computeCentroid,
   createTransformServices,
   dot,
+  type Embedder,
   embedAll,
-  embedAllBucketed,
   inputFile,
   measureAnisotropy,
   symbolsTransformer,
+  type Transformer,
 } from '@cntxt-labs/anvesa-dense';
-import { builtinModel, openLocalEmbedder } from '@cntxt-labs/anvesa-embedder';
-import { readSource, Workspace, walkSources } from '@cntxt-labs/anvesa-indexer';
-import { StructuralEngine } from '@cntxt-labs/anvesa-structural';
+import { builtinModel, ModelCache, openLocalEmbedder } from '@cntxt-labs/anvesa-embedder';
+import { readSource, type SymbolFact, Workspace, walkSources } from '@cntxt-labs/anvesa-indexer';
+import { outlineSymbols, StructuralEngine } from '@cntxt-labs/anvesa-structural';
 import { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/anvesa-syntax';
+import { type Fixture, fixturePath, fixtureReady, loadFixtures } from './fixtures.ts';
+import { type EvalQuery, generateQueries, type Population, rankOf, score } from './retrieval.ts';
 
-interface ExtractedCard {
+/**
+ *   bun run eval:fixtures                       # once: fetch the pinned repositories
+ *   bun run eval:real [--model <id> ...] [--fixture <name> ...] [--json <path>]
+ *
+ * Whether centroid calibration and the graph preamble rank the right file higher, on real
+ * repositories. Each repository's symbol cards are embedded with and without the preamble; each
+ * set is searched as embedded and calibrated against its own centroid (the query with it). Queries
+ * come from the code, as `eval:retrieval` makes them: a symbol's name split into words
+ * (identifier), and the first sentence of its documentation without its name (intent). Scores are
+ * recall at k and mean reciprocal rank of the file that defines the symbol.
+ *
+ * Intent queries are words from the symbol's own documentation, which its card holds, so they
+ * measure how well a model matches a card's words more than how well it matches paraphrase.
+ */
+
+export const CUTOFFS = [1, 5, 10] as const;
+const POPULATIONS: readonly Population[] = ['identifier', 'intent'];
+
+export interface BenchCard {
   readonly path: string;
-  readonly card: CardDraft;
+  readonly text: string;
 }
 
-interface BenchmarkRepoConfig {
-  readonly name: string;
-  readonly path: string;
-  readonly filePattern: RegExp;
-  readonly sampleQueries: readonly string[];
-}
-
-const DEFAULT_REPOS: readonly BenchmarkRepoConfig[] = [
-  {
-    name: 'vercel/commerce (E-Commerce Webapp)',
-    path: 'eval/fixtures/commerce',
-    filePattern: /\.(tsx?|jsx?)$/,
-    sampleQueries: [
-      'shopping cart items and checkout',
-      'shopify product variant price and inventory',
-      'cookies session authentication token',
-    ],
-  },
-  {
-    name: 'karpathy/nanoGPT (PyTorch Generative Pretraining)',
-    path: 'eval/fixtures/nanoGPT',
-    filePattern: /\.py$/,
-    sampleQueries: [
-      'multi-head causal self attention layer',
-      'adamw weight decay learning rate schedule',
-      'cross entropy loss and next token prediction',
-    ],
-  },
-];
-
-async function extractRepoCards(
-  root: string,
-  pattern: RegExp,
-  services: ReturnType<typeof createTransformServices>,
-  options: { readonly graphPreamble?: boolean } = {},
-): Promise<readonly ExtractedCard[]> {
-  const ws = await Workspace.open({ root });
-  const symbols = symbolsTransformer({
-    ...(options.graphPreamble ? { graphPreamble: true } : {}),
+/** Files in the order their best card scores against the query, each file once. */
+export function rankFiles(
+  query: Float32Array,
+  cards: readonly BenchCard[],
+  vectors: readonly Float32Array[],
+): string[] {
+  const best = new Map<string, number>();
+  vectors.forEach((vector, i) => {
+    const path = cards[i]?.path;
+    if (path === undefined) return;
+    const similarity = dot(query, vector);
+    if (similarity > (best.get(path) ?? Number.NEGATIVE_INFINITY)) best.set(path, similarity);
   });
-  const budget = { maxTokens: 512, specialTokens: 2, count: (t: string) => t.split(/\s+/).length };
-  const cards: ExtractedCard[] = [];
+  return [...best].sort((a, b) => b[1] - a[1]).map(([path]) => path);
+}
 
-  for await (const file of walkSources(ws)) {
-    if (!pattern.test(file.path)) continue;
+export interface VariantScore {
+  readonly variant: string;
+  readonly population: Population;
+  readonly queries: number;
+  readonly recall: Readonly<Record<number, number>>;
+  readonly mrr: number;
+}
+
+/** Scores one way of searching on every query of one population. */
+export function scoreVariant(
+  variant: string,
+  population: Population,
+  queries: readonly { readonly query: EvalQuery; readonly vector: Float32Array }[],
+  cards: readonly BenchCard[],
+  vectors: readonly Float32Array[],
+): VariantScore {
+  const ranks = queries
+    .filter((q) => q.query.population === population)
+    .map((q) => rankOf(rankFiles(q.vector, cards, vectors), q.query.relevant));
+  const scored = score(ranks, CUTOFFS);
+  return {
+    variant,
+    population,
+    queries: scored.queries,
+    recall: Object.fromEntries(scored.recall),
+    mrr: scored.mrr,
+  };
+}
+
+interface Extracted {
+  readonly plain: readonly BenchCard[];
+  readonly preamble: readonly BenchCard[];
+  readonly symbols: readonly SymbolFact[];
+}
+
+/** Symbol cards with and without the preamble, and the symbols queries are made from. */
+async function extract(root: string, embedder: Embedder): Promise<Extracted> {
+  const runtime = new SyntaxRuntime({ sources: [npmPackageSource(import.meta.filename)] });
+  const services = createTransformServices(new StructuralEngine({ runtime }));
+  const budget = budgetFor(budgetSourceOf(embedder));
+  const plainTransformer = symbolsTransformer();
+  const preambleTransformer = symbolsTransformer({ graphPreamble: true });
+  const workspace = await Workspace.open({ root });
+  const plain: BenchCard[] = [];
+  const preamble: BenchCard[] = [];
+  const symbols: SymbolFact[] = [];
+
+  const cardsOf = async (transformer: Transformer, input: ReturnType<typeof inputFile>) =>
+    (await transformer.transform(input, { services, deadline: Deadline.unbounded(), budget })).map(
+      (draft) => ({ path: input.path, text: draft.text }),
+    );
+
+  for await (const file of walkSources(workspace)) {
     const content = await readSource(root, file.path);
     if (content.kind !== 'text') continue;
-
     const input = inputFile(file.path, content.content);
-    if (!symbols.claim(input)) continue;
+    if (!plainTransformer.claim(input)) continue;
     try {
-      const drafts = await symbols.transform(input, {
-        services,
-        deadline: Deadline.unbounded(),
-        budget,
-      });
-      for (const d of drafts) {
-        cards.push({ path: file.path, card: d });
+      plain.push(...(await cardsOf(plainTransformer, input)));
+      preamble.push(...(await cardsOf(preambleTransformer, input)));
+      const encoded = await services.encode(input, { docs: true });
+      for (const symbol of outlineSymbols(encoded.root)) {
+        symbols.push({
+          id: `${file.path}#${symbol.name}`,
+          path: file.path,
+          name: symbol.name,
+          baseName: symbol.baseName,
+          kind: symbol.kind,
+          parentId: undefined,
+          // A language with no export marker (Python) exports by convention: ask about its names too.
+          exported: symbol.exported ?? true,
+          startLine: 0,
+          endLine: 0,
+          signature: symbol.signature,
+          doc: symbol.doc,
+        });
       }
     } catch (failure) {
-      process.stderr.write(`Skipped ${file.path}: ${String(failure)}\n`);
+      // A file the parser cannot read is left out of both card sets alike.
+      process.stderr.write(`skipped ${file.path}: ${String(failure)}\n`);
     }
   }
-
-  return cards;
+  return { plain, preamble, symbols };
 }
 
-export async function benchmarkRepository(
-  config: BenchmarkRepoConfig,
-  services: ReturnType<typeof createTransformServices>,
-): Promise<void> {
-  const fullPath = resolve(config.path);
-  if (!existsSync(fullPath)) {
-    process.stdout.write(`\n[SKIPPED] Repository not found at ${config.path}\n`);
-    return;
-  }
+export interface FixtureResult {
+  readonly fixture: string;
+  readonly commit: string;
+  readonly model: string;
+  readonly cards: number;
+  readonly anisotropy: {
+    readonly before: ReturnType<typeof measureAnisotropy>;
+    readonly after: ReturnType<typeof measureAnisotropy>;
+  };
+  readonly scores: readonly VariantScore[];
+}
 
-  process.stdout.write('\n');
-  process.stdout.write(
-    '================================================================================\n',
+export async function benchmarkFixture(
+  fixture: Fixture,
+  embedder: Embedder,
+): Promise<FixtureResult> {
+  const { plain, preamble, symbols } = await extract(fixturePath(fixture), embedder);
+  if (plain.length === 0) {
+    throw new InvalidArgumentError('fixture', 'a repository with symbol cards', fixture.name);
+  }
+  const queries = generateQueries(symbols, { minWords: 3 }).filter((q) =>
+    POPULATIONS.includes(q.population),
   );
-  process.stdout.write(`  REAL-WORLD BENCHMARK: ${config.name}\n`);
-  process.stdout.write(`  Location: ${config.path}\n`);
-  process.stdout.write(
-    '================================================================================\n',
+  // One at a time: the encoder is one session, and each call is already batched.
+  const plainVectors = await embedAll(
+    embedder,
+    plain.map((card) => card.text),
+  );
+  const preambleVectors = await embedAll(
+    embedder,
+    preamble.map((card) => card.text),
+  );
+  const queryVectors = await embedAll(
+    embedder,
+    queries.map((q) => q.text),
   );
 
-  // 1. AST Extraction
-  const cards = await extractRepoCards(config.path, config.filePattern, services);
-  const cardTexts = cards.map((c) => c.card.text);
-
-  if (cardTexts.length === 0) {
-    process.stdout.write('No symbol cards extracted from repository.\n');
-    return;
-  }
-
-  // 2. Open Local Neural Embedder
-  const modelSpec = builtinModel('all-MiniLM-L6-v2');
-  if (!modelSpec) {
-    process.stderr.write('Model all-MiniLM-L6-v2 not found\n');
-    return;
-  }
-  const embedder = await openLocalEmbedder(modelSpec);
-
-  try {
-    const rawLengths = cardTexts.map((text) => Math.max(1, embedder.count(text)));
-    const sortedLengths = [...rawLengths].sort((a, b) => a - b);
-    const minLen = sortedLengths[0] ?? 0;
-    const maxLen = sortedLengths[sortedLengths.length - 1] ?? 0;
-    const medianLen = sortedLengths[Math.floor(sortedLengths.length / 2)] ?? 0;
-    const actualTokens = rawLengths.reduce((acc, l) => acc + l, 0);
-
-    process.stdout.write('\n1. REAL AST SYMBOL EXTRACTION & TOKEN DISTRIBUTION\n');
-    process.stdout.write(
-      '--------------------------------------------------------------------------------\n',
-    );
-    process.stdout.write(`• Extracted Real Code Cards:       ${cards.length} symbols\n`);
-    process.stdout.write(
-      `• Total Real Content Tokens:       ${actualTokens.toLocaleString()} tokens\n`,
-    );
-    process.stdout.write(
-      `• Sequence Length Range:           [min: ${minLen}, median: ${medianLen}, max: ${maxLen}] tokens\n`,
-    );
-
-    // 3. Length-Sorted Dynamic Batching
-    const batchSize = 16;
-    let linearPaddedTokens = 0;
-    for (let i = 0; i < rawLengths.length; i += batchSize) {
-      const slice = rawLengths.slice(i, i + batchSize);
-      const batchMax = Math.max(...slice);
-      linearPaddedTokens += slice.length * batchMax;
-    }
-
-    const linearStart = performance.now();
-    const linearVectors = await embedAll(embedder, cardTexts);
-    const linearMs = performance.now() - linearStart;
-
-    let bucketedStats:
-      | {
-          linearPaddedTokens: number;
-          bucketedPaddedTokens: number;
-          paddingComputeReduction: number;
-        }
-      | undefined;
-    const bucketStart = performance.now();
-    const bucketedVectors = await embedAllBucketed(embedder, cardTexts, {
-      onStats: (stats) => {
-        bucketedStats = stats;
-      },
+  const variants: { name: string; cards: readonly BenchCard[]; vectors: Float32Array[] }[] = [];
+  const asked: { query: EvalQuery; vector: Float32Array }[][] = [];
+  for (const [name, cards, vectors] of [
+    ['plain', plain, plainVectors],
+    ['preamble', preamble, preambleVectors],
+  ] as const) {
+    const centroid = computeCentroid(vectors);
+    variants.push({ name, cards, vectors });
+    asked.push(queries.map((query, i) => ({ query, vector: queryVectors[i] as Float32Array })));
+    variants.push({
+      name: `${name} + calibrated`,
+      cards,
+      vectors: calibrateBatchCentroid(vectors, centroid),
     });
-    const bucketMs = performance.now() - bucketStart;
-
-    const actualBucketPadded = bucketedStats?.bucketedPaddedTokens ?? 0;
-    const linearWaste = linearPaddedTokens - actualTokens;
-    const bucketWaste = actualBucketPadded - actualTokens;
-    const wasteEliminatedPct =
-      linearWaste > 0 ? Math.max(0, (linearWaste - bucketWaste) / linearWaste) * 100 : 0;
-    const paddingReductionPct =
-      linearPaddedTokens > 0
-        ? ((linearPaddedTokens - actualBucketPadded) / linearPaddedTokens) * 100
-        : 0;
-
-    // Numerical parity check
-    let maxDelta = 0;
-    for (let i = 0; i < cardTexts.length; i++) {
-      const lin = linearVectors[i];
-      const bkt = bucketedVectors[i];
-      if (!lin || !bkt) continue;
-      for (let d = 0; d < lin.length; d++) {
-        const delta = Math.abs((lin[d] ?? 0) - (bkt[d] ?? 0));
-        if (delta > maxDelta) maxDelta = delta;
-      }
-    }
-
-    process.stdout.write('\n2. REAL-WORLD DYNAMIC LENGTH-SORTED BUCKET BATCHING\n');
-    process.stdout.write(
-      '--------------------------------------------------------------------------------\n',
+    asked.push(
+      queries.map((query, i) => ({
+        query,
+        vector: calibrateCentroid(queryVectors[i] as Float32Array, centroid),
+      })),
     );
-    process.stdout.write(
-      `• Actual Content Tokens:           ${actualTokens.toLocaleString()} tokens\n`,
-    );
-    process.stdout.write(
-      `• Linear Batch Padded Tokens:      ${linearPaddedTokens.toLocaleString()} tokens (waste: ${linearWaste.toLocaleString()})\n`,
-    );
-    process.stdout.write(
-      `• Length-Sorted Padded Tokens:     ${actualBucketPadded.toLocaleString()} tokens (waste: ${bucketWaste.toLocaleString()})\n`,
-    );
-    process.stdout.write(`• Zero-Padding Waste Eliminated:   ${wasteEliminatedPct.toFixed(2)}%\n`);
-    process.stdout.write(`• Total Padded Compute Reduced:    ${paddingReductionPct.toFixed(2)}%\n`);
-    process.stdout.write(`• Linear Batch Latency:            ${linearMs.toFixed(2)} ms\n`);
-    process.stdout.write(`• Bucketed Batch Latency:          ${bucketMs.toFixed(2)} ms\n`);
-    process.stdout.write(
-      `• Vector Index Parity:             ${maxDelta < 1e-6 ? 'EXACT PARITY (max delta = 0.000000)' : `Delta: ${maxDelta}`}\n`,
-    );
-
-    // 4. Centroid Subtraction (Real Anisotropy Analysis)
-    const beforeAnisotropy = measureAnisotropy(linearVectors);
-    const codebaseCentroid = computeCentroid(linearVectors);
-    const calibratedVectors = calibrateBatchCentroid(linearVectors, codebaseCentroid);
-    const afterAnisotropy = measureAnisotropy(calibratedVectors);
-
-    const varianceGain = afterAnisotropy.stdCosine / (beforeAnisotropy.stdCosine || 1e-6);
-
-    process.stdout.write('\n3. REAL-WORLD VECTOR CENTROID SUBTRACTION (ANISOTROPY CONE)\n');
-    process.stdout.write(
-      '--------------------------------------------------------------------------------\n',
-    );
-    process.stdout.write(
-      `• Model & Dimensions:              ${modelSpec.id} (${modelSpec.dimensions} dims)\n`,
-    );
-    process.stdout.write(
-      `• Codebase Centroid L2 Norm:       ${beforeAnisotropy.centroidNorm.toFixed(4)}\n`,
-    );
-    process.stdout.write('• Raw Vector Distribution:\n');
-    process.stdout.write(
-      `    - Mean Cosine (μ):             ${beforeAnisotropy.meanCosine.toFixed(4)}\n`,
-    );
-    process.stdout.write(
-      `    - Standard Deviation (σ):      ${beforeAnisotropy.stdCosine.toFixed(4)}\n`,
-    );
-    process.stdout.write(
-      `    - Dynamic Range:               [${beforeAnisotropy.minCosine.toFixed(4)}, ${beforeAnisotropy.maxCosine.toFixed(4)}]\n`,
-    );
-    process.stdout.write('• Calibrated Vector Distribution:\n');
-    process.stdout.write(
-      `    - Mean Cosine (μ):             ${afterAnisotropy.meanCosine.toFixed(4)} (centered near origin)\n`,
-    );
-    process.stdout.write(
-      `    - Standard Deviation (σ):      ${afterAnisotropy.stdCosine.toFixed(4)}\n`,
-    );
-    process.stdout.write(
-      `    - Dynamic Range:               [${afterAnisotropy.minCosine.toFixed(4)}, ${afterAnisotropy.maxCosine.toFixed(4)}]\n`,
-    );
-    process.stdout.write(
-      `• Angular Contrast Expansion:      ${varianceGain.toFixed(2)}x standard deviation expansion\n`,
-    );
-
-    // 5. Real Retrieval Query Evaluation
-    process.stdout.write('\n4. REAL-WORLD RETRIEVAL & CONTRAST GAP EVALUATION\n');
-    process.stdout.write(
-      '--------------------------------------------------------------------------------\n',
-    );
-
-    for (const query of config.sampleQueries) {
-      const [qRaw] = await embedder.embed([query]);
-      if (!qRaw) continue;
-      const qCal = calibrateCentroid(qRaw, codebaseCentroid);
-
-      const rawRankings = linearVectors.map((v, i) => ({
-        sim: dot(qRaw, v),
-        name: cards[i]?.card.attrs?.symbol ?? cards[i]?.card.key ?? 'unknown',
-        path: cards[i]?.path ?? '',
-      }));
-      rawRankings.sort((a, b) => b.sim - a.sim);
-
-      const calRankings = calibratedVectors.map((v, i) => ({
-        sim: dot(qCal, v),
-        name: cards[i]?.card.attrs?.symbol ?? cards[i]?.card.key ?? 'unknown',
-        path: cards[i]?.path ?? '',
-      }));
-      calRankings.sort((a, b) => b.sim - a.sim);
-
-      const rawTop1 = rawRankings[0];
-      const rawTop2 = rawRankings[1];
-      const calTop1 = calRankings[0];
-      const calTop2 = calRankings[1];
-
-      const rawGap = (rawTop1?.sim ?? 0) - (rawTop2?.sim ?? 0);
-      const calGap = (calTop1?.sim ?? 0) - (calTop2?.sim ?? 0);
-
-      process.stdout.write(`Query: "${query}"\n`);
-      process.stdout.write(
-        `  • [Raw Embedding] Top-1:   ${rawTop1?.name} (${rawTop1?.path}) | score: ${rawTop1?.sim.toFixed(4)} | gap: ${rawGap.toFixed(4)}\n`,
-      );
-      process.stdout.write(
-        `  • [Calibrated]    Top-1:   ${calTop1?.name} (${calTop1?.path}) | score: ${calTop1?.sim.toFixed(4)} | gap: ${calGap.toFixed(4)}\n`,
-      );
-    }
-  } finally {
-    await embedder.dispose();
   }
+
+  const scores: VariantScore[] = [];
+  for (const population of POPULATIONS) {
+    variants.forEach((variant, i) => {
+      scores.push(
+        scoreVariant(variant.name, population, asked[i] ?? [], variant.cards, variant.vectors),
+      );
+    });
+  }
+  return {
+    fixture: fixture.name,
+    commit: fixture.commit,
+    model: embedder.info.id,
+    cards: plain.length,
+    anisotropy: {
+      before: measureAnisotropy(plainVectors),
+      after: measureAnisotropy(calibrateBatchCentroid(plainVectors, computeCentroid(plainVectors))),
+    },
+    scores,
+  };
+}
+
+export function renderResult(result: FixtureResult): string {
+  const lines = [
+    `${result.fixture} @ ${result.commit} — ${result.model}, ${result.cards} cards`,
+    `  mean cosine between cards ${result.anisotropy.before.meanCosine.toFixed(3)} → ${result.anisotropy.after.meanCosine.toFixed(3)} calibrated`,
+    `  ${'variant'.padEnd(22)} ${'population'.padEnd(11)} ${'n'.padStart(4)} ${CUTOFFS.map((k) => `R@${k}`.padStart(6)).join(' ')} ${'MRR'.padStart(6)}`,
+  ];
+  for (const s of result.scores) {
+    lines.push(
+      `  ${s.variant.padEnd(22)} ${s.population.padEnd(11)} ${String(s.queries).padStart(4)} ${CUTOFFS.map((k) => ((s.recall[k] ?? 0) * 100).toFixed(1).padStart(6)).join(' ')} ${s.mrr.toFixed(3).padStart(6)}`,
+    );
+  }
+  return `${lines.join('\n')}\n`;
 }
 
 async function main(): Promise<void> {
   const { values } = parseArgs({
     options: {
-      repo: { type: 'string' },
-      all: { type: 'boolean' },
+      model: { type: 'string', multiple: true },
+      fixture: { type: 'string', multiple: true },
+      json: { type: 'string' },
     },
-    strict: false,
   });
-
-  const runtime = new SyntaxRuntime({ sources: [npmPackageSource(import.meta.filename)] });
-  const engine = new StructuralEngine({ runtime });
-  const services = createTransformServices(engine);
-
-  try {
-    const repoArg = typeof values.repo === 'string' ? values.repo : undefined;
-    if (repoArg) {
-      const config: BenchmarkRepoConfig = {
-        name: repoArg,
-        path: repoArg,
-        filePattern: /\.(tsx?|jsx?|py)$/,
-        sampleQueries: [
-          'main entrypoint or configuration',
-          'core handler or service method',
-          'data processing or model pipeline',
-        ],
-      };
-      await benchmarkRepository(config, services);
-    } else {
-      for (const repo of DEFAULT_REPOS) {
-        await benchmarkRepository(repo, services);
+  const models = values.model ?? ['all-MiniLM-L6-v2'];
+  const fixtures = loadFixtures().filter(
+    (fixture) => values.fixture === undefined || values.fixture.includes(fixture.name),
+  );
+  const cache = new ModelCache();
+  const results: FixtureResult[] = [];
+  for (const id of models) {
+    const spec = builtinModel(id) ?? (await cache.findCustom(id));
+    if (spec === undefined) throw new InvalidArgumentError('--model', 'a known model', id);
+    const embedder = await openLocalEmbedder(spec, { cache });
+    try {
+      for (const fixture of fixtures) {
+        if (!(await fixtureReady(fixture))) {
+          process.stdout.write(
+            `${fixture.name}: not fetched at ${fixture.commit}; run bun run eval:fixtures\n`,
+          );
+          continue;
+        }
+        const result = await benchmarkFixture(fixture, embedder);
+        results.push(result);
+        process.stdout.write(`\n${renderResult(result)}`);
       }
+    } finally {
+      await embedder.dispose();
     }
-  } finally {
-    await runtime.dispose();
+  }
+  if (values.json) {
+    mkdirSync(dirname(resolve(values.json)), { recursive: true });
+    writeFileSync(resolve(values.json), `${JSON.stringify(results, null, 2)}\n`);
   }
 }
 
-await main();
+if (import.meta.main) await main();

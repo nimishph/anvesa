@@ -28,7 +28,9 @@ const isHidden = (codePoint: number) =>
 
 const workspace = join(import.meta.dir, '..');
 const SOURCE = /\.(ts|json|cjs|grit|md)$/;
-const SKIPPED = new Set(['node_modules', 'probe', 'target', 'dist', '.git', 'fixtures']);
+const SKIPPED = new Set(['node_modules', 'probe', 'target', 'dist', '.git']);
+/** Third-party repositories fetched for the benchmark (`bun run eval:fixtures`), not ours. */
+const SKIPPED_PATHS = new Set([join(workspace, 'eval', 'fixtures')]);
 
 function sourceFiles(directory: string): string[] {
   const files: string[] = [];
@@ -37,6 +39,7 @@ function sourceFiles(directory: string): string[] {
     // are not this workspace's source, and reading them made the test slow enough to time out.
     if (SKIPPED.has(entry.name) || entry.name.startsWith('__')) continue;
     const path = join(directory, entry.name);
+    if (SKIPPED_PATHS.has(path)) continue;
     if (entry.isDirectory()) files.push(...sourceFiles(path));
     else if (SOURCE.test(entry.name)) files.push(path);
   }

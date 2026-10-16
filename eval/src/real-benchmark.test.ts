@@ -1,194 +1,90 @@
-import { describe, expect, it } from 'bun:test';
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { Deadline } from '@cntxt-labs/anvesa-core';
-import {
-  calibrateBatchCentroid,
-  calibrateCentroid,
-  computeCentroid,
-  createTransformServices,
-  dot,
-  embedAll,
-  embedAllBucketed,
-  inputFile,
-  measureAnisotropy,
-  symbolsTransformer,
-} from '@cntxt-labs/anvesa-dense';
-import { builtinModel, openLocalEmbedder } from '@cntxt-labs/anvesa-embedder';
-import { readSource, Workspace, walkSources } from '@cntxt-labs/anvesa-indexer';
-import { StructuralEngine } from '@cntxt-labs/anvesa-structural';
-import { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/anvesa-syntax';
+import { describe, expect, test } from 'bun:test';
+import { builtinModel, ModelCache, openLocalEmbedder } from '@cntxt-labs/anvesa-embedder';
+import { fixtureReady, loadFixtures } from './fixtures.ts';
+import { benchmarkFixture, rankFiles, scoreVariant } from './real-benchmark.ts';
+import type { EvalQuery } from './retrieval.ts';
 
-describe('Real-World Repository Ingestion Benchmark Suite', () => {
-  const commerceRoot = resolve('eval/fixtures/commerce');
-  const nanoGptRoot = resolve('eval/fixtures/nanoGPT');
+const unit = (...values: number[]) => {
+  const norm = Math.hypot(...values);
+  return new Float32Array(values.map((value) => value / norm));
+};
 
-  it('eliminates > 50% zero-padding waste and expands angular contrast on vercel/commerce', async () => {
-    if (!existsSync(commerceRoot)) {
-      return;
-    }
+describe('ranking files for the real-world benchmark', () => {
+  const cards = [
+    { path: 'a.ts', text: 'a1' },
+    { path: 'b.ts', text: 'b1' },
+    { path: 'a.ts', text: 'a2' },
+  ];
+  const vectors = [unit(1, 0), unit(0.6, 0.8), unit(0.8, 0.6)];
 
-    const runtime = new SyntaxRuntime({ sources: [npmPackageSource(import.meta.filename)] });
-    const engine = new StructuralEngine({ runtime });
-    const services = createTransformServices(engine);
-    const symbols = symbolsTransformer();
-    const budget = {
-      maxTokens: 512,
-      specialTokens: 2,
-      count: (t: string) => t.split(/\s+/).length,
-    };
+  test('ranks each file once, by its best card', () => {
+    expect(rankFiles(unit(0, 1), cards, vectors)).toEqual(['b.ts', 'a.ts']);
+    expect(rankFiles(unit(1, 0), cards, vectors)).toEqual(['a.ts', 'b.ts']);
+  });
 
-    const ws = await Workspace.open({ root: commerceRoot });
-    const cards: string[] = [];
-    const skipped: unknown[] = [];
+  test('scores recall and reciprocal rank of the defining file', () => {
+    const query = (text: string, relevant: string): EvalQuery => ({
+      population: 'identifier',
+      text,
+      relevant: new Set([relevant]),
+      symbol: text,
+    });
+    const scored = scoreVariant(
+      'plain',
+      'identifier',
+      [
+        { query: query('q1', 'b.ts'), vector: unit(0, 1) }, // rank 1
+        { query: query('q2', 'b.ts'), vector: unit(1, 0) }, // rank 2
+      ],
+      cards,
+      vectors,
+    );
+    expect(scored.queries).toBe(2);
+    expect(scored.recall[1]).toBe(0.5);
+    expect(scored.recall[5]).toBe(1);
+    expect(scored.mrr).toBe(0.75);
+  });
+});
 
-    for await (const file of walkSources(ws)) {
-      if (!/\.(tsx?|jsx?)$/.test(file.path)) continue;
-      const content = await readSource(commerceRoot, file.path);
-      if (content.kind !== 'text') continue;
+// The real repositories and model, where they are at hand: `bun run eval:fixtures` fetches the
+// repositories, and `anvesa model install all-MiniLM-L6-v2 --download` the model. Skipped, and
+// said to be skipped, otherwise; CI has neither.
+const nanoGpt = loadFixtures().find((fixture) => fixture.name === 'nanoGPT');
+const model = builtinModel('all-MiniLM-L6-v2');
+const ready =
+  nanoGpt !== undefined &&
+  model !== undefined &&
+  (await fixtureReady(nanoGpt)) &&
+  (await new ModelCache().find(model)) !== undefined;
 
-      const input = inputFile(file.path, content.content);
-      if (!symbols.claim(input)) continue;
+describe('real-world benchmark on nanoGPT', () => {
+  test.skipIf(!ready)(
+    'scores every variant on queries made from the code',
+    async () => {
+      const embedder = await openLocalEmbedder(model as NonNullable<typeof model>);
       try {
-        const drafts = await symbols.transform(input, {
-          services,
-          deadline: Deadline.unbounded(),
-          budget,
-        });
-        for (const d of drafts) cards.push(d.text);
-      } catch (failure) {
-        skipped.push(failure);
-      }
-    }
-
-    expect(cards.length).toBeGreaterThan(100);
-
-    const modelSpec = builtinModel('all-MiniLM-L6-v2');
-    expect(modelSpec).toBeDefined();
-    if (!modelSpec) return;
-    const embedder = await openLocalEmbedder(modelSpec);
-
-    try {
-      let bucketStats: { linearPaddedTokens: number; bucketedPaddedTokens: number } | undefined;
-      const linearVectors = await embedAll(embedder, cards);
-      const bucketedVectors = await embedAllBucketed(embedder, cards, {
-        onStats: (stats) => {
-          bucketStats = stats;
-        },
-      });
-
-      expect(bucketStats).toBeDefined();
-      expect(linearVectors.length).toBe(cards.length);
-      expect(bucketedVectors.length).toBe(cards.length);
-
-      const actualTokens = cards.reduce((acc, t) => acc + Math.max(1, embedder.count(t)), 0);
-      const linearWaste = (bucketStats?.linearPaddedTokens ?? 0) - actualTokens;
-      const bucketWaste = (bucketStats?.bucketedPaddedTokens ?? 0) - actualTokens;
-      const wasteEliminated = (linearWaste - bucketWaste) / linearWaste;
-
-      // Real code on vercel/commerce eliminates > 70% of zero padding waste
-      expect(wasteEliminated).toBeGreaterThan(0.7);
-
-      // Measure real anisotropy before and after
-      const before = measureAnisotropy(linearVectors);
-      expect(before.centroidNorm).toBeGreaterThan(0.4); // Strong baseline centroid
-      expect(before.meanCosine).toBeGreaterThan(0.2); // Anisotropic representation cone
-
-      const centroid = computeCentroid(linearVectors);
-      const calibrated = calibrateBatchCentroid(linearVectors, centroid);
-      const after = measureAnisotropy(calibrated);
-
-      // Shifted to origin
-      expect(Math.abs(after.meanCosine)).toBeLessThan(0.05);
-      // Contrast standard deviation expanded
-      expect(after.stdCosine).toBeGreaterThan(before.stdCosine * 1.2);
-    } finally {
-      await embedder.dispose();
-      await runtime.dispose();
-    }
-  }, 25000);
-
-  it('sharpens retrieval contrast gap on karpathy/nanoGPT', async () => {
-    if (!existsSync(nanoGptRoot)) {
-      return;
-    }
-
-    const runtime = new SyntaxRuntime({ sources: [npmPackageSource(import.meta.filename)] });
-    const engine = new StructuralEngine({ runtime });
-    const services = createTransformServices(engine);
-    const symbols = symbolsTransformer();
-    const budget = {
-      maxTokens: 512,
-      specialTokens: 2,
-      count: (t: string) => t.split(/\s+/).length,
-    };
-
-    const ws = await Workspace.open({ root: nanoGptRoot });
-    const cards: Array<{ text: string; name: string; path: string }> = [];
-    const skipped: unknown[] = [];
-
-    for await (const file of walkSources(ws)) {
-      if (!/\.py$/.test(file.path)) continue;
-      const content = await readSource(nanoGptRoot, file.path);
-      if (content.kind !== 'text') continue;
-
-      const input = inputFile(file.path, content.content);
-      if (!symbols.claim(input)) continue;
-      try {
-        const drafts = await symbols.transform(input, {
-          services,
-          deadline: Deadline.unbounded(),
-          budget,
-        });
-        for (const d of drafts) {
-          cards.push({ text: d.text, name: d.attrs?.symbol ?? d.key, path: file.path });
+        const result = await benchmarkFixture(nanoGpt as NonNullable<typeof nanoGpt>, embedder);
+        expect(result.cards).toBeGreaterThan(20);
+        const variants = new Set(result.scores.map((s) => s.variant));
+        expect([...variants].sort()).toEqual([
+          'plain',
+          'plain + calibrated',
+          'preamble',
+          'preamble + calibrated',
+        ]);
+        for (const s of result.scores) {
+          expect(s.queries).toBeGreaterThan(0);
+          expect(s.mrr).toBeGreaterThanOrEqual(0);
+          expect(s.mrr).toBeLessThanOrEqual(1);
         }
-      } catch (failure) {
-        skipped.push(failure);
+        // Calibration centres the cards: the mean cosine between them falls towards 0.
+        expect(Math.abs(result.anisotropy.after.meanCosine)).toBeLessThan(
+          Math.abs(result.anisotropy.before.meanCosine),
+        );
+      } finally {
+        await embedder.dispose();
       }
-    }
-
-    expect(cards.length).toBeGreaterThan(20);
-
-    const modelSpec = builtinModel('all-MiniLM-L6-v2');
-    expect(modelSpec).toBeDefined();
-    if (!modelSpec) return;
-    const embedder = await openLocalEmbedder(modelSpec);
-
-    try {
-      const cardTexts = cards.map((c) => c.text);
-      const rawVectors = await embedAll(embedder, cardTexts);
-      const centroid = computeCentroid(rawVectors);
-      const calVectors = calibrateBatchCentroid(rawVectors, centroid);
-
-      // Test real retrieval query: "adamw weight decay learning rate schedule"
-      const query = 'adamw weight decay learning rate schedule';
-      const [qRaw] = await embedder.embed([query]);
-      expect(qRaw).toBeDefined();
-      if (!qRaw) return;
-
-      const qCal = calibrateCentroid(qRaw, centroid);
-
-      const rawScores = rawVectors
-        .map((v, i) => ({ sim: dot(qRaw, v), name: cards[i]?.name, path: cards[i]?.path }))
-        .sort((a, b) => b.sim - a.sim);
-
-      const calScores = calVectors
-        .map((v, i) => ({ sim: dot(qCal, v), name: cards[i]?.name, path: cards[i]?.path }))
-        .sort((a, b) => b.sim - a.sim);
-
-      // Both identify get_lr as top hit
-      expect(rawScores[0]?.name).toBe('get_lr');
-      expect(calScores[0]?.name).toBe('get_lr');
-
-      const rawGap = (rawScores[0]?.sim ?? 0) - (rawScores[1]?.sim ?? 0);
-      const calGap = (calScores[0]?.sim ?? 0) - (calScores[1]?.sim ?? 0);
-
-      // Calibrated representation dramatically expands the contrast margin over runner-up
-      expect(calGap).toBeGreaterThan(rawGap * 1.3);
-    } finally {
-      await embedder.dispose();
-      await runtime.dispose();
-    }
-  }, 25000);
+    },
+    120_000,
+  );
 });

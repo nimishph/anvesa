@@ -190,10 +190,7 @@ export function isUsableVector(vector: Float32Array): boolean {
   return vector.length > 0;
 }
 
-/**
- * Computes the mean centroid of a collection of unit vectors.
- * Returns a new Float32Array containing the arithmetic mean across all vectors.
- */
+/** The mean of a set of vectors, component by component. */
 export function computeCentroid(
   vectors: readonly Float32Array[],
   dimensions?: number,
@@ -226,9 +223,11 @@ export function computeCentroid(
 }
 
 /**
- * Calibrates a vector by subtracting the codebase centroid and re-normalizing to unit length.
- * Eliminates the shared non-informative anisotropy cone present in pretrained transformer embeddings,
- * restoring isotropic angular distribution and boosting cosine contrast between distinct concepts.
+ * A vector with the corpus centroid subtracted, back at unit length. Sentence encoders put most
+ * vectors in a narrow cone; removing the shared direction spreads them out. Whether that ranks
+ * the right card higher is a separate question, which `eval:real` measures: a query must be
+ * calibrated against the same centroid as the cards it is compared with. A vector that equals the
+ * centroid has no direction left and is only normalised.
  */
 export function calibrateCentroid(vector: Float32Array, centroid: Float32Array): Float32Array {
   const dims = vector.length;
@@ -253,9 +252,7 @@ export function calibrateCentroid(vector: Float32Array, centroid: Float32Array):
   return normalize(vector);
 }
 
-/**
- * Batch calibrates an array of vectors against a centroid vector.
- */
+/** `calibrateCentroid` over many vectors. */
 export function calibrateBatchCentroid(
   vectors: readonly Float32Array[],
   centroid: Float32Array,
@@ -273,9 +270,9 @@ export interface AnisotropyMetrics {
 }
 
 /**
- * Measures the angular anisotropy of a set of vectors.
- * High mean cosine (> 0.6) indicates severe cone collapse / representation degeneration.
- * An isotropic / calibrated space has mean cosine ~ 0.0 with broad dispersion.
+ * How spread out a set of unit vectors is: the cosine between pairs (over an even sample of at most
+ * `sampleLimit` vectors) and the length of the centroid. A mean cosine near 0 means the vectors are
+ * spread evenly; near 1, that they share one direction. It describes the space, not search quality.
  */
 export function measureAnisotropy(
   vectors: readonly Float32Array[],

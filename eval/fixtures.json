@@ -1,0 +1,18 @@
+{
+  "repositories": [
+    {
+      "name": "commerce",
+      "description": "vercel/commerce, a Next.js storefront (TypeScript, React)",
+      "url": "https://github.com/vercel/commerce.git",
+      "commit": "3761e52e60df9c6a316e067dbfd7032e494d3634",
+      "license": "MIT"
+    },
+    {
+      "name": "nanoGPT",
+      "description": "karpathy/nanoGPT, GPT training in PyTorch (Python)",
+      "url": "https://github.com/karpathy/nanoGPT.git",
+      "commit": "3adf61e154c3fe3fca428ad6bc3818b27a3b8291",
+      "license": "MIT"
+    }
+  ]
+}

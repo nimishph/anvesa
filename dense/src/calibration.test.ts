@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from 'bun:test';
 import { Deadline } from '@cntxt-labs/anvesa-core';
 import { budgetFor } from './budget.ts';
 import { inputFile } from './card.ts';
-import { budgetSourceOf, embedAll, embedAllBucketed } from './embedder.ts';
+import { budgetSourceOf } from './embedder.ts';
 import { createTransformServices } from './services.ts';
 import { disposeEngines, makeEngine, wordEmbedder } from './test-support.ts';
 import { symbolsTransformer } from './transformers/symbols.ts';
@@ -18,77 +18,8 @@ const engine = makeEngine();
 const services = createTransformServices(engine);
 afterAll(disposeEngines);
 
-describe('Ingestion Optimizations (Pillar 5)', () => {
-  describe('Length-Sorted Bucket Dynamic Batching', () => {
-    it('produces identical mathematical vectors with exact index parity', async () => {
-      const embedder = wordEmbedder({ dimensions: 64, preferredBatchSize: 8 });
-
-      // Generate 32 texts with varied token lengths from 3 words to 200 words
-      const texts: string[] = [];
-      const vocabulary = [
-        'alpha',
-        'beta',
-        'gamma',
-        'delta',
-        'omega',
-        'router',
-        'handler',
-        'service',
-      ];
-
-      for (let i = 0; i < 32; i++) {
-        // Alternating short (5 words), medium (40 words), and long (120 words)
-        const wordCount = (i % 3 === 0 ? 6 : i % 3 === 1 ? 45 : 130) + (i % 5);
-        const words: string[] = [];
-        for (let w = 0; w < wordCount; w++) {
-          const word = vocabulary[(w + i) % vocabulary.length] ?? 'token';
-          words.push(word);
-        }
-        texts.push(words.join(' '));
-      }
-
-      const linearVectors = await embedAll(embedder, texts);
-      let statsReported = false;
-
-      const bucketedVectors = await embedAllBucketed(embedder, texts, {
-        onStats: (stats) => {
-          statsReported = true;
-          expect(stats.totalTexts).toBe(32);
-          expect(stats.linearPaddedTokens).toBeGreaterThan(stats.bucketedPaddedTokens);
-          expect(stats.paddingComputeReduction).toBeGreaterThan(0.35); // > 35% padding eliminated
-        },
-      });
-
-      expect(statsReported).toBe(true);
-      expect(bucketedVectors.length).toBe(linearVectors.length);
-
-      // Verify 100% exact numerical match for every single item in original index order
-      for (let i = 0; i < texts.length; i++) {
-        const linear = linearVectors[i];
-        const bucketed = bucketedVectors[i];
-        expect(linear).toBeDefined();
-        expect(bucketed).toBeDefined();
-        if (!linear || !bucketed) continue;
-
-        for (let d = 0; d < 64; d++) {
-          expect(bucketed[d]).toBe(linear[d]);
-        }
-      }
-    });
-
-    it('handles edge cases gracefully: empty array and single text', async () => {
-      const embedder = wordEmbedder({ dimensions: 32 });
-
-      const empty = await embedAllBucketed(embedder, []);
-      expect(empty).toEqual([]);
-
-      const single = await embedAllBucketed(embedder, ['single function call']);
-      expect(single.length).toBe(1);
-      expect(single[0]?.length).toBe(32);
-    });
-  });
-
-  describe('Vector Centroid Subtraction (Anisotropy Cone Calibration)', () => {
+describe('centroid calibration and the graph preamble', () => {
+  describe('centroid calibration', () => {
     it('flattens dominant representation cone and restores angular contrast', () => {
       const dims = 64;
       const count = 50;
@@ -153,7 +84,7 @@ describe('Ingestion Optimizations (Pillar 5)', () => {
     });
   });
 
-  describe('Graph-Context Preamble Injection', () => {
+  describe('graph preamble', () => {
     it('prepends synthesized topological context to cards when enabled', async () => {
       const transformer = symbolsTransformer({ graphPreamble: true });
       expect(transformer.name).toBe('symbols');
@@ -185,6 +116,18 @@ export function verifySession(token: string): boolean {
       );
       expect(card?.text).toContain('Authenticates a session token');
       expect(card?.attrs?.hasPreamble).toBe('true');
+    });
+
+    it('leaves cards as they were when not asked for', async () => {
+      const file = inputFile('src/a.ts', 'export function verifySession(token: string) {}\n');
+      const budget = budgetFor(budgetSourceOf(wordEmbedder()));
+      const [card] = await symbolsTransformer().transform(file, {
+        services,
+        deadline: Deadline.unbounded(),
+        budget,
+      });
+      expect(card?.text).not.toContain('[scope:');
+      expect(card?.attrs?.hasPreamble).toBeUndefined();
     });
   });
 });
