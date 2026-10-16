@@ -9,6 +9,7 @@
       "!**/target",
       "!crates",
       "!eval/golden/*/corpus",
+      "!eval/fixtures",
       "!.beads",
       "!site",
       "!ui/public"

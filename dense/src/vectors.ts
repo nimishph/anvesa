@@ -189,3 +189,160 @@ export function isUsableVector(vector: Float32Array): boolean {
   for (const value of vector) if (!Number.isFinite(value)) return false;
   return vector.length > 0;
 }
+
+/** The mean of a set of vectors, component by component. */
+export function computeCentroid(
+  vectors: readonly Float32Array[],
+  dimensions?: number,
+): Float32Array {
+  if (vectors.length === 0) {
+    throw new InvalidArgumentError(
+      'vectors',
+      'at least one vector to compute centroid',
+      '0 vectors',
+    );
+  }
+  const dims = dimensions ?? vectors[0]?.length ?? 0;
+  if (dims <= 0) {
+    throw new InvalidArgumentError('dimensions', 'a positive integer', String(dims));
+  }
+
+  const centroid = new Float32Array(dims);
+  for (const v of vectors) {
+    for (let i = 0; i < dims; i++) {
+      centroid[i] = (centroid[i] ?? 0) + (v[i] ?? 0);
+    }
+  }
+
+  const invN = 1 / vectors.length;
+  for (let i = 0; i < dims; i++) {
+    centroid[i] = (centroid[i] ?? 0) * invN;
+  }
+
+  return centroid;
+}
+
+/**
+ * A vector with the corpus centroid subtracted, back at unit length. Sentence encoders put most
+ * vectors in a narrow cone; removing the shared direction spreads them out. Whether that ranks
+ * the right card higher is a separate question, which `eval:real` measures: a query must be
+ * calibrated against the same centroid as the cards it is compared with. A vector that equals the
+ * centroid has no direction left and is only normalised.
+ */
+export function calibrateCentroid(vector: Float32Array, centroid: Float32Array): Float32Array {
+  const dims = vector.length;
+  const centered = new Float32Array(dims);
+  let sumSq = 0;
+
+  for (let i = 0; i < dims; i++) {
+    const diff = (vector[i] ?? 0) - (centroid[i] ?? 0);
+    centered[i] = diff;
+    sumSq += diff * diff;
+  }
+
+  const norm = Math.sqrt(sumSq);
+  if (norm > 1e-12 && Number.isFinite(norm)) {
+    const invNorm = 1 / norm;
+    for (let i = 0; i < dims; i++) {
+      centered[i] = (centered[i] ?? 0) * invNorm;
+    }
+    return centered;
+  }
+
+  return normalize(vector);
+}
+
+/** `calibrateCentroid` over many vectors. */
+export function calibrateBatchCentroid(
+  vectors: readonly Float32Array[],
+  centroid: Float32Array,
+): Float32Array[] {
+  return vectors.map((v) => calibrateCentroid(v, centroid));
+}
+
+export interface AnisotropyMetrics {
+  readonly count: number;
+  readonly meanCosine: number;
+  readonly stdCosine: number;
+  readonly minCosine: number;
+  readonly maxCosine: number;
+  readonly centroidNorm: number;
+}
+
+/**
+ * How spread out a set of unit vectors is: the cosine between pairs (over an even sample of at most
+ * `sampleLimit` vectors) and the length of the centroid. A mean cosine near 0 means the vectors are
+ * spread evenly; near 1, that they share one direction. It describes the space, not search quality.
+ */
+export function measureAnisotropy(
+  vectors: readonly Float32Array[],
+  sampleLimit = 200,
+): AnisotropyMetrics {
+  if (vectors.length < 2) {
+    return {
+      count: vectors.length,
+      meanCosine: 1,
+      stdCosine: 0,
+      minCosine: 1,
+      maxCosine: 1,
+      centroidNorm: 1,
+    };
+  }
+
+  const centroid = computeCentroid(vectors);
+  let centroidSq = 0;
+  for (const val of centroid) centroidSq += val * val;
+  const centroidNorm = Math.sqrt(centroidSq);
+
+  const n = Math.min(vectors.length, sampleLimit);
+  const step = Math.max(1, Math.floor(vectors.length / n));
+  const samples: Float32Array[] = [];
+  for (let i = 0; i < vectors.length && samples.length < n; i += step) {
+    const v = vectors[i];
+    if (v) samples.push(v);
+  }
+
+  let totalSim = 0;
+  let totalSimSq = 0;
+  let minSim = 1;
+  let maxSim = -1;
+  let pairs = 0;
+
+  for (let i = 0; i < samples.length; i++) {
+    const vi = samples[i];
+    if (!vi) continue;
+    for (let j = i + 1; j < samples.length; j++) {
+      const vj = samples[j];
+      if (!vj) continue;
+      const sim = dot(vi, vj);
+      totalSim += sim;
+      totalSimSq += sim * sim;
+      if (sim < minSim) minSim = sim;
+      if (sim > maxSim) maxSim = sim;
+      pairs++;
+    }
+  }
+
+  if (pairs === 0) {
+    return {
+      count: vectors.length,
+      meanCosine: 1,
+      stdCosine: 0,
+      minCosine: 1,
+      maxCosine: 1,
+      centroidNorm,
+    };
+  }
+
+  const mean = totalSim / pairs;
+  const variance = Math.max(0, totalSimSq / pairs - mean * mean);
+
+  return {
+    count: vectors.length,
+    meanCosine: mean,
+    stdCosine: Math.sqrt(variance),
+    minCosine: minSim,
+    maxCosine: maxSim,
+    centroidNorm,
+  };
+}

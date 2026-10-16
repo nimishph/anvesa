@@ -9,6 +9,12 @@ export interface SymbolsOptions {
   readonly channel?: string;
   /** Which files count as source code. Defaults to the built-in language registry. */
   readonly languages?: LanguageRegistry;
+  /**
+   * Open each card with `[scope: <parent> <path> | symbol: <kind> <name>]`: the raw path and name,
+   * beside the identity line's split words. Off by default; turning it on changes every card, so a
+   * project re-indexes. `eval:real` measures whether it helps.
+   */
+  readonly graphPreamble?: boolean;
 }
 
 /**
@@ -48,7 +54,11 @@ export function symbolsTransformer(options: SymbolsOptions = {}): Transformer {
           .join(' — ');
 
         const doc = symbol.doc ? normalizeDoc(symbol.doc) : '';
+        const preambleText = options.graphPreamble
+          ? `[scope: ${symbol.parentName ? `${symbol.parentName} ` : ''}${file.path} | symbol: ${symbol.kind} ${symbol.name}]`
+          : undefined;
         const blocks = [
+          ...(preambleText ? [{ text: preambleText }] : []),
           ...(doc ? [{ text: doc }] : []),
           ...(symbol.signature ? [{ text: symbol.signature }] : []),
         ];
@@ -63,6 +73,7 @@ export function symbolsTransformer(options: SymbolsOptions = {}): Transformer {
           kind: symbol.kind,
           symbol: symbol.name,
           hasDoc: String(doc.length > 0),
+          ...(options.graphPreamble ? { hasPreamble: 'true' } : {}),
           ...(symbol.signature ? { signature: symbol.signature } : {}),
         };
 

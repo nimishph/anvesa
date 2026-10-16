@@ -77,10 +77,15 @@ export type { DocsOptions } from './transformers/docs.ts';
 export { docsTransformer } from './transformers/docs.ts';
 export type { SymbolsOptions } from './transformers/symbols.ts';
 export { symbolsTransformer } from './transformers/symbols.ts';
+export type { AnisotropyMetrics } from './vectors.ts';
 export {
   batchDotProduct,
   batchScanTopK,
+  calibrateBatchCentroid,
+  calibrateCentroid,
+  computeCentroid,
   dot,
   isUsableVector,
+  measureAnisotropy,
   normalize,
 } from './vectors.ts';

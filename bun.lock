@@ -68,6 +68,7 @@
       "dependencies": {
         "@cntxt-labs/anvesa-core": "workspace:*",
         "@cntxt-labs/anvesa-dense": "workspace:*",
+        "@cntxt-labs/anvesa-embedder": "workspace:*",
         "@cntxt-labs/anvesa-indexer": "workspace:*",
         "@cntxt-labs/anvesa-retriever": "workspace:*",
         "@cntxt-labs/anvesa-structural": "workspace:*",
