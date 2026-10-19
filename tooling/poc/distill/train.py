@@ -12,6 +12,7 @@ The loss, per query with its positive and k hard negatives (mined by the teacher
   InfoNCE over every candidate in the batch (positives and negatives of all queries)
   + lambda * KL(teacher || student) over the query's own k+1 candidates
 so the student learns the teacher's ranking, not just "positive beats random".
+The epoch kept is the best on the val repos (mean of val_doc and val_llm), not the last.
 """
 import argparse
 import hashlib
@@ -285,6 +286,12 @@ def stage_teacher(work: Path, negatives: int, margin: float, llm_top: int = 10) 
 
 # ---------------------------------------------------------------- training
 
+def selection_score(result: dict) -> float:
+    """What picks the epoch to keep: the mean of the val-repo MRRs (doc and LLM queries)."""
+    vals = [result[k] for k in ("val_doc", "val_llm") if k in result]
+    return sum(vals) / len(vals)
+
+
 def stage_train(work: Path, args) -> None:
     data, out = work / "data", work / "out"
     name = args.name or f"{args.student.split('/')[-1]}{'-lora' + str(args.lora) if args.lora else ''}"
@@ -300,7 +307,7 @@ def stage_train(work: Path, args) -> None:
     scaler = torch.amp.GradScaler(enabled=DEVICE == "cuda")
     history = [{"epoch": 0, **evaluate(student, data)}]
     print(f"{name}: before training {json.dumps(history[0])}", flush=True)
-    step, t = 0, time.time()
+    step, t, best = 0, time.time(), None
     for epoch in range(1, args.epochs + 1):
         student.train()
         random.Random(epoch).shuffle(rows)
@@ -333,6 +340,16 @@ def stage_train(work: Path, args) -> None:
                       f"{time.time() - t:.0f}s", flush=True)
         history.append({"epoch": epoch, **evaluate(student, data)})
         print(f"{name}: epoch {epoch} {json.dumps(history[-1])}", flush=True)
+        # Keep the best epoch on the val repos, not the last: on the first full run val_doc peaked at
+        # epoch 2 and fell at 3. Never select on commerce, which is the held-out test set.
+        score = selection_score(history[-1])
+        if best is None or score > best[0]:
+            best = (score, epoch, {k: v.detach().cpu().clone() for k, v in student.net.state_dict().items()})
+    if best is not None:
+        student.net.load_state_dict(best[2])
+        for h in history:
+            h["selected"] = h["epoch"] == best[1]
+        print(f"{name}: keeping epoch {best[1]} (val {best[0]:.3f})", flush=True)
     net = student.net.merge_and_unload() if args.lora else student.net
     net.save_pretrained(run / "model")
     student.tok.save_pretrained(run / "model")
@@ -373,7 +390,8 @@ def main() -> None:
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--tau", type=float, default=0.05)
     ap.add_argument("--tau-teacher", type=float, default=0.05)
-    ap.add_argument("--kl", type=float, default=1.0)
+    ap.add_argument("--kl", type=float, default=4.0,
+                    help="weight of KL(teacher || student); at 1.0 ettin-17m fit the doc pairs but not the teacher's ranking")
     ap.add_argument("--max-len", type=int, default=256)
     ap.add_argument("--run", help="export: the run's name under out/")
     ap.add_argument("--model", help="eval: an HF / sentence-transformers id, or a run's model dir")
