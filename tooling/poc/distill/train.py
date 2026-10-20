@@ -18,12 +18,15 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import random
 import re
 import time
 from pathlib import Path
 
 import numpy as np
+
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")  # before torch touches CUDA
 import torch
 import torch.nn.functional as F
 
@@ -125,13 +128,16 @@ def all_pairs(data: Path) -> list[dict]:
 class Student(torch.nn.Module):
     """A Hugging Face encoder, pooled the way anvesa will pool its ONNX export."""
 
-    def __init__(self, name: str, pooling: str = "mean", lora: int = 0):
+    def __init__(self, name: str, pooling: str = "mean", lora: int = 0, checkpointing: bool = False):
         super().__init__()
         from transformers import AutoModel, AutoTokenizer
 
         self.tok = AutoTokenizer.from_pretrained(name)
         self.net = AutoModel.from_pretrained(name)
         self.pooling = pooling
+        if checkpointing:
+            # recompute activations in backward: ettin-32m at batch 64 x 8 candidates x 256 tokens ran out of a T4's 15 GB
+            self.net.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
         if lora:
             from peft import LoraConfig, get_peft_model
 
@@ -298,7 +304,7 @@ def stage_train(work: Path, args) -> None:
     run = out / name
     run.mkdir(parents=True, exist_ok=True)
     rows = jsonl(out / "teacher.jsonl")
-    student = Student(args.student, args.pooling, args.lora).to(DEVICE)
+    student = Student(args.student, args.pooling, args.lora, args.checkpointing).to(DEVICE)
     params = [p for p in student.parameters() if p.requires_grad]
     opt = torch.optim.AdamW(params, lr=args.lr, weight_decay=0.01)
     steps = args.epochs * math.ceil(len(rows) / args.batch)
@@ -393,6 +399,7 @@ def main() -> None:
     ap.add_argument("--kl", type=float, default=4.0,
                     help="weight of KL(teacher || student); at 1.0 ettin-17m fit the doc pairs but not the teacher's ranking")
     ap.add_argument("--max-len", type=int, default=256)
+    ap.add_argument("--checkpointing", action="store_true", help="train: gradient checkpointing, for students that do not fit")
     ap.add_argument("--run", help="export: the run's name under out/")
     ap.add_argument("--model", help="eval: an HF / sentence-transformers id, or a run's model dir")
     args = ap.parse_args()
