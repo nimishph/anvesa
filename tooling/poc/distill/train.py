@@ -59,17 +59,63 @@ PROMPT = (
     "validate that a string is a url\n\n"
     "Reply with the query only."
 )
+# v2 (--prompt v2): the generator reads the symbol's code and its same-file siblings, and writes one
+# query of an assigned style. v1 saw only the card: 55% of cards have no doc, so it guessed, wrote
+# "how to ..." 86% of the time and named the library half the time; the teacher could then find the
+# card for only 36% of the val queries, and most misses were queries that fit a sibling as well.
+PROMPT_V2 = (
+    "You write search queries that train a code search engine.\n\n"
+    "Symbol in a {lang} library:\n{card}\n\nIts code:\n```\n{code}\n```\n\n"
+    "Other symbols in the same file, which the query must NOT fit as well:\n{siblings}\n\n"
+    "Write one search query of this type: {style}: {style_rule}.\n"
+    "Rules: 3 to 12 plain words a developer would type. It must fit this symbol better than the others "
+    "listed. Do not use the symbol's name or the words of its name, the library's name or the language. "
+    "Do not start with \"how to\".\n\n"
+    "Examples of this type, from other projects:\n{examples}\n\n"
+    "Reply with the query only."
+)
+# None of the examples come from the benchmark repos (anvesa-gen-lab/bench), so nothing leaks into it.
+STYLES = {
+    "task": (0.35, "an imperative task the developer wants done",
+             ["send the request again when the server says it is overloaded", "turn a nested map into dotted keys"]),
+    "behaviour": (0.25, "a question about what the code does in a specific situation",
+                  ["what happens to the body when a redirect switches to GET", "which status codes are retried by default"]),
+    "symptom": (0.15, "an error message or a misbehaviour the developer saw that this code explains",
+                ["connection pool exhausted error under load", "parsed dates are off by one day"]),
+    "keyword": (0.15, "three to six keywords, not a sentence",
+                ["jwt signature verify expiry", "gzip decompress stream chunk"]),
+    "concept": (0.10, "the idea or pattern this implements, described plainly",
+                ["middleware chain that can stop early", "copy on write snapshot of a tree"]),
+}
 QUERY_SKIP_FILE = re.compile(r"(^|/)(tests?|__tests__|spec|testing|fixtures?|examples?|benchmarks?|bench|docs?)/"
                              r"|[._-](test|spec|bench)s?\.\w+$|(^|/)test_[^/]+$|_test\.\w+$", re.I)
-BOILERPLATE = re.compile(r"\b(codebase|typescript|javascript|python|golang|rust|java|ruby|php|find (the )?\w+ (class|function|interface|type|method|variable))\b", re.I)
+BOILERPLATE = re.compile(r"\b(codebase|typescript|javascript|python|golang|rust|java|ruby|php|find (the )?\w+ (class|function|interface|type|method|variable))\b"
+                         r"|^how to\b|\b(in|with|using|for) (go|js|ts|node)\b", re.I)
 
 
-def query_worthy(card: dict) -> bool:
-    """Cards a developer would search for: not tests or benchmarks, not a local inside a function."""
+def query_worthy(card: dict, strict: bool = False) -> bool:
+    """Cards a developer would search for: not tests or benchmarks, not a local inside a function.
+    strict (v2): also not an undocumented one-liner (a constant, a field, a trivial getter or constructor)."""
     lines = card["text"].splitlines()
     kind, path = lines[0].split(" ", 1)[0], lines[1] if len(lines) > 1 else ""
     depth = path.count("/") - path.startswith("/export")
-    return not QUERY_SKIP_FILE.search(card["group"].split("#")[0]) and not (kind in ("variable", "constant", "field") and depth > 1)
+    if QUERY_SKIP_FILE.search(card["group"].split("#")[0]) or (kind in ("variable", "constant", "field") and depth > 1):
+        return False
+    if strict and not card.get("doc"):
+        body = [l for l in card.get("code", "").splitlines() if l.strip()]
+        return len(body) >= 4 and kind not in ("variable", "constant", "field")
+    return True
+
+
+def siblings_of(card: dict, by_file: dict[str, list[dict]], limit: int = 6) -> str:
+    """Same-file symbols the query must not fit: documented ones first, each with its doc's first sentence."""
+    others = [c for c in by_file.get(card["file"], []) if c["group"] != card["group"]]
+    others.sort(key=lambda c: not c.get("doc"))  # stable: documented first, then in file order
+    out = []
+    for c in others[:limit]:
+        doc = re.split(r"(?<=[.!?])\s", c.get("doc", "").strip(), maxsplit=1)[0][:90]
+        out.append(f"- {c['group'].split('#', 1)[1]}" + (f": {doc}" if doc else ""))
+    return "\n".join(out) or "- (none)"
 
 
 def names_it(query: str, card: dict) -> bool:
@@ -81,39 +127,65 @@ def names_it(query: str, card: dict) -> bool:
     return name in q or (len(words) > 1 and all(re.search(rf"\b{re.escape(w)}", q) for w in words))
 
 
-def stage_queries(work: Path, n: int, batch: int, generator: str = GENERATOR, revision: str | None = GENERATOR_REVISION) -> None:
+def stage_queries(work: Path, n: int, batch: int, generator: str = GENERATOR, revision: str | None = GENERATOR_REVISION,
+                  prompt: str = "v1", repos: set[str] | None = None, out_name: str = "pairs_llm.jsonl") -> None:
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
     data = work / "data"
-    cards = [c for c in jsonl(data / "corpus.jsonl") if c["split"] != "test" and query_worthy(c)]
-    langs = {json.loads(l)["repo"]: json.loads(l)["lang"]
-             for p in (data / "cards").glob("*.jsonl") for l in p.read_text(encoding="utf-8").splitlines()[:1]}
+    exported = [json.loads(l) for p in sorted((data / "cards").glob("*.jsonl")) for l in p.read_text(encoding="utf-8").splitlines()]
+    langs = {c["repo"]: c["lang"] for c in exported}
+    by_group = {c["group"]: c for c in exported}
+    by_file: dict[str, list[dict]] = {}
+    for c in exported:
+        by_file.setdefault(c["file"], []).append(c)
+    library = re.compile(r"\b(" + "|".join(re.escape(r) for r in sorted(langs)) + r")\b", re.I)
+    v2 = prompt == "v2"
+    cards = [{**c, **{k: by_group.get(c["group"], {}).get(k, "") for k in ("code", "doc", "file")}}
+             for c in jsonl(data / "corpus.jsonl") if c["split"] != "test" and (not repos or c["repo"] in repos)]
+    cards = [c for c in cards if query_worthy(c, strict=v2)]
     random.seed(11)
     random.shuffle(cards)
     # documented cards first: the generator writes far better queries when it can read what the symbol is for
     cards.sort(key=lambda c: c["text"] == c["bare"])
     cards = cards[:n]
+    styles = list(STYLES)
+    rng = random.Random(5)
     tok = AutoTokenizer.from_pretrained(generator, revision=revision, padding_side="left")
     lm = AutoModelForCausalLM.from_pretrained(generator, revision=revision, dtype=torch.float16 if DEVICE == "cuda" else torch.float32).to(DEVICE).eval()
-    out, t = [], time.time()
+    out, rejected, t = [], {"names it": 0, "boilerplate": 0, "length": 0}, time.time()
     for i in range(0, len(cards), batch):
         chunk = cards[i : i + batch]
-        prompts = [tok.apply_chat_template([{"role": "user", "content": PROMPT.format(lang=langs.get(c["repo"], "code"), card=c["text"][:1200])}],
-                                           tokenize=False, add_generation_prompt=True) for c in chunk]
-        enc = tok(prompts, return_tensors="pt", padding=True).to(DEVICE)
+        chosen = rng.choices(styles, weights=[STYLES[s][0] for s in styles], k=len(chunk))
+        texts = []
+        for c, style in zip(chunk, chosen):
+            if v2:
+                _, rule, examples = STYLES[style]
+                content = PROMPT_V2.format(lang=langs.get(c["repo"], "code"), card=c["text"][:800], code=c["code"] or "(not available)",
+                                           siblings=siblings_of(c, by_file), style=style, style_rule=rule, examples="\n".join(examples))
+            else:
+                content = PROMPT.format(lang=langs.get(c["repo"], "code"), card=c["text"][:1200])
+            texts.append(tok.apply_chat_template([{"role": "user", "content": content}], tokenize=False, add_generation_prompt=True))
+        enc = tok(texts, return_tensors="pt", padding=True).to(DEVICE)
         with torch.no_grad():
             gen = lm.generate(**enc, max_new_tokens=32, do_sample=False, pad_token_id=tok.eos_token_id)
-        for c, ids in zip(chunk, gen[:, enc["input_ids"].shape[1]:]):
+        for c, style, ids in zip(chunk, chosen, gen[:, enc["input_ids"].shape[1]:]):
             q = tok.decode(ids, skip_special_tokens=True).strip().strip('"').splitlines()[0] if ids.numel() else ""
             q = q.strip("`'\" ").rstrip(".")
-            if 3 <= len(q.split()) <= 16 and not names_it(q, c) and not BOILERPLATE.search(q):
+            if not 3 <= len(q.split()) <= 16:
+                rejected["length"] += 1
+            elif names_it(q, c):
+                rejected["names it"] += 1
+            elif BOILERPLATE.search(q) or (v2 and library.search(q)):
+                rejected["boilerplate"] += 1
+            else:
                 out.append({"repo": c["repo"], "split": c["split"], "group": c["group"], "query": q,
-                            "positive": c["text"], "source": "llm"})
+                            "positive": c["text"], "source": "llm", **({"style": style} if v2 else {})})
         if i // batch % 20 == 0:
             print(f"  {i + len(chunk)}/{len(cards)} cards, {len(out)} queries kept, {time.time() - t:.0f}s", flush=True)
-    write_jsonl(data / "pairs_llm.jsonl", out)
+    write_jsonl(data / out_name, out)
+    print(f"{len(out)} of {len(cards)} kept; rejected {rejected}", flush=True)
     for row in random.sample(out, min(8, len(out))):
-        print(f"  Q: {row['query']}\n     {row['positive'].splitlines()[0][:100]}")
+        print(f"  [{row.get('style', '')}] {row['query']}\n     {row['positive'].splitlines()[0][:100]}")
 
 
 def all_pairs(data: Path) -> list[dict]:
@@ -384,6 +456,9 @@ def main() -> None:
     ap.add_argument("--gen-batch", type=int, default=64)
     ap.add_argument("--generator", default=GENERATOR, help="queries: the instruct model that writes them")
     ap.add_argument("--generator-revision", default=None, help="queries: defaults to the pinned one for the default generator")
+    ap.add_argument("--prompt", default="v2", choices=["v1", "v2"], help="queries: v2 reads the code and same-file siblings, with assigned styles")
+    ap.add_argument("--repos", default="", help="queries: only these repos (comma-separated), e.g. for a quick look")
+    ap.add_argument("--out-name", default="pairs_llm.jsonl", help="queries: file under data/ to write")
     ap.add_argument("--llm-top", type=int, default=10, help="teacher: drop an LLM query unless its card is in the teacher's top N")
     ap.add_argument("--student", default="jhu-clsp/ettin-encoder-32m")
     ap.add_argument("--pooling", default="mean", choices=["mean", "cls"])
@@ -405,7 +480,8 @@ def main() -> None:
     args = ap.parse_args()
     if args.stage == "queries":
         revision = args.generator_revision or (GENERATOR_REVISION if args.generator == GENERATOR else None)
-        stage_queries(args.work, args.n, args.gen_batch, args.generator, revision)
+        stage_queries(args.work, args.n, args.gen_batch, args.generator, revision, args.prompt,
+                      set(args.repos.split(",")) if args.repos else None, args.out_name)
     elif args.stage == "teacher":
         stage_teacher(args.work, args.negatives, args.margin, args.llm_top)
     elif args.stage == "train":

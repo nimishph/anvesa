@@ -1,13 +1,14 @@
 """Clone each repo in repos.json, index it with anvesa (WQL-path cards), and write its symbol cards.
 
-usage: python export_cards.py <anvesa-worktree> <work-dir> [--only name,name]
+usage: python export_cards.py <anvesa-worktree> <work-dir> [--only name,name] [--backfill-code]
 
 Cards are only stored once embedded, so each repo is indexed with all-MiniLM-L6-v2; the vectors are
 thrown away. Out: <work-dir>/data/cards/<repo>.jsonl and <work-dir>/data/manifest.json.
 
 A card's text is: head line, WQL path line, doc (when there is one), signature (when there is one).
 Each record splits it into those parts, so a query can be made from the doc and matched to the
-card without it.
+card without it. `code` is the symbol's own source (its span, capped at 40 lines), for the query
+generator; --backfill-code adds it to an earlier export from the existing indexes.
 """
 import json
 import shutil
@@ -42,6 +43,41 @@ def split(text: str, attrs: dict) -> dict | None:
     if (attrs.get("hasDoc") == "true") != bool(doc):
         return None
     return {"head": head, "path": path, "doc": doc, "signature": signature or ""}
+
+
+CODE_LINES, CODE_CHARS = 40, 2400
+
+
+def code_of(src: Path, source: dict, _files: dict = {}) -> str:
+    """The symbol's own source lines (its span), capped: what the query generator reads."""
+    span = source.get("span") or {}
+    if not span.get("startLine"):
+        return ""
+    path = src / source["path"]
+    if path not in _files:
+        try:
+            _files[path] = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            _files[path] = []
+    lines = _files[path][span["startLine"] - 1 : min(span.get("endLine") or span["startLine"], span["startLine"] + CODE_LINES - 1)]
+    return "\n".join(lines)[:CODE_CHARS]
+
+
+def backfill_code(work: Path) -> None:
+    """Add `code` to cards exported before it existed, from each repo's index and clone (no re-indexing)."""
+    for target in sorted((work / "data" / "cards").glob("*.jsonl")):
+        src = work / "repos" / target.stem
+        db = src / ".anvesa" / "index.db"
+        if not db.exists():
+            print(f"{target.stem}: no index, skipped")
+            continue
+        sources = {card_id: json.loads(raw)["source"] for card_id, raw in sqlite3.connect(
+            f"file:{db}?mode=ro", uri=True).execute("select id, card from cards where channel='symbols'")}
+        rows = [json.loads(line) for line in target.read_text(encoding="utf-8").splitlines()]
+        for row in rows:
+            row["code"] = code_of(src, sources[row["id"]]) if row["id"] in sources else ""
+        target.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+        print(f"{target.stem:12} {sum(1 for r in rows if r['code'])}/{len(rows)} cards with code")
 
 
 def export(repo: dict, manifest: dict) -> None:
@@ -79,7 +115,7 @@ def export(repo: dict, manifest: dict) -> None:
             continue
         kept.append({"repo": name, "lang": repo["lang"], "split": repo["split"], "id": card_id,
                      "group": group, "kind": card["attrs"].get("kind", ""), "file": card["source"]["path"],
-                     "text": card["text"], **parts})
+                     "text": card["text"], **parts, "code": code_of(src, card["source"])})
     target = WORK / "data" / "cards" / f"{name}.jsonl"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("".join(json.dumps(k) + "\n" for k in kept), encoding="utf-8")
@@ -90,6 +126,9 @@ def export(repo: dict, manifest: dict) -> None:
 
 
 def main() -> None:
+    if "--backfill-code" in sys.argv:
+        backfill_code(WORK)
+        return
     (WORK / "repos").mkdir(parents=True, exist_ok=True)
     path = WORK / "data" / "manifest.json"
     path.parent.mkdir(parents=True, exist_ok=True)
