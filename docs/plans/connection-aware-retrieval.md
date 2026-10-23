@@ -313,6 +313,69 @@ signal. Then:
 - re-train the student on them;
 - compare on commerce and the lab.
 
+## Track E: a learned ranker, fed and governed by medha
+
+Gen-lab results (MiniLM, 241 queries, 8 repos; first stage = card + intent cards at weight 0.5, no path
+line, hub 0.3, MRR 0.566). Each reorders the first stage's top 30:
+
+| Reorders the top 30 | MRR | vs first stage | CPU cost per query |
+| --- | --- | --- | --- |
+| Small cross-encoders (MiniLM-L6/L12, mxbai-xsmall, bge-base) | 0.51–0.52 | −0.04 to −0.06 | 0.8–3 s |
+| mxbai-rerank-base-v2 | 0.615 | +0.049 | ~42 s (1 thread) |
+| Qwen3-Reranker-0.6B | 0.658 | +0.092 | ~46 s (1 thread) |
+| **XGBoost over cheap features** (ltr.py) | **0.613** | **+0.047** | **< 1 ms** |
+| XGBoost + Qwen3 score as a feature | 0.678 | +0.112 | as Qwen3 |
+
+The tree ranker matches the best affordable cross-encoder at almost no cost. Its weak point is
+data: it trains on the 241 bench queries. Medha already records what happened to the things an
+agent uses, so it can supply real labels (E2) and decide which ranker to trust (E3).
+
+## Requirement: a tree ranker reorders the top results, behind a flag {#req-ltr-ranker}
+
+Port ltr.py's features and an exported XGBoost model to the retriever, behind an `experimental`
+flag the way `cardPath` is:
+- The features are computed in TypeScript from what search already has: first-stage scores,
+  BM25 on card and intent text, name, path and kind, same-file count and call degree.
+- The trees are evaluated in plain TypeScript from the exported JSON, with no ONNX runtime.
+- It ships only if it improves gen-lab MRR and commerce MRR, and adds no more than 5 ms.
+- `--explain` names the features that moved a hit.
+
+```yojana:claim
+kind: text
+expression: /learnedRanker/ in retriever/src/config.ts
+```
+
+## Requirement: anvesa records what happened to its results, in medha {#req-ltr-episodes}
+
+After a search, record a medha episode for each shown hit an agent acted on:
+- **applied:** the agent opened or edited it;
+- **skipped:** a hit ranked above an applied one that it passed over;
+- nothing for hits below the last one used, which are unknown rather than negative.
+
+The episode carries the query, the ranker version, each hit's rank and its feature vector, so a
+ranker can be retrained without re-running search. Episodes stay in the local medha log; they leave
+the machine only through medha's own sync, which is opt-in.
+
+## Requirement: the ranker retrains from usage {#req-ltr-from-usage}
+
+`anvesa rank train` fits a new ranker from medha episodes, with the bench queries as a floor:
+- Use only queries with at least one applied hit.
+- Weight each label by medha's Wilson lower bound, so a pattern seen twice counts for less than one
+  seen two hundred times.
+- Report the new ranker on the bench before it is used, next to the current one.
+
+## Requirement: medha decides which ranker is trusted {#req-ltr-governed}
+
+Each trained ranker is a medha entity:
+- It starts on **probation** and is used on a share of searches.
+- Its guard: bench MRR no lower than the current ranker's, and an applied rate in live use at
+  least as high, by Wilson lower bound.
+- It becomes **trusted** (the default) only after the guard passes.
+- If it starts losing, it is **quarantined** and search falls back to the previous trusted ranker,
+  or to the first stage.
+
+`medha show` explains why a ranker is where it is.
+
 ## Order
 
 1. **Now, no GPU:**
@@ -324,4 +387,6 @@ signal. Then:
    - #req-lab-tasks: blind questions first, then flow, where-to-change and who-uses questions.
    - #req-search-source.
    - #req-graph-ranking.
-4. **Later:** #req-lab-encoders with the student; #req-enriched-cards.
+   - #req-ltr-ranker, then #req-ltr-episodes (both are useful alone).
+4. **After episodes accumulate:** #req-ltr-from-usage, then #req-ltr-governed.
+5. **Later:** #req-lab-encoders with the student; #req-enriched-cards.
