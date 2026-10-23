@@ -7,10 +7,13 @@
 {"id":"req-go-var-blocks","revision":"r_dc360a9bf6050e57"}
 {"id":"req-graph-packing","revision":"r_0a199cce0fe47661"}
 {"id":"req-graph-ranking","revision":"r_159f77cd6fb71186"}
+{"id":"req-intent-cards","revision":"r_a1670ff43af6c7c9"}
+{"id":"req-intent-model","revision":"r_83fb882152c0dec4"}
 {"id":"req-lab-encoders","revision":"r_0770eb1cfc038f6b"}
 {"id":"req-lab-retrieval-only","revision":"r_d59aac3dc273b163"}
 {"id":"req-lab-tasks","revision":"r_78d69254b38351e2"}
-{"id":"req-ltr-episodes","revision":"r_6243fd16a71cd708"}
+{"id":"req-ltr-adaptive","revision":"r_0662dc4754a347ee"}
+{"id":"req-ltr-episodes","revision":"r_6a670b0bffa8677a"}
 {"id":"req-ltr-from-usage","revision":"r_0b7874c587939ae8"}
 {"id":"req-ltr-governed","revision":"r_81adee16a3b1ca51"}
 {"id":"req-ltr-ranker","revision":"r_b8aa748f454fce96"}
