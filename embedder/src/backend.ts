@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import { InferenceError, ModelShapeError } from './errors.ts';
 
 /** One padded batch, as the model reads it: `batch` rows of `length` ids, row-major. */
@@ -26,13 +27,48 @@ export interface ModelOutput {
 export interface InferenceBackend {
   run(input: TokenBatch): Promise<ModelOutput>;
   dispose(): Promise<void>;
+  /** Where the model runs: `cpu`, or the GPU execution provider in use. Absent means `cpu`. */
+  readonly device?: string;
 }
+
+/**
+ * Which device to run on. `auto` uses a GPU when one is plainly there and starts, else the CPU;
+ * `gpu` requires one and fails if none starts; `cpu` never tries.
+ */
+export type DeviceSetting = 'auto' | 'gpu' | 'cpu';
 
 export interface OnnxOptions {
   readonly modelId: string;
   readonly modelPath: string;
   /** Threads for one operator. Unset lets the runtime decide (all cores). */
   readonly threads?: number;
+  /** Unset reads `ANVESA_DEVICE`, then `auto`. */
+  readonly device?: DeviceSetting;
+}
+
+/** `ANVESA_DEVICE`, or `auto`. */
+export function deviceSetting(environment: NodeJS.ProcessEnv = process.env): DeviceSetting {
+  const value = (environment.ANVESA_DEVICE ?? 'auto').trim().toLowerCase();
+  if (value === 'auto' || value === 'gpu' || value === 'cpu') return value;
+  throw new InvalidArgumentError('ANVESA_DEVICE', 'auto, gpu or cpu', value);
+}
+
+/**
+ * GPU execution providers to try, in order. Under `auto` only CUDA, and only with an NVIDIA driver
+ * loaded: it is the one measured to pay off. DirectML and CoreML are tried only when a GPU is asked
+ * for, since on small encoders and changing batch shapes they can be slower than the CPU.
+ */
+export function gpuProviders(
+  device: DeviceSetting,
+  platform: NodeJS.Platform = process.platform,
+  hasNvidiaDriver: () => boolean = () => existsSync('/proc/driver/nvidia/version'),
+): readonly string[] {
+  if (device === 'cpu') return [];
+  if (platform === 'linux') return device === 'gpu' || hasNvidiaDriver() ? ['cuda'] : [];
+  if (device !== 'gpu') return [];
+  if (platform === 'win32') return ['cuda', 'dml'];
+  if (platform === 'darwin') return ['coreml'];
+  return [];
 }
 
 const NATIVE_LIBRARIES: Readonly<Record<string, readonly string[]>> = {
@@ -92,7 +128,7 @@ async function loadOnnxRuntime(): Promise<typeof import('onnxruntime-node')> {
   return await import('onnxruntime-node');
 }
 
-/** The ONNX runtime running the model on the CPU. */
+/** The ONNX runtime running the model on a GPU when one is chosen and starts, else on the CPU. */
 export async function openOnnx(options: OnnxOptions): Promise<InferenceBackend> {
   prepareNativeRuntime();
   let ort: typeof import('onnxruntime-node');
@@ -105,9 +141,35 @@ export async function openOnnx(options: OnnxOptions): Promise<InferenceBackend> 
     });
   }
 
-  let session: import('onnxruntime-node').InferenceSession;
+  const device = options.device ?? deviceSetting();
+  let session: import('onnxruntime-node').InferenceSession | undefined;
+  let used = 'cpu';
+  const tried: string[] = [];
+  for (const provider of gpuProviders(device)) {
+    try {
+      session = await ort.InferenceSession.create(options.modelPath, {
+        // The CPU stays listed for the few operators a GPU provider does not implement.
+        executionProviders: [provider, 'cpu'],
+        graphOptimizationLevel: 'all',
+        // DirectML needs both; they cost the others nothing for one model run at a time.
+        enableMemPattern: false,
+        executionMode: 'sequential',
+      });
+      used = provider;
+      break;
+    } catch (failure) {
+      // CUDA without its libraries (cuDNN, or the provider files onnxruntime-node did not install)
+      tried.push(`${provider}: ${failure instanceof Error ? failure.message.split('\n')[0] : String(failure)}`);
+    }
+  }
+  if (!session && device === 'gpu') {
+    throw new InferenceError(options.modelId, 'no GPU execution provider could be started', {
+      context: { tried: tried.length > 0 ? tried : [`none for ${process.platform}`] },
+      hint: 'On Linux, onnxruntime-node needs its CUDA 12 files (run its install script with --onnxruntime-node-install=cuda12) and cuDNN 9 on the library path. ANVESA_DEVICE=auto falls back to the CPU instead.',
+    });
+  }
   try {
-    session = await ort.InferenceSession.create(options.modelPath, {
+    session ??= await ort.InferenceSession.create(options.modelPath, {
       executionProviders: ['cpu'],
       graphOptimizationLevel: 'all',
       ...(options.threads === undefined ? {} : { intraOpNumThreads: options.threads }),
@@ -119,27 +181,29 @@ export async function openOnnx(options: OnnxOptions): Promise<InferenceBackend> 
       cause: failure,
     });
   }
+  const opened = session;
 
-  const inputs = new Set(session.inputNames);
+  const inputs = new Set(opened.inputNames);
   for (const required of ['input_ids', 'attention_mask']) {
     if (!inputs.has(required)) {
       throw new ModelShapeError(options.modelId, `it has no "${required}" input`, {
-        context: { inputs: session.inputNames },
+        context: { inputs: opened.inputNames },
       });
     }
   }
   const outputName = ['sentence_embedding', 'last_hidden_state'].find((name) =>
-    session.outputNames.includes(name),
+    opened.outputNames.includes(name),
   );
   if (!outputName) {
     throw new ModelShapeError(
       options.modelId,
       'it has neither a "sentence_embedding" nor a "last_hidden_state" output',
-      { context: { outputs: session.outputNames } },
+      { context: { outputs: opened.outputNames } },
     );
   }
 
   return {
+    device: used,
     async run(input) {
       const shape = [input.batch, input.length];
       const feeds: Record<string, import('onnxruntime-node').Tensor> = {
@@ -151,7 +215,7 @@ export async function openOnnx(options: OnnxOptions): Promise<InferenceBackend> 
         feeds.token_type_ids = new ort.Tensor('int64', new BigInt64Array(input.ids.length), shape);
       }
       try {
-        const result = await session.run(feeds, [outputName]);
+        const result = await opened.run(feeds, [outputName]);
         const tensor = result[outputName];
         if (!tensor) throw new ModelShapeError(options.modelId, `no "${outputName}" came back`);
         return { data: tensor.data as Float32Array, dims: tensor.dims };
@@ -164,7 +228,7 @@ export async function openOnnx(options: OnnxOptions): Promise<InferenceBackend> 
       }
     },
     async dispose() {
-      await session.release();
+      await opened.release();
     },
   };
 }

@@ -13,6 +13,8 @@ export interface EmbedderInfo {
   readonly specialTokens?: number;
   /** How many texts it likes to receive at once. Absent means "all of them". */
   readonly preferredBatchSize?: number;
+  /** Where it runs (`cpu`, `cuda`, `dml`, ...), when it knows. Does not change its vectors. */
+  readonly device?: string;
 }
 
 /**

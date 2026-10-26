@@ -58,7 +58,7 @@ export async function openLocalEmbedder(
     pooling: spec.pooling,
     tokenizer,
     backend,
-    maxBatchTokens: batchTokensFor(spec.dimensions, budget),
+    maxBatchTokens: batchTokensFor(spec.dimensions, budget, backend.device),
     ...(options.exactBatches ? { exactBatches: true } : {}),
   });
   try {
