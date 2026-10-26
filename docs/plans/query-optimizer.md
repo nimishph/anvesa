@@ -153,7 +153,7 @@ too. Removing words would be an ablation.
 |---|---|---|---|---|
 | B1 | **rules + index vocabulary**: regex for identifiers, backticks, `X.y`, "test for", HTTP verb + path, "class/method/function `<Name>`"; a cue counts only if it resolves in the index (symbol table, directory names, route table) | < 1 ms plus one symbol-table lookup | none; a hand-written cue list | explicit-cue queries only; must be neutral on the NL bench |
 | B2 | **index-grounded lexical matcher**: BM25 / trigram over symbol names and path segments, so "ftp adapter" → `src/Ftp/` | ~1–5 ms | none | path and fragment hints that rules miss |
-| B3 | **small classifier / tagger** over the query (kind: ~10 classes; area: the repo's top directories; span tagging for identifiers), e.g. a linear head on the query embedding the dense lane already computes, or a tiny CRF | ~1 ms on top of the existing query embedding | synthetic (intent text → card kind / path) pairs from the intent cards already generated (track F), plus the dev query set; trained on Colab | latent kind and area from NL; must clear ~89% / ~80% accuracy where it fires |
+| B3 | **a small probability-emitting network** (the preferred builder, #req-qopt-tagger): a gate p(decomposable) that decides "pure NL, leave it alone" vs "decomposable", plus heads for what to extract (kind, identifier spans, relation, area). Calibrated, so each probability maps onto the break-even curve. Runs in-process (ONNX), so the query never leaves the machine | < 1 ms on its own; ~0 extra if it reads the query embedding the dense lane already computes | synthetic positives (structure injected into NL queries and intent texts), hard negatives (English kind words), the dev query set; trained on Colab | the gate also governs B1/B2: rules propose, the gate decides. Must clear ~89% / ~80% accuracy where it fires |
 | B4 | **small LLM writing WQL**, constrained decoding to the WQL grammar, given a compact outline of the repo (top directories, top class names); validated by running the WQL; 1–3 candidates fused | 200–1500 ms for a 0.5–1.5B model on CPU; too slow for interactive by default | few-shot prompts; optionally a LoRA on (query, oracle WQL) pairs from #req-qopt-oracle, on Colab | the broadest; only for `anvesa ask`, agents, or an opt-in `--rewrite` |
 | B5 | **learning from logs**: which rewrites led to a used result (medha episodes, #req-ltr-episodes), feeding B3's labels and the ranker | none at query time beyond B3 | accumulated usage | per-repo adaptation |
 
@@ -322,17 +322,48 @@ Once #req-ltr-ranker exists, each rewrite contributes features for every top-30 
 Measured with `ltr.py`'s leave-one-repo-out, against the same rewrites applied as soft boosts.
 This is the "same hint as feature" control from the hypothesis.
 
-## Requirement: a small tagger for latent kind and area, only if the rules leave headroom {#req-qopt-tagger}
+## Requirement: a small network says, with a probability, whether a query is pure or decomposable {#req-qopt-tagger}
 
-B3: predicts kind (~10 classes) and area (the repo's top directories, or "none") from the query.
-It abstains below a confidence threshold. Trained on Colab from the intent cards' (intent text →
-card kind, path) pairs plus the dev query set's training split. There are two inputs to compare:
-- the dense query embedding, cheap but maybe redundant with the ranking;
-- a text-only head, character n-grams.
+B3, the preferred builder: a tiny network that runs in-process and is fast and private (ONNX,
+well under 1 ms on a laptop CPU, a few MB at most, no LLM, no network). It emits calibrated
+probabilities, not labels:
 
-Proceeds only if #req-qopt-oracle shows headroom on queries the rules do not fire on. Done when
-its accuracy where it fires clears #req-qopt-break-even for top-30 reorder, and the leave-one-repo-out
-ΔMRR on the bench is ≥ 0.
+- **Gate.** p(decomposable). Below the threshold the query runs exactly as typed. On the 241 NL
+  bench queries it should be low for ≥ 95% of them.
+- **Heads**, read only when the gate fires:
+  - p(kind = k) over ~10 outline kinds;
+  - per-token p(identifier) spans, kept only if the span resolves in the index;
+  - p(relation ∈ {calls, called-by, uses, implements, tests});
+  - area, scored per candidate directory as p(dir | query, dir name) rather than over a fixed
+    label set, since directories differ per repo.
+
+How the probabilities are used:
+- Each emitted constraint carries its probability into the combination mode. It is applied
+  hard only above the break-even accuracy for that mode (#req-qopt-break-even): ~0.93 for the
+  whole list, ~0.89 (kind) / ~0.80 (area) for top-30 reorder. Below that it becomes a soft boost
+  with weight scaled by p, or a ranker feature (#req-qopt-ltr-features).
+- The gate also governs B1/B2: a rule-found cue becomes a constraint only if the gate agrees.
+  That is what keeps "decode into a **struct**" pure.
+
+Labels: a query is decomposable when the structure is stated in it, not when the gold happens to
+have a kind. Training data, built and trained on Colab:
+- positives by injecting structure into NL queries and intent-card texts: a real identifier, a
+  real directory, "class `<Name>`", "tests for `<fn>`", "who calls `<fn>`";
+- hard negatives: NL that uses kind words as English (the 15 bench cases above and generated
+  ones);
+- the dev query set's training split. Evaluation is leave-one-repo-out.
+
+There are two inputs to compare:
+- the dense query embedding, ~0 extra cost but possibly redundant with the ranking (as the
+  top-k vote was);
+- a text-only encoder over character n-grams / hashed word pieces.
+
+Done when:
+- the gate's AUROC and calibration (ECE, reliability plot) are reported on the bench and the
+  dev set;
+- each head's accuracy where it fires clears #req-qopt-break-even for the mode it drives;
+- leave-one-repo-out ΔMRR on the bench is ≥ 0 and ΔR@10 on the dev set has a CI excluding 0;
+- p95 latency on the laptop CPU is < 2 ms.
 
 ## Requirement: an LLM rewriter, constrained and validated, as an opt-in {#req-qopt-llm}
 
@@ -386,7 +417,7 @@ Otherwise it stays behind a flag, and the report says which part of the hypothes
 2. **If H1 holds:** #req-qopt-safe-combine, #req-qopt-rules, #req-qopt-explain,
    #req-qopt-languages. All are cheap and local.
 3. **With #req-ltr-ranker:** #req-qopt-ltr-features.
-4. **Only if headroom remains:** #req-qopt-tagger (train on Colab), then #req-qopt-llm (Colab,
-   opt-in).
+4. **Once the dev query set exists:** #req-qopt-tagger, the probability-emitting gate and heads
+   (train on Colab). Then #req-qopt-llm (Colab, opt-in) only if headroom remains.
 5. **With #req-lab-tasks and track D:** #req-qopt-relations.
 6. #req-qopt-gate before any default-on.
