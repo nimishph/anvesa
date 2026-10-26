@@ -130,16 +130,17 @@ what is missing.
 
 A language becomes searchable by symbol once it has a *mapping*: which syntax nodes are declarations,
 imports, calls and control flow, and where each finds its name. TypeScript, JavaScript (and Vue,
-through the TypeScript mapping), Python, PHP, Go, Rust, Java and Ruby ship one (each was learned from
-real code with the trainer below, then checked). C and C++ ship a partial one: structs, classes,
+through the TypeScript mapping), Python, PHP, Go, Rust, Java, Ruby and C# ship one (each was learned
+from real code with the trainer below, then checked). C and C++ ship a partial one: structs, classes,
 namespaces, includes and calls are named, but a function's name sits inside a nested declarator that a
-mapping cannot follow, so functions are found by `//function` and never by `[@name="..."]`. C# ships
-none. For C# or any other language whose grammar is available (compiled in, or installed as wasm),
-learn one from code:
+mapping cannot follow, so functions are found by `//function` and never by `[@name="..."]`. In C#,
+properties are tagged but are not outline symbols (as in TypeScript and PHP), and operators and
+indexers, which have no name a mapping can read, are not mapped. For any other language whose grammar
+is available (compiled in, or installed as wasm), or to fit a mapping to your own code, learn one:
 
 ```sh
 anvesa mapping train csharp --samples ./src --samples ./tests   # learns, checks, keeps it in .anvesa/
-anvesa index --force                                          # C# files now have outlines and symbols
+anvesa index --force                                          # files now have outlines from it
 ```
 
 Training reads how the grammar builds real code (a node with a `name` field and a body declares
