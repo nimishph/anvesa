@@ -2,7 +2,7 @@
 id: plan/query-optimizer
 title: 'A query optimizer: from what a developer types to WQL ∧ natural language'
 status: accepted
-beads: []
+beads: [anv-k3w]
 ---
 
 # A query optimizer: from what a developer types to WQL ∧ natural language
@@ -217,7 +217,7 @@ that reads only the query text (character n-grams).
 - **User trust.** A silent rewrite that loses a result is worse than no optimizer. The rewrite
   must be shown and easy to turn off.
 
-## Requirement: the oracle headroom is measured before anything is built {#req-qopt-oracle}
+## Requirement: the oracle headroom is measured before anything is built {#req-qopt-oracle beads=anv-k3w.1}
 
 The simulated numbers above become a lab script, `qopt.py` in the gen-lab, that reproduces them
 from stored vectors. Then a sample of ~60 queries (all 24 first-stage misses at 10, plus ~36
@@ -235,7 +235,7 @@ Done when:
 H1 holds if the hand-written oracle gains ≥ +0.02 R@10 on the sample in some mode. If it does not,
 stop here and record why.
 
-## Requirement: the break-even curve is part of every predictor's report {#req-qopt-break-even}
+## Requirement: the break-even curve is part of every predictor's report {#req-qopt-break-even beads=anv-k3w.2}
 
 `qopt.py` reports, for kind, directory and identifier constraints, the noisy-oracle curve (MRR
 and R@10 vs error rate *p*), per combination mode. Each predictor's report then gives three
@@ -244,7 +244,7 @@ the curve.
 
 A predictor proceeds only if its measured accuracy is above break-even for the mode it would use.
 
-## Requirement: a query set phrased the way developers type {#req-qopt-dev-queries}
+## Requirement: a query set phrased the way developers type {#req-qopt-dev-queries beads=anv-k3w.3}
 
 About 120 queries over the 8 bench repos, with the same `gold` / `also` labels and new `style`
 values:
@@ -302,7 +302,7 @@ Done when:
 - on the dev query set they gain R@10 with a CI excluding 0;
 - the added latency is < 5 ms p95.
 
-## Requirement: training and eval data come from the corpus, with its test split held out {#req-qopt-corpus-data}
+## Requirement: training and eval data come from the corpus, with its test split held out {#req-qopt-corpus-data beads=anv-k3w.4}
 
 The encoder's corpus (`anvesa-corpus/work/`, Drive `MyDrive/anvesa-corpus/work/`):
 - 187 indexed repos in 13 languages;
