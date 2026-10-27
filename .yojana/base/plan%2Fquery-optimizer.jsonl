@@ -4,11 +4,10 @@
 {"id":"req-qopt-dev-queries","revision":"r_385949405c3949e5"}
 {"id":"req-qopt-explain","revision":"r_caa5dd4a58d80890"}
 {"id":"req-qopt-gate","revision":"r_ef513bcf3f7ed284"}
-{"id":"req-qopt-languages","revision":"r_25ff899509cb9b18"}
-{"id":"req-qopt-llm","revision":"r_2e3016ae9d8b0174"}
-{"id":"req-qopt-ltr-features","revision":"r_d5ad172a9371017b"}
+{"id":"req-qopt-languages","revision":"r_3446663e43d0ae52"}
+{"id":"req-qopt-ltr-features","revision":"r_5a71e4a2eab0e7e6"}
 {"id":"req-qopt-oracle","revision":"r_b2ba582836e27edc"}
 {"id":"req-qopt-relations","revision":"r_dc679a43b6c9ebe3"}
 {"id":"req-qopt-rules","revision":"r_2a8c63f75081b512"}
 {"id":"req-qopt-safe-combine","revision":"r_73934d16a9f52c40"}
-{"id":"req-qopt-tagger","revision":"r_3b533664a1c161d9"}
+{"id":"req-qopt-tagger","revision":"r_6505dba0d508c31b"}

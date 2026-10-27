@@ -137,7 +137,7 @@ too. Removing words would be an ablation.
 | **pre-filter in the scan** | the WQL match set becomes the dense store's card filter (`cardFilter`), so the best *matching* cards are kept, not the best 500 then filtered | hard mode, large repos (retrofit: 3,476 cards) | same as hard, but no loss from the fetch cut |
 | **soft boost** | matching cards get +w on the fused score; nothing is removed | default for predicted constraints | low; w tuned by leave-one-repo-out |
 | **confined reorder** | matches first, only within the top k (30) | when the predictor's confidence is high | bounded: gold beyond k is untouched, and R@30 cannot drop |
-| **multiple rewrites, fused** | run the literal query plus 1–3 rewrites and fuse them with RRF; the literal list is always one input | a tagger or LLM with uncertain output | low; costs one extra structural run per rewrite, and the dense query is shared |
+| **multiple rewrites, fused** | run the literal query plus 1–3 rewrites and fuse them with RRF; the literal list is always one input | the tagger, with uncertain output | low; costs one extra structural run per rewrite, and the dense query is shared |
 | **as ranker features** | "matches rewrite *i*", "constraint source", "predictor confidence" go to the XGBoost ranker over the top 30 | once #req-ltr-ranker ships | lowest; learns how much to trust each source |
 
 **Fallback rules (H3):**
@@ -153,8 +153,8 @@ too. Removing words would be an ablation.
 |---|---|---|---|---|
 | B1 | **rules + index vocabulary**: regex for identifiers, backticks, `X.y`, "test for", HTTP verb + path, "class/method/function `<Name>`"; a cue counts only if it resolves in the index (symbol table, directory names, route table) | < 1 ms plus one symbol-table lookup | none; a hand-written cue list | explicit-cue queries only; must be neutral on the NL bench |
 | B2 | **index-grounded lexical matcher**: BM25 / trigram over symbol names and path segments, so "ftp adapter" → `src/Ftp/` | ~1–5 ms | none | path and fragment hints that rules miss |
-| B3 | **a small probability-emitting network** (the preferred builder, #req-qopt-tagger): a gate p(decomposable) that decides "pure NL, leave it alone" vs "decomposable", plus heads for what to extract (kind, identifier spans, relation, area). Calibrated, so each probability maps onto the break-even curve. Runs in-process (ONNX), so the query never leaves the machine | < 1 ms on its own; ~0 extra if it reads the query embedding the dense lane already computes | synthetic positives (structure injected into NL queries and intent texts), hard negatives (English kind words), the dev query set; trained on Colab | the gate also governs B1/B2: rules propose, the gate decides. Must clear ~89% / ~80% accuracy where it fires |
-| B4 | **small LLM writing WQL**, constrained decoding to the WQL grammar, given a compact outline of the repo (top directories, top class names); validated by running the WQL; 1–3 candidates fused | 200–1500 ms for a 0.5–1.5B model on CPU; too slow for interactive by default | few-shot prompts; optionally a LoRA on (query, oracle WQL) pairs from #req-qopt-oracle, on Colab | the broadest; only for `anvesa ask`, agents, or an opt-in `--rewrite` |
+| B3 | **a small probability-emitting network** (the preferred builder, #req-qopt-tagger): a gate p(decomposable) that decides "pure NL, leave it alone" vs "decomposable", plus heads for what to extract (kind, identifier spans, relation, area). Calibrated, so each probability maps onto the break-even curve. Runs in-process (ONNX), so the query never leaves the machine | < 1 ms on its own; ~0 extra if it reads the query embedding the dense lane already computes | synthetic positives (structure injected into NL queries, and into intent texts if intent cards ship), hard negatives (English kind words), the dev query set; trained on Colab | the gate also governs B1/B2: rules propose, the gate decides. Must clear ~89% / ~80% accuracy where it fires |
+| B4 | *declined (2026-10-28)*: a small LLM writing WQL. At 200–1500 ms per query on a laptop CPU it is too slow for retrieval that must be quick | — | — | — |
 | B5 | **learning from logs**: which rewrites led to a used result (medha episodes, #req-ltr-episodes), feeding B3's labels and the ranker | none at query time beyond B3 | accumulated usage | per-repo adaptation |
 
 B3's embedding-head variant is cheap, but it reads the same vector the dense ranking uses, which
@@ -208,7 +208,7 @@ that reads only the query text (character n-grams).
   - Mitigation: a per-language table of which kinds the optimizer may emit; no kind constraint
     where the mapping is weak.
 - **Latency.** Each rewrite costs a structural run (WQL over every outline). B1–B3 stay under a
-  few ms; B4 is far over the interactive budget and stays opt-in.
+  few ms. An LLM rewriter would be far over the interactive budget, which is why it was declined.
 - **Bench mismatch.** The bench is NL by construction, so a gain on a dev set written by the same
   people who know the answers can be circular. Mitigation: the dev queries are written from the
   task, before looking at search output, and some are taken from real usage (episodes).
@@ -335,7 +335,7 @@ expression: literal in cli/src/commands.ts
 
 Once #req-ltr-ranker exists, each rewrite contributes features for every top-30 candidate:
 - whether it matches the rewrite's WQL;
-- the constraint's source (user, rule, tagger, LLM);
+- the constraint's source (user, rule, tagger);
 - the predictor's confidence;
 - the match set's size as a share of the repo.
 
@@ -372,8 +372,11 @@ How the probabilities are used:
 
 Labels: a query is decomposable when the structure is stated in it, not when the gold happens to
 have a kind. Training data, built and trained on Colab:
-- positives by injecting structure into NL queries and intent-card texts: a real identifier, a
-  real directory, "class `<Name>`", "tests for `<fn>`", "who calls `<fn>`";
+- positives by injecting structure into NL queries: a real identifier, a real directory,
+  "class `<Name>`", "tests for `<fn>`", "who calls `<fn>`". Intent-card texts are a second
+  source only if intent cards ship. That is decided by the Ettin fine-tuning and training run
+  (track F, #req-intent-cards), so this requirement waits for that result before its training
+  data is fixed;
 - hard negatives: NL that uses kind words as English (the 15 bench cases above and generated
   ones);
 - the dev query set's training split. Evaluation is leave-one-repo-out.
@@ -389,17 +392,6 @@ Done when:
 - each head's accuracy where it fires clears #req-qopt-break-even for the mode it drives;
 - leave-one-repo-out ΔMRR on the bench is ≥ 0 and ΔR@10 on the dev set has a CI excluding 0;
 - p95 latency on the laptop CPU is < 2 ms.
-
-## Requirement: an LLM rewriter, constrained and validated, as an opt-in {#req-qopt-llm}
-
-B4: a 0.5–1.5B model on Colab first. It gets the query and a compact repo outline (top
-directories, top classes) and writes 1–3 WQL candidates under a grammar constraint (a GBNF / regex
-grammar derived from `structural/src/wql.ts`). Each candidate is validated by running it, and
-discarded if it is empty or near-universal. The survivors are fused with the literal query.
-
-Measured on both query sets against B1 + B2, with CPU latency timed on the laptop in fp32 and q4.
-It may only be an opt-in `--rewrite` or an `anvesa ask` / agent step unless its p95 is under the
-interactive budget.
 
 ## Requirement: relation queries go to the graph {#req-qopt-relations}
 
@@ -445,6 +437,20 @@ Where coverage is low, a structural clause cannot reach most symbols. Below a co
 (start at 0.6, tune on val), the optimizer falls back to NL only: no kind or name clause, at most
 a path scope. The gate's training labels follow the same rule, so it learns not to fire there.
 
+**A default ruleset for languages trained on the fly.** A language whose mapping comes from
+`anvesa mapping train` has no hand-made row in this table. It gets a default ruleset, derived
+from the trained mapping itself rather than written by hand:
+- kind clauses only for the declaration kinds the mapping emits and its verification passes on
+  the samples;
+- `[@name]` clauses only for kinds whose nodes carry a name in the golden output;
+- path scopes always, since they need no mapping;
+- NL only, for everything else and whenever the trained mapping's coverage is below the
+  threshold.
+
+A language gets a hand-made row once the oracle run has evidence for it; until then the default
+applies. Done when a test trains a mapping on samples of a language with no row and checks that
+the optimizer emits only what that ruleset allows.
+
 ## Requirement: the optimizer ships on by default only through a gate {#req-qopt-gate}
 
 On by default only if all of these hold:
@@ -466,6 +472,6 @@ Otherwise it stays behind a flag, and the report says which part of the hypothes
    #req-qopt-languages. All are cheap and local.
 3. **With #req-ltr-ranker:** #req-qopt-ltr-features.
 4. **Once the dev query set exists:** #req-qopt-tagger, the probability-emitting gate and heads
-   (train on Colab). Then #req-qopt-llm (Colab, opt-in) only if headroom remains.
+   (train on Colab), after the Ettin run settles whether intent cards ship.
 5. **With #req-lab-tasks and track D:** #req-qopt-relations.
 6. #req-qopt-gate before any default-on.
