@@ -325,8 +325,13 @@ This is the "same hint as feature" control from the hypothesis.
 ## Requirement: a small network says, with a probability, whether a query is pure or decomposable {#req-qopt-tagger}
 
 B3, the preferred builder: a tiny network that runs in-process and is fast and private (ONNX,
-well under 1 ms on a laptop CPU, a few MB at most, no LLM, no network). It emits calibrated
-probabilities, not labels:
+well under 1 ms on a laptop CPU, a few MB at most, no LLM, no network). It is a decision model:
+it answers typed questions (yes/no, choice, score) with a calibrated probability per answer,
+instead of generating text. Calibration means one threshold means the same thing across
+questions. It is built and trained here, from anvesa's own data, with no third-party
+classification model or service in the loop.
+
+The optimizer's questions, each answered with calibrated probabilities, not labels:
 
 - **Gate.** p(decomposable). Below the threshold the query runs exactly as typed. On the 241 NL
   bench queries it should be low for ≥ 95% of them.
