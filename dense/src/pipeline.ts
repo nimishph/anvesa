@@ -16,7 +16,7 @@ import {
   type TransformServices,
 } from './card.ts';
 import type { ChannelRegistry } from './channel.ts';
-import { budgetSourceOf, type Embedder, embedAll } from './embedder.ts';
+import { budgetSourceOf, cardTextFor, type Embedder, embedAll } from './embedder.ts';
 import { TransformerFailedError } from './errors.ts';
 import { type Finding, type QuarantinedCard, RedTeamGate } from './redteam/index.ts';
 import type { StoredCard, VectorStore } from './store.ts';
@@ -209,7 +209,7 @@ export class Ingester {
 
       const vectors = await embedAll(
         this.#embedder,
-        batch.accepted.map((card) => card.text),
+        batch.accepted.map((card) => cardTextFor(card.text, this.#embedder.info.cardForm)),
         { deadline },
       );
       const screened = this.#gate.screenVectors(batch.accepted, vectors);

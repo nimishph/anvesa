@@ -138,6 +138,34 @@ describe('deciding what a custom model is from its own files', () => {
     });
     expect(named.model.endsWith('other.onnx')).toBe(true);
   });
+
+  test('a recipe id takes pooling, window and card form from the recipe, not the files', async () => {
+    // The fine-tune ships as a Transformers folder: no 1_Pooling, and an 8k window in its config.
+    const dir = modelFolder({ 'tokenizer_config.json': '{"model_max_length": 7999}' });
+    const plan = await planCustomModel({ id: 'ettin-code-1b', from: dir });
+    expect(plan).toMatchObject({ pooling: 'mean', maxTokens: 512, cardForm: 'nopath' });
+    // What is said on the command line still wins.
+    expect(
+      (await planCustomModel({ id: 'ettin-code-1b', from: dir, maxTokens: 256 })).maxTokens,
+    ).toBe(256);
+    // Any other id has no card form.
+    const other = await planCustomModel({ id: 'mine', from: dir, pooling: 'mean' });
+    expect(other.cardForm).toBeUndefined();
+  });
+
+  test('a model over 2 GB brings its external weights file along', async () => {
+    const dir = modelFolder({ 'onnx/model.onnx_data': 'weights' });
+    const plan = await planCustomModel({ id: 'mine', from: dir, pooling: 'mean', maxTokens: 64 });
+    expect(plan.data?.endsWith(join('onnx', 'model.onnx_data'))).toBe(true);
+    expect(
+      (await planCustomModel({ id: 'mine', from: modelFolder(), pooling: 'mean', maxTokens: 64 }))
+        .data,
+    ).toBeUndefined();
+    writeFileSync(join(dir, 'onnx', 'model.onnx.data'), 'more');
+    await expect(
+      planCustomModel({ id: 'mine', from: dir, pooling: 'mean', maxTokens: 64 }),
+    ).rejects.toThrow(/several external/);
+  });
 });
 
 describe('keeping a model the user brought', () => {
@@ -203,6 +231,32 @@ describe('keeping a model the user brought', () => {
       install(cache, modelFolder({}, { onnx: 'other' }), { replace: true, fail: true }),
     ).rejects.toBeInstanceOf(InferenceError);
     expect((await cache.findCustom('mine'))?.model.sha256).toBe(spec.model.sha256);
+  });
+
+  test('external weights and a card form are kept, pinned and checked like the model', async () => {
+    const cache = new ModelCache(scratch());
+    const source = modelFolder({ 'onnx/model.onnx_data': 'weights' });
+    const spec = await cache.installCustom({
+      id: 'big',
+      maxTokens: 512,
+      pooling: 'mean',
+      cardForm: 'nopath',
+      source,
+      files: {
+        model: join(source, 'onnx', 'model.onnx'),
+        tokenizer: join(source, 'tokenizer.json'),
+        data: join(source, 'onnx', 'model.onnx_data'),
+      },
+      validate: async () => 8,
+    });
+    expect(spec.cardForm).toBe('nopath');
+    expect(spec.modelData).toMatchObject({ path: 'model.onnx_data', bytes: 7 });
+    expect(existsSync(join(cache.directoryOf('big'), 'model.onnx_data'))).toBe(true);
+    expect(await cache.find(spec)).toBeDefined();
+    await expect(cache.verify(spec)).resolves.toBeDefined();
+    // Weights changed under the model: it is no longer what was installed.
+    writeFileSync(join(cache.directoryOf('big'), 'model.onnx_data'), 'other weights');
+    expect(await cache.find(spec)).toBeUndefined();
   });
 
   test('a record that cannot be read is not trusted', async () => {

@@ -3,6 +3,26 @@ import type { BudgetSource } from './budget.ts';
 import { EmbedFailedError } from './errors.ts';
 import { isUsableVector } from './vectors.ts';
 
+/**
+ * How a model wants a card reshaped before it embeds it. The card is stored and shown as indexed;
+ * only the text handed to the encoder changes.
+ */
+export type CardForm =
+  /**
+   * Without the WQL path line (`/class[@name="X"]/method[@name="X.y"]`) that
+   * `experimental.cardPath: "wql"` adds as a symbol card's second line: its names are already in
+   * the head line.
+   */
+  'nopath';
+
+/** The text a model embeds for a card: the card itself, or the form the model asks for. */
+export function cardTextFor(text: string, form: CardForm | undefined): string {
+  if (form !== 'nopath') return text;
+  const lines = text.split('\n');
+  if (lines.length < 2 || !(lines[1] as string).startsWith('/')) return text;
+  return [lines[0], ...lines.slice(2)].join('\n');
+}
+
 export interface EmbedderInfo {
   /** Identifies the model, including anything that changes its vectors. Vectors are stored under it. */
   readonly id: string;
@@ -15,6 +35,8 @@ export interface EmbedderInfo {
   readonly preferredBatchSize?: number;
   /** Where it runs (`cpu`, `cuda`, `dml`, ...), when it knows. Does not change its vectors. */
   readonly device?: string;
+  /** How cards are reshaped before they are embedded. Queries are embedded as written. */
+  readonly cardForm?: CardForm;
 }
 
 /**

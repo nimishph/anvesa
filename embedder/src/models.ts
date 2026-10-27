@@ -6,6 +6,10 @@
  * eval is for. Vectors are stored under the model's id, so two models can be held side by side.
  */
 
+import type { CardForm } from '@cntxt-labs/anvesa-dense';
+
+export type { CardForm };
+
 export type Tier = 'low' | 'medium' | 'high';
 
 export const TIERS: readonly Tier[] = ['low', 'medium', 'high'];
@@ -31,12 +35,19 @@ export interface ModelSpec {
   /** Upstream repository the files come from. */
   readonly repo: string;
   readonly model: ModelFileSpec;
+  /**
+   * The weights of a model too large for one ONNX file (over 2 GB), kept beside it under the name
+   * the model refers to them by. Absent for a model that is one file.
+   */
+  readonly modelData?: ModelFileSpec;
   readonly tokenizer: ModelFileSpec;
   /** Declared output size. The loader reads the real one from the model and refuses a mismatch. */
   readonly dimensions: number;
   /** Input window, in tokens, special tokens included. */
   readonly maxTokens: number;
   readonly pooling: Pooling;
+  /** How cards are reshaped before this model embeds them. Absent: as indexed. */
+  readonly cardForm?: CardForm;
   /** Parameters, in millions: the honest proxy for compute cost. Unknown for a model brought in. */
   readonly paramsM: number | undefined;
   readonly license: string;
@@ -232,6 +243,49 @@ export const MODEL_CATALOG: readonly ModelSpec[] = [
 
 export function builtinModel(id: string): ModelSpec | undefined {
   return MODEL_CATALOG.find((spec) => spec.id === id);
+}
+
+/**
+ * A model anvesa knows how to run but does not download: its weights are brought by the user
+ * (`anvesa model install <id> --from <dir>`), and the install takes pooling, window and card form
+ * from here instead of asking for them. The files are pinned at that first install, as for any
+ * model brought in.
+ */
+export interface ModelRecipe {
+  readonly id: string;
+  readonly pooling: Pooling;
+  readonly maxTokens: number;
+  readonly cardForm?: CardForm;
+  readonly paramsM: number;
+  readonly license: string;
+  /** Where the weights come from and how they become ONNX. */
+  readonly source: string;
+  readonly notes: string;
+}
+
+export const MODEL_RECIPES: readonly ModelRecipe[] = [
+  {
+    id: 'ettin-code-1b',
+    pooling: 'mean',
+    maxTokens: 512,
+    cardForm: 'nopath',
+    paramsM: 1000,
+    license: 'MIT',
+    source:
+      'Ettin-encoder-1B (jhu-clsp, MIT) fine-tuned by anvesa-gen-lab on 105 MIT-licensed repositories ' +
+      '(corpus_train.py); a Hugging Face Transformers folder exported to ONNX with ' +
+      '`optimum-cli export onnx --task feature-extraction` (model.onnx and model.onnx_data, fp32).',
+    notes:
+      'Code-search encoder: on the gen-lab corpus test set (1,710 queries, 57 repos, 13 languages) ' +
+      'it scores 0.445 MRR with the hub penalty and the learned ranker, against 0.293 for MiniLM with ' +
+      'the hub penalty. Embeds symbol cards without the WQL path line; index with ' +
+      'experimental.cardPath "wql" so the ranker reads the cards it was trained on. About 4 GB in ' +
+      'fp32 and slow on a CPU: index on a GPU (ANVESA_DEVICE=gpu) where there is one.',
+  },
+];
+
+export function modelRecipe(id: string): ModelRecipe | undefined {
+  return MODEL_RECIPES.find((recipe) => recipe.id === id);
 }
 
 /**

@@ -2,7 +2,7 @@ import type { Deadline } from '@cntxt-labs/anvesa-core';
 import type { Embedder, EmbedderInfo } from '@cntxt-labs/anvesa-dense';
 import type { InferenceBackend, ModelOutput, TokenBatch } from './backend.ts';
 import { InferenceError, InputTooLongError, ModelShapeError } from './errors.ts';
-import type { Pooling } from './models.ts';
+import type { CardForm, Pooling } from './models.ts';
 import type { Tokenizer } from './tokenizer.ts';
 
 export interface EncoderOptions {
@@ -10,6 +10,8 @@ export interface EncoderOptions {
   readonly dimensions: number;
   readonly maxTokens: number;
   readonly pooling: Pooling;
+  /** How cards are reshaped before they are embedded (see `ModelSpec.cardForm`). */
+  readonly cardForm?: CardForm;
   readonly tokenizer: Tokenizer;
   readonly backend: InferenceBackend;
   /**
@@ -72,6 +74,7 @@ export class LocalEmbedder implements Embedder {
       maxTokens: options.maxTokens,
       specialTokens: options.tokenizer.specialTokens,
       ...(options.backend.device ? { device: options.backend.device } : {}),
+      ...(options.cardForm ? { cardForm: options.cardForm } : {}),
     };
   }
 
