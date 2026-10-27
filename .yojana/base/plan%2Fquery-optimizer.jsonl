@@ -1,9 +1,10 @@
 {"planId":"plan/query-optimizer","status":"draft"}
 {"id":"req-qopt-break-even","revision":"r_a29a1c18b30bdf32"}
+{"id":"req-qopt-corpus-data","revision":"r_9b8e57c506264b1a"}
 {"id":"req-qopt-dev-queries","revision":"r_385949405c3949e5"}
 {"id":"req-qopt-explain","revision":"r_caa5dd4a58d80890"}
 {"id":"req-qopt-gate","revision":"r_ef513bcf3f7ed284"}
-{"id":"req-qopt-languages","revision":"r_2d936f825d7d8015"}
+{"id":"req-qopt-languages","revision":"r_25ff899509cb9b18"}
 {"id":"req-qopt-llm","revision":"r_2e3016ae9d8b0174"}
 {"id":"req-qopt-ltr-features","revision":"r_d5ad172a9371017b"}
 {"id":"req-qopt-oracle","revision":"r_b2ba582836e27edc"}

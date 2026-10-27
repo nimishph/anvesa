@@ -300,6 +300,26 @@ Done when:
 - on the dev query set they gain R@10 with a CI excluding 0;
 - the added latency is < 5 ms p95.
 
+## Requirement: training and eval data come from the corpus, with its test split held out {#req-qopt-corpus-data}
+
+The encoder's corpus (`anvesa-corpus/work/`, Drive `MyDrive/anvesa-corpus/work/`):
+- 187 indexed repos in 13 languages;
+- 1.23M symbol cards, each with `kind`, `group`, `file`, `text` and `code`;
+- `split.json`: 105 train, 26 val, 58 test repos.
+
+**Sampling.** The optimizer's synthetic (query, decomposition, gold) triples are sampled per
+language from **train** cards. The kinds the WQL part may target come from each card's `kind`.
+For C#, the new `csharp.json` mapping gives class, method, interface, enum, struct and property.
+Thresholds and calibration are fit on **val**.
+
+**Held out.** No optimizer model, rule threshold or prompt is fit on test-split repos, for the
+same leakage reason as the encoder. All 8 gen-lab bench repos are in the test split (checked
+2026-10-27), so the bench stays a clean evaluation.
+
+Done when:
+- the sampler's output records each triple's repo and split;
+- a check fails the build if a test-split repo appears in any training or calibration file.
+
 ## Requirement: the rewrite is visible and can be turned off {#req-qopt-explain}
 
 Search output says what was searched when it differs from what was typed (`searched as: save user
@@ -402,6 +422,29 @@ mappings' real coverage. Initially:
 The oracle run (#req-qopt-oracle) lists the WQL that failed by language. That list is the
 evidence for each row.
 
+Outline coverage per language (`coverage.jsonl`, the last row per repo, mean of `covered`, read
+2026-10-27):
+
+| language | coverage |
+|---|---|
+| python | 0.89 |
+| tsx | 0.88 |
+| ruby | 0.88 |
+| rust | 0.86 |
+| csharp | 0.81 |
+| typescript | 0.80 |
+| java | 0.79 |
+| vue | 0.68 |
+| go | 0.65 |
+| php | 0.58 |
+| javascript | 0.51 |
+| c | 0.13 |
+| cpp | 0.13 |
+
+Where coverage is low, a structural clause cannot reach most symbols. Below a coverage threshold
+(start at 0.6, tune on val), the optimizer falls back to NL only: no kind or name clause, at most
+a path scope. The gate's training labels follow the same rule, so it learns not to fire there.
+
 ## Requirement: the optimizer ships on by default only through a gate {#req-qopt-gate}
 
 On by default only if all of these hold:
@@ -418,7 +461,7 @@ Otherwise it stays behind a flag, and the report says which part of the hypothes
    - #req-qopt-oracle: move the simulation scripts into the lab, write the oracle WQL sample, run
      it through `anvesa query`.
    - #req-qopt-break-even.
-   - #req-qopt-dev-queries (writing only).
+   - #req-qopt-dev-queries (writing only), #req-qopt-corpus-data (the sampler).
 2. **If H1 holds:** #req-qopt-safe-combine, #req-qopt-rules, #req-qopt-explain,
    #req-qopt-languages. All are cheap and local.
 3. **With #req-ltr-ranker:** #req-qopt-ltr-features.
