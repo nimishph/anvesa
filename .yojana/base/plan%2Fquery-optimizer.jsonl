@@ -1,4 +1,4 @@
-{"planId":"plan/query-optimizer","status":"draft"}
+{"planId":"plan/query-optimizer","status":"accepted"}
 {"id":"req-qopt-break-even","revision":"r_a29a1c18b30bdf32"}
 {"id":"req-qopt-corpus-data","revision":"r_9b8e57c506264b1a"}
 {"id":"req-qopt-dev-queries","revision":"r_385949405c3949e5"}

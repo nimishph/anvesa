@@ -1,6 +1,8 @@
 ---
 id: plan/query-optimizer
-status: draft
+title: 'A query optimizer: from what a developer types to WQL ∧ natural language'
+status: accepted
+beads: []
 ---
 
 # A query optimizer: from what a developer types to WQL ∧ natural language
