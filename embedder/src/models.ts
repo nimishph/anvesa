@@ -265,7 +265,7 @@ export interface ModelRecipe {
 
 export const MODEL_RECIPES: readonly ModelRecipe[] = [
   {
-    id: 'ettin-code-1b',
+    id: 'anvesa-code-1b',
     pooling: 'mean',
     maxTokens: 512,
     cardForm: 'nopath',

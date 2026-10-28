@@ -4,7 +4,7 @@ The setup anvesa-gen-lab measured best on 2026-10-28, behind `experimental.learn
 
 | piece | what it does |
 | --- | --- |
-| encoder `ettin-code-1b` | Ettin-encoder-1B (MIT) fine-tuned on 105 MIT-licensed repositories. Mean pooling, L2-normalised, 512 tokens, no prefix. It embeds symbol cards without their WQL path line (`cardForm: "nopath"`); the stored card keeps it. |
+| encoder `anvesa-code-1b` | Ettin-encoder-1B (MIT) fine-tuned on 105 MIT-licensed repositories. Mean pooling, L2-normalised, 512 tokens, no prefix. It embeds symbol cards without their WQL path line (`cardForm: "nopath"`); the stored card keeps it. |
 | hub penalty | A symbol scores as its best card's `cos(query, card) - 0.3 x mean`, where `mean` is the card's mean cosine to its 10 nearest cards (itself left out). Measured at index time into `card_hub`. |
 | learned ranker | An XGBoost LambdaMART model reorders the top 30 symbols from cheap features: the first-stage score and its gap to the top, the first card's cosine and hub penalty, BM25 of the card, query-word overlap with the name, path and card, kind, documentation, card length, path depth, same-file count, query length. Evaluated in TypeScript from the model's JSON. |
 
@@ -17,17 +17,17 @@ No intent cards. Results (anvesa-gen-lab `results/ettin-corpus/summary.md`): on 
 1. Get the ONNX export (anvesa-gen-lab `colab_ettin.py`, notebook `4_ship`): a folder with `model.onnx`,
    `model.onnx_data` (the weights, about 4 GB in fp32) and `tokenizer.json`, and the ranker
    `ranker-ettin-corpus.json`.
-2. Install the model. The id `ettin-code-1b` is a known recipe, so pooling, window and card form need no flags:
+2. Install the model. The id `anvesa-code-1b` is a known recipe, so pooling, window and card form need no flags:
 
    ```bash
-   anvesa model install ettin-code-1b --from path/to/onnx
+   anvesa model install anvesa-code-1b --from path/to/onnx
    ```
 
 3. In `.anvesa/config.json`:
 
    ```json
    {
-     "model": "ettin-code-1b",
+     "model": "anvesa-code-1b",
      "experimental": {
        "cardPath": "wql",
        "learnedRanker": { "model": ".anvesa/ranker-ettin-corpus.json" }
