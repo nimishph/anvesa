@@ -142,8 +142,10 @@ describe('deciding what a custom model is from its own files', () => {
   test('a recipe id takes pooling, window and card form from the recipe, not the files', async () => {
     // The fine-tune ships as a Transformers folder: no 1_Pooling, and an 8k window in its config.
     const dir = modelFolder({ 'tokenizer_config.json': '{"model_max_length": 7999}' });
-    const plan = await planCustomModel({ id: 'anvesa-code-1b', from: dir });
-    expect(plan).toMatchObject({ pooling: 'mean', maxTokens: 512, cardForm: 'nopath' });
+    for (const id of ['anvesa-code-400m', 'anvesa-code-150m', 'anvesa-code-1b']) {
+      const plan = await planCustomModel({ id, from: dir });
+      expect(plan).toMatchObject({ pooling: 'mean', maxTokens: 512, cardForm: 'nopath' });
+    }
     // What is said on the command line still wins.
     expect(
       (await planCustomModel({ id: 'anvesa-code-1b', from: dir, maxTokens: 256 })).maxTokens,

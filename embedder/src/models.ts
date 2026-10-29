@@ -263,7 +263,46 @@ export interface ModelRecipe {
   readonly notes: string;
 }
 
+/** How anvesa-gen-lab made every anvesa-code size: the same data, recipe and export. */
+const ANVESA_CODE_SOURCE = (size: string): string =>
+  `Ettin-encoder-${size} (jhu-clsp, MIT) fine-tuned by anvesa-gen-lab on 105 MIT-licensed repositories ` +
+  '(corpus_train.py; the smaller sizes also learn from the 1B fine-tune as a teacher); a Hugging Face ' +
+  'Transformers ' +
+  'folder exported to ONNX by onnx_export.py (model.onnx and model.onnx_data, fp32).';
+
+/**
+ * The anvesa-code encoders: one recipe at three sizes. Numbers are anvesa-gen-lab's (2026-10-29),
+ * first stage with the hub penalty and no ranker, on the corpus test set (1,710 generated queries,
+ * 57 repos, 13 languages) and the 241 hand-written bench queries; CPU time is one card on 12
+ * threads. All three embed symbol cards without the WQL path line.
+ */
 export const MODEL_RECIPES: readonly ModelRecipe[] = [
+  {
+    id: 'anvesa-code-400m',
+    pooling: 'mean',
+    maxTokens: 512,
+    cardForm: 'nopath',
+    paramsM: 400,
+    license: 'MIT',
+    source: ANVESA_CODE_SOURCE('400m'),
+    notes:
+      'The recommended size: 0.349 MRR on the corpus test set and 0.684 on the bench, level with ' +
+      'the 1B (paired differences -0.003 and -0.001, both intervals around 0), at half its CPU ' +
+      'time (190 ms a card) and about 1.6 GB in fp32. MiniLM scores 0.293 and 0.547.',
+  },
+  {
+    id: 'anvesa-code-150m',
+    pooling: 'mean',
+    maxTokens: 512,
+    cardForm: 'nopath',
+    paramsM: 150,
+    license: 'MIT',
+    source: ANVESA_CODE_SOURCE('150m'),
+    notes:
+      'For machines without a GPU: 69 ms a card on a CPU, about 0.6 GB. 0.301 MRR on the corpus ' +
+      'test set and 0.626 on the bench: below the 400m (about -0.05 on both) but well above ' +
+      'MiniLM on hand-written queries (0.547).',
+  },
   {
     id: 'anvesa-code-1b',
     pooling: 'mean',
@@ -271,16 +310,11 @@ export const MODEL_RECIPES: readonly ModelRecipe[] = [
     cardForm: 'nopath',
     paramsM: 1000,
     license: 'MIT',
-    source:
-      'Ettin-encoder-1B (jhu-clsp, MIT) fine-tuned by anvesa-gen-lab on 105 MIT-licensed repositories ' +
-      '(corpus_train.py); a Hugging Face Transformers folder exported to ONNX with ' +
-      '`optimum-cli export onnx --task feature-extraction` (model.onnx and model.onnx_data, fp32).',
+    source: ANVESA_CODE_SOURCE('1B'),
     notes:
-      'Code-search encoder: on the gen-lab corpus test set (1,710 queries, 57 repos, 13 languages) ' +
-      'it scores 0.445 MRR with the hub penalty and the learned ranker, against 0.293 for MiniLM with ' +
-      'the hub penalty. Embeds symbol cards without the WQL path line; index with ' +
-      'experimental.cardPath "wql" so the ranker reads the cards it was trained on. About 4 GB in ' +
-      'fp32 and slow on a CPU: index on a GPU (ANVESA_DEVICE=gpu) where there is one.',
+      '0.352 MRR on the corpus test set and 0.685 on the bench: no measurable gain over the 400m ' +
+      'for twice its CPU time (407 ms a card) and about 4 GB in fp32. Index on a GPU ' +
+      '(ANVESA_DEVICE=gpu) where there is one.',
   },
 ];
 

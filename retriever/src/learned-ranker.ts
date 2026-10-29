@@ -11,8 +11,9 @@ import { ProjectConfigError } from './errors.ts';
  * its best card's cosine to the query less a hub penalty, `hub` times the card's mean cosine to
  * its 10 nearest cards (cards that sit close to everything stop crowding every answer), and an
  * XGBoost LambdaMART ranker reorders the top `depth` symbols from cheap features of the query and
- * each card. On the gen-lab corpus test set (1,710 queries, 57 repositories, 13 languages) the
- * Ettin fine-tune scored 0.445 MRR this way.
+ * each card. The ranker computes every feature below, but the one to ship leaves out word overlap
+ * (name, path and card matches, BM25): fit on generated queries, those features hurt hand-written
+ * ones. The model names the features it reads; results are in docs/learned-ranker.md.
  *
  * Everything here is a port of anvesa-gen-lab's `corpus_bench.py` (`score_repo`, `_features`) and
  * must stay equal to it: the ranker was trained on those numbers. `learned-ranker.test.ts` checks
