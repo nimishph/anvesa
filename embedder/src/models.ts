@@ -292,8 +292,8 @@ export const MODEL_RECIPES: readonly ModelRecipe[] = [
     source: ANVESA_CODE_SOURCE('400m'),
     notes:
       'The recommended size: 0.349 MRR on the corpus test set and 0.684 on the bench, level with ' +
-      'the 1B (paired differences -0.003 and -0.001, both intervals around 0), at half its CPU ' +
-      'time (190 ms a card) and about 1.6 GB in fp32. MiniLM scores 0.293 and 0.547.',
+      'the 1B (paired differences -0.003 and -0.001, both intervals around 0), at a quarter of its CPU ' +
+      'time (98 ms a card, ONNX) and about 1.6 GB in fp32. MiniLM scores 0.293 and 0.547.',
   },
   {
     id: 'anvesa-code-150m',
@@ -304,7 +304,7 @@ export const MODEL_RECIPES: readonly ModelRecipe[] = [
     license: 'MIT',
     source: ANVESA_CODE_SOURCE('150m'),
     notes:
-      'For machines without a GPU: 69 ms a card on a CPU, about 0.6 GB. 0.301 MRR on the corpus ' +
+      'For machines without a GPU: 40 ms a card on a CPU (ONNX), about 0.6 GB. 0.301 MRR on the corpus ' +
       'test set and 0.626 on the bench: below the 400m (about -0.05 on both) but well above ' +
       'MiniLM on hand-written queries (0.547).',
   },
@@ -318,7 +318,7 @@ export const MODEL_RECIPES: readonly ModelRecipe[] = [
     source: ANVESA_CODE_SOURCE('1B'),
     notes:
       '0.352 MRR on the corpus test set and 0.685 on the bench: no measurable gain over the 400m ' +
-      'for twice its CPU time (407 ms a card) and about 4 GB in fp32. Index on a GPU ' +
+      'for four times its CPU time (373 ms a card) and about 4 GB in fp32. Index on a GPU ' +
       '(ANVESA_DEVICE=gpu) where there is one.',
   },
 ];
