@@ -16,6 +16,7 @@ import {
   type Pooling,
   probeHardware,
   resolveModel,
+  retired,
   type Tier,
   type TierChoice,
   weightBytes,
@@ -90,6 +91,7 @@ export async function installModel(
   const spec = builtinModel(id);
   if (!spec) {
     if (options.from === undefined) {
+      retired(id);
       throw new InvalidArgumentError(
         'model',
         `a built-in model (${MODEL_CATALOG.map((spec) => spec.id).join(', ')}), or a new name with --from <dir|file.onnx> to bring in your own`,

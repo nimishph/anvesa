@@ -164,7 +164,7 @@ export interface ModelAdvice {
 /** Few cores make embedding slow, so a big model is not proposed however much memory there is. */
 function paramsCapFor(cores: number): number | undefined {
   if (cores <= 2) return 40;
-  if (cores <= 4) return 120;
+  if (cores <= 4) return 160; // anvesa-code-150m, not the 400m
   return undefined;
 }
 

@@ -31,7 +31,7 @@ describe('memory estimates', () => {
 
   test('grow with the size of the model', () => {
     const [low, medium, high] = TIERS.map((tier) =>
-      estimatePeakRssMb(BUILTIN_MODELS[tier].model.bytes),
+      estimatePeakRssMb(weightBytes(BUILTIN_MODELS[tier])),
     );
     expect(low).toBeLessThan(medium as number);
     expect(medium).toBeLessThan(high as number);
@@ -43,11 +43,11 @@ describe('choosing a tier from the machine', () => {
     const choice = chooseTier(machine(32 * 1024));
     expect(choice.tier).toBe('high');
     expect(choice.fits).toBe(true);
-    expect(choice.reason).toContain('bge-large-en-v1.5');
+    expect(choice.reason).toContain('anvesa-code-400m');
   });
 
   test('a constrained machine gets a smaller one, chosen by the estimate and the allowance', () => {
-    // Half of 1500 MB is 750: room for bge-base (about 555), not for bge-large.
+    // Half of 1500 MB is 750: room for anvesa-code-150m (about 683), not for the 400m (about 1,590).
     expect(chooseTier(machine(1500)).tier).toBe('medium');
     // Half of 500 MB is 250: room for MiniLM (about 157) only.
     expect(chooseTier(machine(500)).tier).toBe('low');
@@ -123,10 +123,11 @@ describe('the built-in catalogue', () => {
     expect(builtinModel('nope')).toBeUndefined();
   });
 
-  test('the BGE models read the [CLS] state; MiniLM averages', () => {
-    expect(BUILTIN_MODELS.low.pooling).toBe('mean');
-    expect(BUILTIN_MODELS.medium.pooling).toBe('cls');
-    expect(BUILTIN_MODELS.high.pooling).toBe('cls');
+  test('every tier averages its token states; the code encoders embed cards without the path line', () => {
+    for (const tier of TIERS) expect(BUILTIN_MODELS[tier].pooling).toBe('mean');
+    expect(BUILTIN_MODELS.medium.cardForm).toBe('nopath');
+    expect(BUILTIN_MODELS.high.cardForm).toBe('nopath');
+    expect(BUILTIN_MODELS.low.cardForm).toBeUndefined();
   });
 });
 
@@ -142,7 +143,7 @@ describe('the built-in catalog and what init proposes', () => {
   test('every model has a unique id, pinned files and a declared window', () => {
     const ids = MODEL_CATALOG.map((spec) => spec.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids.length).toBeGreaterThanOrEqual(8);
+    expect(ids).toHaveLength(4);
     for (const spec of MODEL_CATALOG) {
       expect(spec.model.sha256).toMatch(/^[0-9a-f]{64}$/);
       expect(spec.tokenizer.sha256).toMatch(/^[0-9a-f]{64}$/);
@@ -151,7 +152,7 @@ describe('the built-in catalog and what init proposes', () => {
       expect(spec.maxTokens).toBeGreaterThanOrEqual(128);
       expect(builtinModel(spec.id)).toBe(spec);
     }
-    expect(ids).toContain('jina-embeddings-v2-base-code');
+    expect(ids).toContain('anvesa-code-1b');
   });
 
   test('the catalog is ordered smallest download first', () => {

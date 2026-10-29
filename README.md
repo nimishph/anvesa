@@ -48,7 +48,7 @@ Models and wasm grammars work offline once installed:
 ```sh
 anvesa init                               # scaffolds, then proposes an encoder and parsers to download
 anvesa model list                         # the built-in models and which are installed
-anvesa model install bge-base-en-v1.5 --from ./models/bge-base   # offline; or --download
+anvesa model install anvesa-code-400m --download                # or --from <folder> offline
 anvesa grammar list
 anvesa grammar install python --from ./tree-sitter-python.wasm   # file, folder or npm tarball
 ```
@@ -69,10 +69,14 @@ file with `--agents-file <path>`, or pass `--no-agents-file`. The section sits b
 Re-run `anvesa init` after upgrading: files it already made are kept, and the section is replaced
 with the one the new version ships.
 
-Built-in encoders, smallest first: `all-MiniLM-L6-v2` (23 MB), `all-MiniLM-L12-v2`, `bge-small-en-v1.5`,
-`gte-small`, `gte-base`, `jina-embeddings-v2-base-code` (trained on code, 1024-token window),
-`bge-base-en-v1.5` and `bge-large-en-v1.5`. The three BGE/MiniLM models are what automatic choice
-picks from; the others are yours to choose with `--model`.
+Built-in encoders, smallest first: `all-MiniLM-L6-v2` (23 MB, the fallback where nothing else fits),
+`anvesa-code-150m` (0.6 GB, for machines without a GPU), `anvesa-code-400m` (1.6 GB, recommended) and
+`anvesa-code-1b` (4 GB, no measured gain over the 400m). The anvesa-code encoders are Ettin fine-tuned for
+code search (MIT, `nimishph/anvesa-code-*` on Hugging Face); on 241 hand-written queries they score 0.626,
+0.684 and 0.685 MRR against 0.547 for MiniLM (see `docs/learned-ranker.md`). Automatic choice picks
+MiniLM, the 150m or the 400m by memory and cores; the 1B is yours to choose with `--model`. Models that
+used to be built in (BGE, GTE, jina, MiniLM-L12) are refused by name with what replaced them; a project
+configured with one needs the replacement installed and an index run.
 
 Bring your own model: an ONNX file with its Hugging Face `tokenizer.json` (WordPiece, byte-level
 BPE or SentencePiece unigram, each verified against the reference tokenizers):

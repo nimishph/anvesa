@@ -262,7 +262,12 @@ describe('command line', () => {
       );
       expect(ran.code).toBe(0);
       expect(ran.err).toContain('This machine:');
-      for (const id of ['all-MiniLM-L6-v2', 'bge-small-en-v1.5', 'jina-embeddings-v2-base-code']) {
+      for (const id of [
+        'all-MiniLM-L6-v2',
+        'anvesa-code-150m',
+        'anvesa-code-400m',
+        'anvesa-code-1b',
+      ]) {
         expect(ran.err).toContain(id);
       }
       expect(ran.err).toContain('recommended');
@@ -347,7 +352,7 @@ describe('command line', () => {
         'nope',
       );
       expect(ran.code).toBe(2);
-      expect(ran.err).toContain('bge-small-en-v1.5');
+      expect(ran.err).toContain('anvesa-code-150m');
     });
   });
 
@@ -1064,7 +1069,7 @@ describe('command line', () => {
       root,
       'model',
       'install',
-      'bge-small-en-v1.5',
+      'anvesa-code-150m',
       '--download',
       '--no-network',
     );
@@ -1455,7 +1460,16 @@ public interface IThing { void Run(); }
     expect(both.code).toBe(0);
     expect(json(both).samples).toBe(2);
 
-    const few = await cliWith(options, root, 'mapping', 'train', 'csharp', '--replace', '--samples', 'server');
+    const few = await cliWith(
+      options,
+      root,
+      'mapping',
+      'train',
+      'csharp',
+      '--replace',
+      '--samples',
+      'server',
+    );
     expect(few.code).toBe(1);
     expect(few.err).toContain('too few to trust');
     expect(existsSync(join(root, '.anvesa', 'mappings', 'csharp.json'))).toBe(false);
@@ -1463,7 +1477,16 @@ public interface IThing { void Run(); }
 
   test('--assist asks a model with the key from the environment, and reports what it rejected', async () => {
     const root = csharpProject();
-    const train = ['mapping', 'train', 'csharp', '--replace', '--samples', 'server', '--min-samples', '1'];
+    const train = [
+      'mapping',
+      'train',
+      'csharp',
+      '--replace',
+      '--samples',
+      'server',
+      '--min-samples',
+      '1',
+    ];
     const missing = await cliWith(own(root), root, ...train, '--assist');
     expect(missing.code).toBe(2);
     expect(missing.err).toContain('OPENROUTER_API_KEY');
@@ -1603,7 +1626,18 @@ public interface IThing { void Run(); }
     expect((await cliWith(options, root, 'mapping', 'show', 'klingon')).code).toBe(2);
     expect((await cliWith(options, root, 'mapping', 'train', 'csharp', '--replace')).code).toBe(2);
     expect(
-      (await cliWith(options, root, 'mapping', 'train', 'csharp', '--replace', '--samples', 'nowhere')).code,
+      (
+        await cliWith(
+          options,
+          root,
+          'mapping',
+          'train',
+          'csharp',
+          '--replace',
+          '--samples',
+          'nowhere',
+        )
+      ).code,
     ).toBe(2);
   });
 });

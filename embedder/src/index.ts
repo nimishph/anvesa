@@ -24,11 +24,12 @@ export {
   estimatePeakRssMb,
   MODEL_CATALOG,
   PEAK_RSS_MEASUREMENTS,
+  RETIRED_MODELS,
   TIERS,
   weightBytes,
 } from './models.ts';
 export type { OpenOptions, Resolution } from './open.ts';
-export { openLocalEmbedder, resolveModel } from './open.ts';
+export { openLocalEmbedder, resolveModel, retired } from './open.ts';
 export type { Tokenizer, WordPieceOptions } from './tokenizer.ts';
 export { tokenizerFromJson, tokenizerFromVocabulary, WordPieceTokenizer } from './tokenizer.ts';
 export { ByteLevelBpeTokenizer } from './tokenizer-bpe.ts';
