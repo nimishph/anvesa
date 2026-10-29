@@ -15,15 +15,14 @@ export { batchTokensFor, LocalEmbedder, THROUGHPUT_BATCH_TOKENS } from './encode
 export * from './errors.ts';
 export type { ChooseOptions, HardwareProbe, ModelAdvice, TierChoice } from './hardware.ts';
 export { adviseModels, chooseTier, probeHardware } from './hardware.ts';
-export type { CardForm, ModelFileSpec, ModelRecipe, ModelSpec, Pooling, Tier } from './models.ts';
+export type { CardForm, ModelFileSpec, ModelSpec, Pooling, Tier } from './models.ts';
 export {
   ADDITIONAL_MODELS,
+  ANVESA_CODE_MODELS,
   BUILTIN_MODELS,
   builtinModel,
   estimatePeakRssMb,
   MODEL_CATALOG,
-  MODEL_RECIPES,
-  modelRecipe,
   PEAK_RSS_MEASUREMENTS,
   TIERS,
   weightBytes,

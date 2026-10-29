@@ -6,7 +6,14 @@ import {
   parseVmStat,
   probeHardware,
 } from './hardware.ts';
-import { BUILTIN_MODELS, builtinModel, estimatePeakRssMb, MODEL_CATALOG, TIERS } from './models.ts';
+import {
+  BUILTIN_MODELS,
+  builtinModel,
+  estimatePeakRssMb,
+  MODEL_CATALOG,
+  TIERS,
+  weightBytes,
+} from './models.ts';
 
 const machine = (availableMemoryMb: number): HardwareProbe => ({
   platform: 'linux',
@@ -139,7 +146,7 @@ describe('the built-in catalog and what init proposes', () => {
     for (const spec of MODEL_CATALOG) {
       expect(spec.model.sha256).toMatch(/^[0-9a-f]{64}$/);
       expect(spec.tokenizer.sha256).toMatch(/^[0-9a-f]{64}$/);
-      expect(spec.model.bytes).toBeGreaterThan(1_000_000);
+      expect(weightBytes(spec)).toBeGreaterThan(1_000_000);
       expect(spec.dimensions).toBeGreaterThan(0);
       expect(spec.maxTokens).toBeGreaterThanOrEqual(128);
       expect(builtinModel(spec.id)).toBe(spec);
@@ -148,7 +155,7 @@ describe('the built-in catalog and what init proposes', () => {
   });
 
   test('the catalog is ordered smallest download first', () => {
-    const sizes = MODEL_CATALOG.map((spec) => spec.model.bytes);
+    const sizes = MODEL_CATALOG.map(weightBytes);
     expect(sizes).toEqual([...sizes].sort((a, b) => a - b));
   });
 

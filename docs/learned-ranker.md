@@ -51,14 +51,17 @@ bench repositories (10,555 symbol cards) on an A100 took 98 s with the 400m and 
 
 ## Use it
 
-1. Get the ONNX export and the ranker for one size (anvesa-gen-lab `colab_ettin.py`, notebook `7_sizes`): a folder
-   with `model.onnx`, `model.onnx_data` and `tokenizer.json`, and `ranker-noword.json` fit on that encoder.
-2. Install the model. The anvesa-code ids are known recipes, so pooling, window and card form need no flags:
+1. Install the model; it downloads from Hugging Face (`nimishph/anvesa-code-<size>`) and every file is checked
+   against its pinned SHA-256:
 
    ```bash
-   anvesa model install anvesa-code-400m --from path/to/onnx
+   anvesa model install anvesa-code-400m --download
    ```
 
+   Offline, `--from <folder>` installs the same files from a local copy (`model.onnx`, `model.onnx_data`,
+   `tokenizer.json`), checked the same way.
+2. Put the size's ranker in the project: `ranker-noword.json` from the same Hugging Face repo, as
+   `.anvesa/ranker-noword.json`.
 3. In `.anvesa/config.json`:
 
    ```json

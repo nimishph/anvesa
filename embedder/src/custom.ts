@@ -10,7 +10,6 @@ import {
   type CardForm,
   MODEL_CATALOG,
   type ModelSpec,
-  modelRecipe,
   type Pooling,
 } from './models.ts';
 import { tokenizerFromJson } from './tokenizer.ts';
@@ -23,12 +22,9 @@ export interface CustomModelOptions {
   readonly id: string;
   /** A directory holding `model.onnx` and `tokenizer.json` (upstream layouts work), or the `.onnx` file. */
   readonly from: string;
-  /**
-   * How token states become one vector. From the recipe when the id is one (`MODEL_RECIPES`),
-   * else read from `1_Pooling/config.json` when there is one.
-   */
+  /** How token states become one vector. Read from `1_Pooling/config.json` when there is one. */
   readonly pooling?: Pooling;
-  /** How cards are reshaped before they are embedded. From the recipe when the id is one. */
+  /** How cards are reshaped before they are embedded (see `ModelSpec.cardForm`). */
   readonly cardForm?: CardForm;
   /** The input window in tokens, specials included. Read from the model's own config when possible. */
   readonly maxTokens?: number;
@@ -194,9 +190,8 @@ export async function planCustomModel(options: CustomModelOptions): Promise<Cust
   }
   const from = resolve(options.from);
   const found = locate(id, from);
-  const recipe = modelRecipe(id);
 
-  const pooling = options.pooling ?? recipe?.pooling ?? (await poolingOf(id, found.config));
+  const pooling = options.pooling ?? (await poolingOf(id, found.config));
   if (pooling === undefined) {
     throw new InvalidArgumentError(
       '--pooling',
@@ -204,7 +199,7 @@ export async function planCustomModel(options: CustomModelOptions): Promise<Cust
       undefined,
     );
   }
-  const maxTokens = options.maxTokens ?? recipe?.maxTokens ?? (await windowOf(found.config));
+  const maxTokens = options.maxTokens ?? (await windowOf(found.config));
   if (maxTokens === undefined) {
     throw new InvalidArgumentError(
       '--max-tokens',
@@ -224,7 +219,7 @@ export async function planCustomModel(options: CustomModelOptions): Promise<Cust
     data: found.data,
     tokenizer: found.tokenizer,
     pooling,
-    cardForm: options.cardForm ?? recipe?.cardForm,
+    cardForm: options.cardForm,
     maxTokens,
     source: from,
   };

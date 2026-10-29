@@ -12,13 +12,7 @@ import {
   ModelUnavailableError,
   NetworkForbiddenError,
 } from './errors.ts';
-import {
-  type CardForm,
-  type ModelFileSpec,
-  type ModelSpec,
-  modelRecipe,
-  type Pooling,
-} from './models.ts';
+import type { CardForm, ModelFileSpec, ModelSpec, Pooling } from './models.ts';
 
 /** A model on disk, ready to load. */
 export interface InstalledModel {
@@ -175,10 +169,7 @@ export class ModelCache {
     options: { readonly deadline?: Deadline } = {},
   ): Promise<InstalledModel> {
     const located: [string, ModelFileSpec, string][] = [];
-    for (const [name, pinned] of [
-      [MODEL_FILE, spec.model],
-      [TOKENIZER_FILE, spec.tokenizer],
-    ] as const) {
+    for (const [name, pinned] of pinnedFiles(spec)) {
       const found = [
         join(source, pinned.path),
         join(source, basename(pinned.path)),
@@ -517,8 +508,8 @@ function customSpec(record: CustomRecord): ModelSpec {
     maxTokens: record.maxTokens,
     pooling: record.pooling,
     ...(record.cardForm ? { cardForm: record.cardForm } : {}),
-    paramsM: modelRecipe(record.id)?.paramsM,
-    license: modelRecipe(record.id)?.license ?? 'not recorded',
+    paramsM: undefined,
+    license: 'not recorded',
     notes: `Installed from ${record.source} on ${record.installedAt}.`,
   };
 }

@@ -235,11 +235,109 @@ export const ADDITIONAL_MODELS: readonly ModelSpec[] = [
   },
 ];
 
+/** The tokenizer every Ettin size shares (anvesa-code-1b, -400m and -150m publish the same file). */
+const ETTIN_TOKENIZER: ModelFileSpec = {
+  path: 'tokenizer.json',
+  bytes: 3583387,
+  sha256: '657af518d877b6422fa44277c008870520894bffcaea6490504ee426c57aa548',
+};
+
+/**
+ * The anvesa-code encoders: Ettin-encoder (jhu-clsp, MIT) fine-tuned by anvesa-gen-lab on 105
+ * MIT-licensed repositories, the 400m and 150m also learning from the 1B as a teacher; exported to
+ * ONNX in fp32 with the weights in model.onnx_data. Mean pooling, 512 tokens, and symbol cards
+ * embedded without their WQL path line. Numbers are anvesa-gen-lab's (2026-10-29): first stage with
+ * the hub penalty and no ranker, on the corpus test set (1,710 generated queries, 57 repos, 13
+ * languages) and the 241 hand-written bench queries; CPU time is one card on 12 threads. Each repo
+ * also publishes the learned ranker fit on that encoder (ranker-noword.json).
+ */
+export const ANVESA_CODE_MODELS: readonly ModelSpec[] = [
+  {
+    id: 'anvesa-code-400m',
+    tier: undefined,
+    repo: 'nimishph/anvesa-code-400m',
+    model: {
+      path: 'model.onnx',
+      bytes: 798633,
+      sha256: '018041c99d6572575a88330289dbab26d95b9514bb59625c731e6bf134e93310',
+    },
+    modelData: {
+      path: 'model.onnx_data',
+      bytes: 1579126784,
+      sha256: 'd4155cb27211ff1c90d3dc1c2bcb13887ddc8a1bc78f4c93fea258161a25c75e',
+    },
+    tokenizer: ETTIN_TOKENIZER,
+    dimensions: 1024,
+    maxTokens: 512,
+    pooling: 'mean',
+    cardForm: 'nopath',
+    paramsM: 400,
+    license: 'MIT',
+    notes:
+      'The recommended code model: 0.349 MRR on the corpus test set and 0.684 on the bench, level ' +
+      'with the 1B (paired differences -0.003 and -0.001, both intervals around 0) at a quarter of ' +
+      'its CPU time (98 ms a card) and about 1.6 GB. MiniLM scores 0.293 and 0.547.',
+  },
+  {
+    id: 'anvesa-code-150m',
+    tier: undefined,
+    repo: 'nimishph/anvesa-code-150m',
+    model: {
+      path: 'model.onnx',
+      bytes: 584370,
+      sha256: '4e14bfb7b993bebe817e354559afe5d6971c4dbb4974f1168d847145b1c29de3',
+    },
+    modelData: {
+      path: 'model.onnx_data',
+      bytes: 596057088,
+      sha256: '78c8202253b8d54565987e93a499e6c065be6d49018e0de2379876be6e975600',
+    },
+    tokenizer: ETTIN_TOKENIZER,
+    dimensions: 768,
+    maxTokens: 512,
+    pooling: 'mean',
+    cardForm: 'nopath',
+    paramsM: 150,
+    license: 'MIT',
+    notes:
+      'For machines without a GPU: 40 ms a card on a CPU, about 0.6 GB. 0.301 MRR on the corpus ' +
+      'test set and 0.626 on the bench: below the 400m (about -0.05 on both) but well above MiniLM ' +
+      'on hand-written queries (0.547).',
+  },
+  {
+    id: 'anvesa-code-1b',
+    tier: undefined,
+    repo: 'nimishph/anvesa-code-1b',
+    model: {
+      path: 'model.onnx',
+      bytes: 1034044,
+      sha256: 'df33320b7ea9a50823b04f5b189fa4077f72fa530274a36e9634d1e4e1cdeae1',
+    },
+    modelData: {
+      path: 'model.onnx_data',
+      bytes: 4112202752,
+      sha256: '2bf8038ac17358a505091b27816beac37a32e64cf3d928212b36a634ef775805',
+    },
+    tokenizer: ETTIN_TOKENIZER,
+    dimensions: 1792,
+    maxTokens: 512,
+    pooling: 'mean',
+    cardForm: 'nopath',
+    paramsM: 1000,
+    license: 'MIT',
+    notes:
+      '0.352 MRR on the corpus test set and 0.685 on the bench: no measurable gain over the 400m ' +
+      'for four times its CPU time (373 ms a card) and about 4 GB. Index on a GPU ' +
+      '(ANVESA_DEVICE=gpu) where there is one.',
+  },
+];
+
 /** Every built-in model, smallest download first. */
 export const MODEL_CATALOG: readonly ModelSpec[] = [
   ...TIERS.map((tier) => BUILTIN_MODELS[tier]),
   ...ADDITIONAL_MODELS,
-].sort((a, b) => a.model.bytes - b.model.bytes);
+  ...ANVESA_CODE_MODELS,
+].sort((a, b) => weightBytes(a) - weightBytes(b));
 
 /** The bytes of a model's weights: its ONNX file and, for a model over 2 GB, the external weights beside it. */
 export function weightBytes(spec: ModelSpec): number {
@@ -248,83 +346,6 @@ export function weightBytes(spec: ModelSpec): number {
 
 export function builtinModel(id: string): ModelSpec | undefined {
   return MODEL_CATALOG.find((spec) => spec.id === id);
-}
-
-/**
- * A model anvesa knows how to run but does not download: its weights are brought by the user
- * (`anvesa model install <id> --from <dir>`), and the install takes pooling, window and card form
- * from here instead of asking for them. The files are pinned at that first install, as for any
- * model brought in.
- */
-export interface ModelRecipe {
-  readonly id: string;
-  readonly pooling: Pooling;
-  readonly maxTokens: number;
-  readonly cardForm?: CardForm;
-  readonly paramsM: number;
-  readonly license: string;
-  /** Where the weights come from and how they become ONNX. */
-  readonly source: string;
-  readonly notes: string;
-}
-
-/** How anvesa-gen-lab made every anvesa-code size: the same data, recipe and export. */
-const ANVESA_CODE_SOURCE = (size: string): string =>
-  `Ettin-encoder-${size} (jhu-clsp, MIT) fine-tuned by anvesa-gen-lab on 105 MIT-licensed repositories ` +
-  '(corpus_train.py; the smaller sizes also learn from the 1B fine-tune as a teacher); a Hugging Face ' +
-  'Transformers ' +
-  'folder exported to ONNX by onnx_export.py (model.onnx and model.onnx_data, fp32).';
-
-/**
- * The anvesa-code encoders: one recipe at three sizes. Numbers are anvesa-gen-lab's (2026-10-29),
- * first stage with the hub penalty and no ranker, on the corpus test set (1,710 generated queries,
- * 57 repos, 13 languages) and the 241 hand-written bench queries; CPU time is one card on 12
- * threads. All three embed symbol cards without the WQL path line.
- */
-export const MODEL_RECIPES: readonly ModelRecipe[] = [
-  {
-    id: 'anvesa-code-400m',
-    pooling: 'mean',
-    maxTokens: 512,
-    cardForm: 'nopath',
-    paramsM: 400,
-    license: 'MIT',
-    source: ANVESA_CODE_SOURCE('400m'),
-    notes:
-      'The recommended size: 0.349 MRR on the corpus test set and 0.684 on the bench, level with ' +
-      'the 1B (paired differences -0.003 and -0.001, both intervals around 0), at a quarter of its CPU ' +
-      'time (98 ms a card, ONNX) and about 1.6 GB in fp32. MiniLM scores 0.293 and 0.547.',
-  },
-  {
-    id: 'anvesa-code-150m',
-    pooling: 'mean',
-    maxTokens: 512,
-    cardForm: 'nopath',
-    paramsM: 150,
-    license: 'MIT',
-    source: ANVESA_CODE_SOURCE('150m'),
-    notes:
-      'For machines without a GPU: 40 ms a card on a CPU (ONNX), about 0.6 GB. 0.301 MRR on the corpus ' +
-      'test set and 0.626 on the bench: below the 400m (about -0.05 on both) but well above ' +
-      'MiniLM on hand-written queries (0.547).',
-  },
-  {
-    id: 'anvesa-code-1b',
-    pooling: 'mean',
-    maxTokens: 512,
-    cardForm: 'nopath',
-    paramsM: 1000,
-    license: 'MIT',
-    source: ANVESA_CODE_SOURCE('1B'),
-    notes:
-      '0.352 MRR on the corpus test set and 0.685 on the bench: no measurable gain over the 400m ' +
-      'for four times its CPU time (373 ms a card) and about 4 GB in fp32. Index on a GPU ' +
-      '(ANVESA_DEVICE=gpu) where there is one.',
-  },
-];
-
-export function modelRecipe(id: string): ModelRecipe | undefined {
-  return MODEL_RECIPES.find((recipe) => recipe.id === id);
 }
 
 /**
