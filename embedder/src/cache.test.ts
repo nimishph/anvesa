@@ -220,6 +220,26 @@ describe('downloading', () => {
     expect(await cache.find(spec)).toBeDefined();
   });
 
+  test('a model with external weights downloads them too, under the name the model reads them by', async () => {
+    const data = new TextEncoder().encode('the weights'.repeat(50));
+    const big: ModelSpec = {
+      ...spec,
+      modelData: { path: 'onnx/model.onnx_data', bytes: data.length, sha256: sha(data) },
+    };
+    const requested: string[] = [];
+    const cache = new ModelCache(scratch());
+    const installed = await cache.download(big, {
+      allowNetwork: true,
+      fetch: serving({ ...upstream, 'onnx/model.onnx_data': data }, requested),
+    });
+    expect(requested.at(-1)).toBe(
+      'https://huggingface.co/acme/test-model/resolve/main/onnx/model.onnx_data',
+    );
+    expect(existsSync(join(installed.directory, 'model.onnx_data'))).toBe(true);
+    expect(await cache.find(big)).toBeDefined();
+    await expect(cache.verify(big)).resolves.toBeDefined();
+  });
+
   test('offline, a missing model is a typed error naming the URL, and the network is not touched', async () => {
     const requested: string[] = [];
     const cache = new ModelCache(scratch());

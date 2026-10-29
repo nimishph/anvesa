@@ -224,10 +224,11 @@ export class ModelCache {
   async download(spec: ModelSpec, options: DownloadOptions): Promise<InstalledModel> {
     const fetcher = options.fetch ?? (fetch as unknown as FetchLike);
     return this.#atomically(spec, async (staging) => {
+      // The tokenizer first (small, fails fast), then the model and any external weights it reads.
       for (const [name, pinned] of [
-        [TOKENIZER_FILE, spec.tokenizer],
-        [MODEL_FILE, spec.model],
-      ] as const) {
+        [TOKENIZER_FILE, spec.tokenizer] as [string, ModelFileSpec],
+        ...pinnedFiles(spec).filter(([file]) => file !== TOKENIZER_FILE),
+      ]) {
         const url = `https://huggingface.co/${spec.repo}/resolve/main/${pinned.path}`;
         if (!options.allowNetwork) throw new NetworkForbiddenError(spec.id, url);
         options.deadline?.throwIfExpired(`download ${spec.id}`);
@@ -428,10 +429,11 @@ export class ModelCache {
       await fill(staging);
       const manifest: Manifest = {
         id: spec.id,
-        files: [
-          { name: MODEL_FILE, bytes: spec.model.bytes, sha256: spec.model.sha256 },
-          { name: TOKENIZER_FILE, bytes: spec.tokenizer.bytes, sha256: spec.tokenizer.sha256 },
-        ],
+        files: pinnedFiles(spec).map(([name, pinned]) => ({
+          name,
+          bytes: pinned.bytes,
+          sha256: pinned.sha256,
+        })),
       };
       await writeFile(join(staging, MANIFEST_FILE), JSON.stringify(manifest, null, 2));
       const destination = this.directoryOf(spec.id);
@@ -469,7 +471,10 @@ export class ModelCache {
 function pinnedFiles(spec: ModelSpec): [string, ModelFileSpec][] {
   return [
     [MODEL_FILE, spec.model],
-    ...(spec.modelData ? [[spec.modelData.path, spec.modelData] as [string, ModelFileSpec]] : []),
+    // Kept under its own file name: the ONNX model refers to its external weights by it.
+    ...(spec.modelData
+      ? [[basename(spec.modelData.path), spec.modelData] as [string, ModelFileSpec]]
+      : []),
     [TOKENIZER_FILE, spec.tokenizer],
   ];
 }
