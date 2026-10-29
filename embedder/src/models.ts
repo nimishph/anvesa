@@ -54,31 +54,6 @@ export interface ModelSpec {
   readonly notes: string;
 }
 
-const MINILM: ModelSpec = {
-  id: 'all-MiniLM-L6-v2',
-  tier: 'low',
-  repo: 'Xenova/all-MiniLM-L6-v2',
-  model: {
-    path: 'onnx/model_quantized.onnx',
-    bytes: 22972370,
-    sha256: 'afdb6f1a0e45b715d0bb9b11772f032c399babd23bfc31fed1c170afc848bdb1',
-  },
-  tokenizer: {
-    path: 'tokenizer.json',
-    bytes: 711661,
-    sha256: 'da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0',
-  },
-  dimensions: 384,
-  maxTokens: 256,
-  pooling: 'mean',
-  paramsM: 22,
-  license: 'Apache-2.0',
-  notes:
-    'Runs anywhere, CPU only. An English sentence encoder whose vocabulary fragments ' +
-    'identifiers; its 256-token window fits symbol cards (signature, documentation, path) ' +
-    'but not raw function bodies.',
-};
-
 /** The tokenizer every Ettin size shares (anvesa-code-1b, -400m and -150m publish the same file). */
 const ETTIN_TOKENIZER: ModelFileSpec = {
   path: 'tokenizer.json',
@@ -97,7 +72,7 @@ const ETTIN_TOKENIZER: ModelFileSpec = {
  */
 const CODE_400M: ModelSpec = {
   id: 'anvesa-code-400m',
-  tier: 'high',
+  tier: 'medium',
   repo: 'nimishph/anvesa-code-400m',
   model: {
     path: 'model.onnx',
@@ -124,7 +99,7 @@ const CODE_400M: ModelSpec = {
 
 const CODE_150M: ModelSpec = {
   id: 'anvesa-code-150m',
-  tier: 'medium',
+  tier: 'low',
   repo: 'nimishph/anvesa-code-150m',
   model: {
     path: 'model.onnx',
@@ -151,7 +126,7 @@ const CODE_150M: ModelSpec = {
 
 const CODE_1B: ModelSpec = {
   id: 'anvesa-code-1b',
-  tier: undefined,
+  tier: 'high',
   repo: 'nimishph/anvesa-code-1b',
   model: {
     path: 'model.onnx',
@@ -177,28 +152,32 @@ const CODE_1B: ModelSpec = {
 };
 
 /**
- * What automatic choice picks from, by what the machine can hold: MiniLM where nothing else fits,
- * then the two code encoders. On anvesa-gen-lab's hand-written queries they score 0.547, 0.626 and
- * 0.684 MRR.
+ * The built-in models by cost. Automatic choice is the low tier, anvesa-code-150m: it runs well on a
+ * CPU and scores 0.626 MRR on anvesa-gen-lab's hand-written queries (MiniLM, the old default: 0.547).
+ * The 400m (0.684) and the 1B (0.685) are used when named, or when they are all that is installed.
  */
 export const BUILTIN_MODELS: Readonly<Record<Tier, ModelSpec>> = {
-  low: MINILM,
-  medium: CODE_150M,
-  high: CODE_400M,
+  low: CODE_150M,
+  medium: CODE_400M,
+  high: CODE_1B,
 };
 
-/** Built in but never chosen automatically: offered by `init` and `--model <id>`. */
-export const ADDITIONAL_MODELS: readonly ModelSpec[] = [CODE_1B];
+/** The tier automatic choice uses. */
+export const DEFAULT_TIER: Tier = 'low';
+
+/** Built in beyond the tiers. None at present. */
+export const ADDITIONAL_MODELS: readonly ModelSpec[] = [];
 
 export const ANVESA_CODE_MODELS: readonly ModelSpec[] = [CODE_400M, CODE_150M, CODE_1B];
 
 /**
- * Models that were built in and are not any more, and what to use instead. They scored at or below
- * MiniLM on code (anvesa-gen-lab, 241 hand-written queries: jina 0.533, gte-large 0.550, bge-m3
- * 0.518, against 0.547 for MiniLM and 0.684 for anvesa-code-400m).
+ * Models that were built in and are not any more, and what to use instead. On anvesa-gen-lab's 241
+ * hand-written queries they scored at or below MiniLM (jina 0.533, gte-large 0.550, bge-m3 0.518,
+ * MiniLM 0.547), against 0.626 for anvesa-code-150m and 0.684 for the 400m.
  */
 export const RETIRED_MODELS: Readonly<Record<string, string>> = {
-  'all-MiniLM-L12-v2': 'all-MiniLM-L6-v2',
+  'all-MiniLM-L6-v2': 'anvesa-code-150m',
+  'all-MiniLM-L12-v2': 'anvesa-code-150m',
   'bge-small-en-v1.5': 'anvesa-code-150m',
   'gte-small': 'anvesa-code-150m',
   'gte-base': 'anvesa-code-150m',

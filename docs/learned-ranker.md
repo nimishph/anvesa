@@ -4,7 +4,7 @@ What anvesa-gen-lab measured best (2026-10-29), behind `experimental.learnedRank
 
 | piece | what it does |
 | --- | --- |
-| encoder `anvesa-code-400m` (or `-150m`, `-1b`) | Ettin-encoder (MIT) fine-tuned on 105 MIT-licensed repositories; the 400m and 150m also learned the 1B fine-tune's scores. Mean pooling, L2-normalised, 512 tokens, no prefix. Each embeds symbol cards without their WQL path line (`cardForm: "nopath"`); the stored card keeps it. |
+| encoder `anvesa-code-150m` (the default; or `-400m`, `-1b`) | Ettin-encoder (MIT) fine-tuned on 105 MIT-licensed repositories; the 400m and 150m also learned the 1B fine-tune's scores. Mean pooling, L2-normalised, 512 tokens, no prefix. Each embeds symbol cards without their WQL path line (`cardForm: "nopath"`); the stored card keeps it. |
 | hub penalty | A symbol scores as its best card's `cos(query, card) - 0.3 x mean`, where `mean` is the card's mean cosine to its 10 nearest cards (itself left out). Measured at index time into `card_hub`. |
 | learned ranker | An XGBoost LambdaMART model reorders the top 30 symbols from the first-stage score and its gap to the top, the first card's cosine and hub penalty, kind, documentation, card length, path depth, same-file count and query length. Evaluated in TypeScript from the model's JSON, fit on the encoder it is used with. |
 
@@ -18,13 +18,13 @@ bench: 241 hand-written queries over 8 repositories. CPU: the ONNX model, one ca
 | encoder | corpus MRR | bench MRR | CPU per card | weights (fp32) |
 | --- | --- | --- | --- | --- |
 | `anvesa-code-1b` | 0.352 | 0.685 | 373 ms | ~4 GB |
-| **`anvesa-code-400m`** | **0.349** | **0.684** | **98 ms** | **~1.6 GB** |
-| `anvesa-code-150m` | 0.301 | 0.626 | 40 ms | ~0.6 GB |
-| all-MiniLM-L6-v2 (default) | 0.293 | 0.547 | | 23 MB |
+| `anvesa-code-400m` | 0.349 | 0.684 | 98 ms | ~1.6 GB |
+| **`anvesa-code-150m` (default)** | **0.301** | **0.626** | **40 ms** | **~0.6 GB** |
+| all-MiniLM-L6-v2 (the old default, retired) | 0.293 | 0.547 | | 23 MB |
 
 The 400m is level with the 1B (paired differences -0.003 [-0.014 +0.008] on the corpus, -0.001 [-0.033 +0.031] on
-the bench) at about a quarter of its CPU time, so it is the one to use. The 150m is below both but well above MiniLM on
-hand-written queries, for machines without a GPU.
+the bench) at about a quarter of its CPU time, so it is the one to pick where there is a GPU. The 150m is the default:
+below both (about -0.05) but well above MiniLM on hand-written queries, at 40 ms a card on a CPU.
 
 The ranker, with the 1B (paired against the hub penalty alone, 95% bootstrap intervals):
 
@@ -55,7 +55,7 @@ bench repositories (10,555 symbol cards) on an A100 took 98 s with the 400m and 
    against its pinned SHA-256:
 
    ```bash
-   anvesa model install anvesa-code-400m --download
+   anvesa model install anvesa-code-150m --download   # or -400m on a GPU
    ```
 
    Offline, `--from <folder>` installs the same files from a local copy (`model.onnx`, `model.onnx_data`,
@@ -66,7 +66,7 @@ bench repositories (10,555 symbol cards) on an A100 took 98 s with the 400m and 
 
    ```json
    {
-     "model": "anvesa-code-400m",
+     "model": "anvesa-code-150m",
      "experimental": {
        "cardPath": "wql",
        "learnedRanker": { "model": ".anvesa/ranker-noword.json" }

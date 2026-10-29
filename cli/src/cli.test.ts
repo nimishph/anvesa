@@ -262,12 +262,7 @@ describe('command line', () => {
       );
       expect(ran.code).toBe(0);
       expect(ran.err).toContain('This machine:');
-      for (const id of [
-        'all-MiniLM-L6-v2',
-        'anvesa-code-150m',
-        'anvesa-code-400m',
-        'anvesa-code-1b',
-      ]) {
+      for (const id of ['anvesa-code-150m', 'anvesa-code-400m', 'anvesa-code-1b']) {
         expect(ran.err).toContain(id);
       }
       expect(ran.err).toContain('recommended');

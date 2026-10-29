@@ -69,14 +69,13 @@ file with `--agents-file <path>`, or pass `--no-agents-file`. The section sits b
 Re-run `anvesa init` after upgrading: files it already made are kept, and the section is replaced
 with the one the new version ships.
 
-Built-in encoders, smallest first: `all-MiniLM-L6-v2` (23 MB, the fallback where nothing else fits),
-`anvesa-code-150m` (0.6 GB, for machines without a GPU), `anvesa-code-400m` (1.6 GB, recommended) and
-`anvesa-code-1b` (4 GB, no measured gain over the 400m). The anvesa-code encoders are Ettin fine-tuned for
-code search (MIT, `nimishph/anvesa-code-*` on Hugging Face); on 241 hand-written queries they score 0.626,
-0.684 and 0.685 MRR against 0.547 for MiniLM (see `docs/learned-ranker.md`). Automatic choice picks
-MiniLM, the 150m or the 400m by memory and cores; the 1B is yours to choose with `--model`. Models that
-used to be built in (BGE, GTE, jina, MiniLM-L12) are refused by name with what replaced them; a project
-configured with one needs the replacement installed and an index run.
+Built-in encoders: `anvesa-code-150m` (0.6 GB, the default), `anvesa-code-400m` (1.6 GB) and
+`anvesa-code-1b` (4 GB). They are Ettin fine-tuned for code search (MIT, `nimishph/anvesa-code-*` on
+Hugging Face); on 241 hand-written queries they score 0.626, 0.684 and 0.685 MRR, against 0.547 for MiniLM,
+the previous default (see `docs/learned-ranker.md`). The 150m is what automatic choice and `init` propose:
+it indexes on a CPU at about 40 ms a symbol card. Choose a bigger one with `--model` (best on a GPU).
+Models that used to be built in (MiniLM, BGE, GTE, jina) are refused by name with what replaced them; a
+project configured with one needs the replacement installed and an index run.
 
 Bring your own model: an ONNX file with its Hugging Face `tokenizer.json` (WordPiece, byte-level
 BPE or SentencePiece unigram, each verified against the reference tokenizers):

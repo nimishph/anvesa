@@ -9,6 +9,7 @@ import {
 import {
   BUILTIN_MODELS,
   builtinModel,
+  DEFAULT_TIER,
   estimatePeakRssMb,
   MODEL_CATALOG,
   TIERS,
@@ -39,23 +40,29 @@ describe('memory estimates', () => {
 });
 
 describe('choosing a tier from the machine', () => {
-  test('a generous machine gets the most capable model', () => {
+  test('by default every machine gets anvesa-code-150m, however much it could hold', () => {
     const choice = chooseTier(machine(32 * 1024));
-    expect(choice.tier).toBe('high');
+    expect(choice.tier).toBe(DEFAULT_TIER);
     expect(choice.fits).toBe(true);
-    expect(choice.reason).toContain('anvesa-code-400m');
+    expect(choice.reason).toContain('anvesa-code-150m');
+  });
+
+  test('allowed bigger tiers, a generous machine gets the most capable model', () => {
+    const choice = chooseTier(machine(32 * 1024), { maxTier: 'high' });
+    expect(choice.tier).toBe('high');
+    expect(choice.reason).toContain('anvesa-code-1b');
   });
 
   test('a constrained machine gets a smaller one, chosen by the estimate and the allowance', () => {
-    // Half of 1500 MB is 750: room for anvesa-code-150m (about 683), not for the 400m (about 1,590).
-    expect(chooseTier(machine(1500)).tier).toBe('medium');
-    // Half of 500 MB is 250: room for MiniLM (about 157) only.
-    expect(chooseTier(machine(500)).tier).toBe('low');
+    // Half of 4000 MB is 2000: room for the 400m (about 1,590), not for the 1B (about 3,915).
+    expect(chooseTier(machine(4000), { maxTier: 'high' }).tier).toBe('medium');
+    // Half of 1500 MB is 750: room for the 150m (about 683) only.
+    expect(chooseTier(machine(1500), { maxTier: 'high' }).tier).toBe('low');
   });
 
   test('the share of memory the encoder may take is the caller’s to set', () => {
-    expect(chooseTier(machine(1500), { memoryFraction: 0.2 }).tier).toBe('low');
-    expect(chooseTier(machine(1500), { memoryFraction: 0.9 }).tier).toBe('medium');
+    expect(chooseTier(machine(4000), { maxTier: 'high', memoryFraction: 0.2 }).tier).toBe('low');
+    expect(chooseTier(machine(4000), { maxTier: 'high', memoryFraction: 0.9 }).tier).toBe('medium');
   });
 
   test('when nothing fits the smallest is used anyway, and the answer says it did not fit', () => {
@@ -125,9 +132,7 @@ describe('the built-in catalogue', () => {
 
   test('every tier averages its token states; the code encoders embed cards without the path line', () => {
     for (const tier of TIERS) expect(BUILTIN_MODELS[tier].pooling).toBe('mean');
-    expect(BUILTIN_MODELS.medium.cardForm).toBe('nopath');
-    expect(BUILTIN_MODELS.high.cardForm).toBe('nopath');
-    expect(BUILTIN_MODELS.low.cardForm).toBeUndefined();
+    for (const tier of TIERS) expect(BUILTIN_MODELS[tier].cardForm).toBe('nopath');
   });
 });
 
@@ -143,7 +148,7 @@ describe('the built-in catalog and what init proposes', () => {
   test('every model has a unique id, pinned files and a declared window', () => {
     const ids = MODEL_CATALOG.map((spec) => spec.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).toHaveLength(4);
+    expect(ids).toHaveLength(3);
     for (const spec of MODEL_CATALOG) {
       expect(spec.model.sha256).toMatch(/^[0-9a-f]{64}$/);
       expect(spec.tokenizer.sha256).toMatch(/^[0-9a-f]{64}$/);
@@ -160,24 +165,26 @@ describe('the built-in catalog and what init proposes', () => {
     expect(sizes).toEqual([...sizes].sort((a, b) => a - b));
   });
 
-  test('a roomy many-core machine is proposed the most capable standard model', () => {
-    const advice = adviseModels(probeOf(16, 32_000));
+  test('every machine is proposed the default, and a roomy one the most capable when allowed', () => {
+    expect(adviseModels(probeOf(16, 32_000)).recommended.spec.id).toBe('anvesa-code-150m');
+    const advice = adviseModels(probeOf(16, 32_000), { maxTier: 'high' });
     expect(advice.recommended.spec.id).toBe(BUILTIN_MODELS.high.id);
     expect(advice.models.filter((model) => model.recommended)).toHaveLength(1);
     expect(advice.models.every((model) => model.fits)).toBe(true);
   });
 
   test('little memory steps the proposal down, and says which models do not fit', () => {
-    const advice = adviseModels(probeOf(16, 1_500));
-    expect(advice.recommended.spec.id).toBe(BUILTIN_MODELS.medium.id);
-    const large = advice.models.find((model) => model.spec.id === BUILTIN_MODELS.high.id);
+    const advice = adviseModels(probeOf(16, 1_500), { maxTier: 'high' });
+    expect(advice.recommended.spec.id).toBe(BUILTIN_MODELS.low.id);
+    const large = advice.models.find((model) => model.spec.id === BUILTIN_MODELS.medium.id);
     expect(large?.fits).toBe(false);
   });
 
   test('few cores keep a big model from being proposed however much memory there is', () => {
-    expect(adviseModels(probeOf(2, 64_000)).recommended.spec.id).toBe(BUILTIN_MODELS.low.id);
-    expect(adviseModels(probeOf(4, 64_000)).recommended.spec.id).toBe(BUILTIN_MODELS.medium.id);
-    expect(adviseModels(probeOf(2, 64_000)).reason).toContain('2 cores');
+    const high = { maxTier: 'high' as const };
+    expect(adviseModels(probeOf(4, 64_000), high).recommended.spec.id).toBe(BUILTIN_MODELS.low.id);
+    expect(adviseModels(probeOf(8, 64_000), high).recommended.spec.id).toBe(BUILTIN_MODELS.high.id);
+    expect(adviseModels(probeOf(4, 64_000)).reason).toContain('4 cores');
   });
 
   test('every model is listed with its download size and expected memory', () => {

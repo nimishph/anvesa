@@ -43,17 +43,10 @@ function probeFor(tier: Tier): HardwareProbe {
 }
 
 describe('choosing a built-in model automatically', () => {
-  test('the tier the machine suits, when it is installed', async () => {
+  test('the default, anvesa-code-150m, even when everything is installed and the machine is roomy', async () => {
     const cache = new FakeCache(['low', 'medium', 'high']);
-    const resolved = await resolveModel(cache, { probe: probeFor('medium') });
-    expect(resolved.spec.id).toBe(BUILTIN_MODELS.medium.id);
-  });
-
-  test('a smaller installed tier, when the suited one is not installed', async () => {
-    const cache = new FakeCache(['low']);
     const resolved = await resolveModel(cache, { probe: probeFor('high') });
-    expect(resolved.spec.id).toBe(BUILTIN_MODELS.low.id);
-    expect(resolved.reason).toContain('not installed');
+    expect(resolved.spec.id).toBe('anvesa-code-150m');
   });
 
   test('a larger installed tier, when nothing at or below the suited one is installed', async () => {

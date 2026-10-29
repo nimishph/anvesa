@@ -100,7 +100,7 @@ describe('deciding what a custom model is from its own files', () => {
 
   test('an id is a plain name, and not one a built-in already has', async () => {
     const dir = modelFolder();
-    for (const id of ['', 'a b', '../x', '.hidden', 'all-MiniLM-L6-v2']) {
+    for (const id of ['', 'a b', '../x', '.hidden', 'anvesa-code-150m']) {
       await expect(
         planCustomModel({ id, from: dir, pooling: 'mean', maxTokens: 512 }),
       ).rejects.toBeInstanceOf(InvalidArgumentError);

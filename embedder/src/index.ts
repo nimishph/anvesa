@@ -21,6 +21,7 @@ export {
   ANVESA_CODE_MODELS,
   BUILTIN_MODELS,
   builtinModel,
+  DEFAULT_TIER,
   estimatePeakRssMb,
   MODEL_CATALOG,
   PEAK_RSS_MEASUREMENTS,
