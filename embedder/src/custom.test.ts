@@ -15,6 +15,7 @@ import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import { ModelCache } from './cache.ts';
 import { installCustomModel, planCustomModel } from './custom.ts';
 import { InferenceError, ModelInstallError, ModelIntegrityError } from './errors.ts';
+import { weightBytes } from './models.ts';
 import { openLocalEmbedder, resolveModel } from './open.ts';
 
 const dirs: string[] = [];
@@ -253,6 +254,8 @@ describe('keeping a model the user brought', () => {
     });
     expect(spec.cardForm).toBe('nopath');
     expect(spec.modelData).toMatchObject({ path: 'model.onnx_data', bytes: 7 });
+    // The size a model is listed and judged by counts its external weights.
+    expect(weightBytes(spec)).toBe(spec.model.bytes + 7);
     expect(existsSync(join(cache.directoryOf('big'), 'model.onnx_data'))).toBe(true);
     expect(await cache.find(spec)).toBeDefined();
     await expect(cache.verify(spec)).resolves.toBeDefined();

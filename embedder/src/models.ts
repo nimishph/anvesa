@@ -241,6 +241,11 @@ export const MODEL_CATALOG: readonly ModelSpec[] = [
   ...ADDITIONAL_MODELS,
 ].sort((a, b) => a.model.bytes - b.model.bytes);
 
+/** The bytes of a model's weights: its ONNX file and, for a model over 2 GB, the external weights beside it. */
+export function weightBytes(spec: ModelSpec): number {
+  return spec.model.bytes + (spec.modelData?.bytes ?? 0);
+}
+
 export function builtinModel(id: string): ModelSpec | undefined {
   return MODEL_CATALOG.find((spec) => spec.id === id);
 }

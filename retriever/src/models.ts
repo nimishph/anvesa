@@ -18,6 +18,7 @@ import {
   resolveModel,
   type Tier,
   type TierChoice,
+  weightBytes,
 } from '@cntxt-labs/anvesa-embedder';
 import type { ProjectConfig } from './config.ts';
 
@@ -41,9 +42,9 @@ const rowOf = async (cache: ModelCache, spec: ModelSpec): Promise<ModelRow> => (
   tier: spec.tier,
   dimensions: spec.dimensions,
   maxTokens: spec.maxTokens,
-  sizeMb: Math.round(spec.model.bytes / 1024 / 1024),
+  sizeMb: Math.round(weightBytes(spec) / 1024 / 1024),
   installed: (await cache.find(spec)) !== undefined,
-  estimatedMemoryMb: Math.round(estimatePeakRssMb(spec.model.bytes)),
+  estimatedMemoryMb: Math.round(estimatePeakRssMb(weightBytes(spec))),
   license: spec.license,
   notes: spec.notes,
 });
@@ -202,4 +203,5 @@ export {
   ModelCache,
   modelsDirectory,
   probeHardware,
+  weightBytes,
 } from '@cntxt-labs/anvesa-embedder';

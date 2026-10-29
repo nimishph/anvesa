@@ -26,6 +26,7 @@ export {
   modelRecipe,
   PEAK_RSS_MEASUREMENTS,
   TIERS,
+  weightBytes,
 } from './models.ts';
 export type { OpenOptions, Resolution } from './open.ts';
 export { openLocalEmbedder, resolveModel } from './open.ts';

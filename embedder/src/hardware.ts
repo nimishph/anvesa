@@ -8,6 +8,7 @@ import {
   type ModelSpec,
   TIERS,
   type Tier,
+  weightBytes,
 } from './models.ts';
 
 export interface HardwareProbe {
@@ -123,7 +124,7 @@ export function chooseTier(probe: HardwareProbe, options: ChooseOptions = {}): T
   const budgetMb = probe.availableMemoryMb * fraction;
   const candidates = [...TIERS].reverse().map((tier) => {
     const spec = BUILTIN_MODELS[tier];
-    return { tier, spec, estimatedPeakMb: estimatePeakRssMb(spec.model.bytes) };
+    return { tier, spec, estimatedPeakMb: estimatePeakRssMb(weightBytes(spec)) };
   });
   const cap = options.maxParamsM;
   const allowed =
@@ -188,11 +189,11 @@ export function adviseModels(
   });
   const budgetMb = choice.budgetMb;
   const models = MODEL_CATALOG.map((spec): ModelAdvice => {
-    const estimatedPeakMb = estimatePeakRssMb(spec.model.bytes);
+    const estimatedPeakMb = estimatePeakRssMb(weightBytes(spec));
     return {
       spec,
       estimatedPeakMb,
-      downloadMb: (spec.model.bytes + spec.tokenizer.bytes) / (1024 * 1024),
+      downloadMb: (weightBytes(spec) + spec.tokenizer.bytes) / (1024 * 1024),
       fits: estimatedPeakMb <= budgetMb,
       recommended: spec.id === choice.spec.id,
     };

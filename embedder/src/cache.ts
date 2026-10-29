@@ -12,7 +12,13 @@ import {
   ModelUnavailableError,
   NetworkForbiddenError,
 } from './errors.ts';
-import type { CardForm, ModelFileSpec, ModelSpec, Pooling } from './models.ts';
+import {
+  type CardForm,
+  type ModelFileSpec,
+  type ModelSpec,
+  modelRecipe,
+  type Pooling,
+} from './models.ts';
 
 /** A model on disk, ready to load. */
 export interface InstalledModel {
@@ -506,8 +512,8 @@ function customSpec(record: CustomRecord): ModelSpec {
     maxTokens: record.maxTokens,
     pooling: record.pooling,
     ...(record.cardForm ? { cardForm: record.cardForm } : {}),
-    paramsM: undefined,
-    license: 'not recorded',
+    paramsM: modelRecipe(record.id)?.paramsM,
+    license: modelRecipe(record.id)?.license ?? 'not recorded',
     notes: `Installed from ${record.source} on ${record.installedAt}.`,
   };
 }
