@@ -112,6 +112,21 @@ describe('installing from a local directory, with no network', () => {
     ]);
   });
 
+  test('a model with external weights is installed from a folder with them, and pinned by them', async () => {
+    const data = new TextEncoder().encode('the weights'.repeat(40));
+    const big: ModelSpec = {
+      ...spec,
+      modelData: { path: 'model.onnx_data', bytes: data.length, sha256: sha(data) },
+    };
+    const cache = new ModelCache(scratch());
+    const folder = source('flat');
+    await expect(cache.installFromDirectory(big, folder)).rejects.toBeInstanceOf(ModelInstallError);
+    writeFileSync(join(folder, 'model.onnx_data'), data);
+    const installed = await cache.installFromDirectory(big, folder);
+    expect(existsSync(join(installed.directory, 'model.onnx_data'))).toBe(true);
+    await expect(cache.verify(big)).resolves.toBeDefined();
+  });
+
   test('a failed reinstall leaves the working model in place', async () => {
     const cache = new ModelCache(scratch());
     await cache.installFromDirectory(spec, source('flat'));
@@ -218,6 +233,26 @@ describe('downloading', () => {
     ]);
     expect(progress.at(-1)).toBe(`model.onnx ${MODEL_BYTES.length}/${MODEL_BYTES.length}`);
     expect(await cache.find(spec)).toBeDefined();
+  });
+
+  test('a model with external weights downloads them too, under the name the model reads them by', async () => {
+    const data = new TextEncoder().encode('the weights'.repeat(50));
+    const big: ModelSpec = {
+      ...spec,
+      modelData: { path: 'onnx/model.onnx_data', bytes: data.length, sha256: sha(data) },
+    };
+    const requested: string[] = [];
+    const cache = new ModelCache(scratch());
+    const installed = await cache.download(big, {
+      allowNetwork: true,
+      fetch: serving({ ...upstream, 'onnx/model.onnx_data': data }, requested),
+    });
+    expect(requested.at(-1)).toBe(
+      'https://huggingface.co/acme/test-model/resolve/main/onnx/model.onnx_data',
+    );
+    expect(existsSync(join(installed.directory, 'model.onnx_data'))).toBe(true);
+    expect(await cache.find(big)).toBeDefined();
+    await expect(cache.verify(big)).resolves.toBeDefined();
   });
 
   test('offline, a missing model is a typed error naming the URL, and the network is not touched', async () => {

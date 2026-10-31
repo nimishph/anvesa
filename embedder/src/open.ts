@@ -5,7 +5,14 @@ import { ModelCache } from './cache.ts';
 import { batchTokensFor, LocalEmbedder } from './encoder.ts';
 import { ModelUnavailableError } from './errors.ts';
 import { chooseTier, type HardwareProbe, probeHardware } from './hardware.ts';
-import { BUILTIN_MODELS, builtinModel, MODEL_CATALOG, type ModelSpec, TIERS } from './models.ts';
+import {
+  BUILTIN_MODELS,
+  builtinModel,
+  MODEL_CATALOG,
+  type ModelSpec,
+  RETIRED_MODELS,
+  TIERS,
+} from './models.ts';
 import { tokenizerFromJson } from './tokenizer.ts';
 
 export interface OpenOptions {
@@ -56,6 +63,7 @@ export async function openLocalEmbedder(
     dimensions: spec.dimensions,
     maxTokens: spec.maxTokens,
     pooling: spec.pooling,
+    ...(spec.cardForm ? { cardForm: spec.cardForm } : {}),
     tokenizer,
     backend,
     maxBatchTokens: batchTokensFor(spec.dimensions, budget, backend.device),
@@ -68,6 +76,18 @@ export async function openLocalEmbedder(
     throw failure;
   }
   return embedder;
+}
+
+/** A model that was built in and is not any more: say what replaced it, rather than list every choice. */
+export function retired(id: string): void {
+  const replacement = RETIRED_MODELS[id];
+  if (replacement) {
+    throw new InvalidArgumentError(
+      'model',
+      `${replacement}: ${id} is no longer built in (install ${replacement} and index again)`,
+      id,
+    );
+  }
 }
 
 export interface Resolution {
@@ -95,6 +115,7 @@ export async function resolveModel(
   if (options.model !== undefined) {
     const spec = builtinModel(options.model) ?? (await cache.findCustom(options.model));
     if (!spec) {
+      retired(options.model);
       const custom = (await cache.customModels()).map((model) => model.id);
       throw new InvalidArgumentError(
         'model',

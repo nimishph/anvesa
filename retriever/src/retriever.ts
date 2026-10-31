@@ -23,6 +23,7 @@ import {
   createTransformServices,
   docsTransformer,
   type Embedder,
+  embedAll,
   Ingester,
   type InputFile,
   type InputSource,
@@ -116,6 +117,13 @@ import {
   type Status,
   statusOf,
 } from './insight.ts';
+import {
+  type Bm25Stats,
+  loadTreeRanker,
+  rankSymbols,
+  storedBm25,
+  type TreeRanker,
+} from './learned-ranker.ts';
 import { mappingStoreFor } from './mappings.ts';
 import { PatternRunner } from './pattern-runner.ts';
 import { gateForProject, loadPolicies } from './redteam.ts';
@@ -320,6 +328,8 @@ export class Retriever {
   #indexedModels:
     | Promise<readonly { readonly model: string; readonly cards: number }[]>
     | undefined;
+  /** The learned ranker's model and BM25 statistics, read once and again after an index run. */
+  #ranking: Promise<{ ranker: TreeRanker | undefined; stats: Bm25Stats | undefined }> | undefined;
 
   private constructor(parts: {
     root: string;
@@ -511,6 +521,7 @@ export class Retriever {
     }
     await this.#structure.refresh();
     this.#indexedModels = undefined;
+    this.#ranking = undefined;
     return { report, synced };
   }
 
@@ -848,6 +859,11 @@ export class Retriever {
             weight: weightOf(channel, configured),
             run: async () => {
               if (mismatch) throw mismatch;
+              if (channel === 'symbols' && this.#learnedRanking()) {
+                return (await this.#rankedSymbols(query, depth, options.include, options.deadline))
+                  .filter(aboveMinScore)
+                  .map(cardHit);
+              }
               return (
                 await retrieveDense({
                   ...this.#collapse(),
@@ -969,6 +985,54 @@ export class Retriever {
           }
         : {}),
     };
+  }
+
+  /** Whether the symbols lane is ranked by the learned ranker: configured, on one database. */
+  #learnedRanking(): boolean {
+    return (
+      this.config.experimental?.learnedRanker !== undefined &&
+      this.vectors instanceof SqliteVectorStore
+    );
+  }
+
+  /**
+   * The symbols lane under `experimental.learnedRanker`: every symbol card scored by cosine less
+   * its hub penalty, the top reordered by the ranker. Hits are screened again like any dense hit.
+   */
+  async #rankedSymbols(
+    query: string,
+    limit: number,
+    include: ((path: string) => boolean) | undefined,
+    deadline: Deadline | undefined,
+  ): Promise<SearchHit[]> {
+    const config = this.config.experimental?.learnedRanker;
+    const embedder = this.#requireEmbedder();
+    this.#ranking ??= (async () => ({
+      ranker: config?.model ? await loadTreeRanker(this.root, config.model) : undefined,
+      stats: await storedBm25(this.store),
+    }))();
+    const { ranker, stats } = await this.#ranking;
+    const [vector] = await embedAll(embedder, [query], deadline ? { deadline } : {});
+    deadline?.throwIfExpired(`search for "${query}"`);
+    const hits = rankSymbols({
+      database: (this.vectors as SqliteVectorStore).database,
+      model: embedder.info.id,
+      query,
+      vector: vector as Float32Array,
+      limit,
+      hub: config?.hub ?? 0,
+      depth: config?.depth ?? 0,
+      ranker,
+      stats,
+      ...(include ? { include } : {}),
+    });
+    const screened: SearchHit[] = [];
+    for (const hit of hits) {
+      const result = this.#gate.screen(hit.card);
+      if (result.verdict === 'quarantine') continue;
+      screened.push(result.verdict === 'sanitize' ? { ...hit, card: result.card } : hit);
+    }
+    return screened;
   }
 
   // --- the graph --------------------------------------------------------------------------------

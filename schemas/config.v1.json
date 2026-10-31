@@ -217,6 +217,28 @@
         "exactBatches": {
           "type": "boolean",
           "description": "Batch only texts of one length, so no text is padded."
+        },
+        "learnedRanker": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Rank symbols by cosine less a hub penalty, then reorder the top with an XGBoost ranker.",
+          "properties": {
+            "model": {
+              "type": "string",
+              "minLength": 1,
+              "description": "An XGBoost JSON ranker, relative to the root. Absent: the hub-penalised ranking alone."
+            },
+            "hub": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Weight of each card's mean similarity to its 10 nearest cards. Default 0.3."
+            },
+            "depth": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "How many symbols the ranker reorders. Default 30."
+            }
+          }
         }
       }
     }

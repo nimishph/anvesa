@@ -25,7 +25,7 @@ const cosine = (a: Float32Array, b: Float32Array): number => {
   return sum;
 };
 
-maybe('the real MiniLM model', () => {
+maybe('the real default model, anvesa-code-150m', () => {
   const cache = new ModelCache(modelsDirectory);
   const open = async (): Promise<LocalEmbedder> => {
     embedder ??= await openLocalEmbedder(BUILTIN_MODELS.low, { cache });
@@ -34,7 +34,7 @@ maybe('the real MiniLM model', () => {
 
   test('opens, and reports what it verified about itself', async () => {
     const e = await open();
-    expect(e.info).toMatchObject({ id: 'all-MiniLM-L6-v2', dimensions: 384, maxTokens: 256 });
+    expect(e.info).toMatchObject({ id: 'anvesa-code-150m', dimensions: 768, maxTokens: 512 });
   });
 
   test('embeds to unit vectors of the declared size, and ranks by meaning', async () => {
@@ -45,7 +45,7 @@ maybe('the real MiniLM model', () => {
       'render a user interface widget on the screen',
     ]);
     for (const vector of [query, related, unrelated] as Float32Array[]) {
-      expect(vector).toHaveLength(384);
+      expect(vector).toHaveLength(768);
       expect(Math.abs(Math.hypot(...vector) - 1)).toBeLessThan(1e-4);
     }
     expect(cosine(query as Float32Array, related as Float32Array)).toBeGreaterThan(
@@ -79,7 +79,7 @@ maybe('the real MiniLM model', () => {
     const resolved = await resolveModel(cache, {
       probe: { ...probeHardware(), availableMemoryMb: 500 },
     });
-    expect(resolved.spec.id).toBe('all-MiniLM-L6-v2');
+    expect(resolved.spec.id).toBe('anvesa-code-150m');
     expect(chooseTier({ ...probeHardware(), availableMemoryMb: 500 }).tier).toBe('low');
   });
 });

@@ -63,6 +63,23 @@ export interface ExperimentalConfig {
   readonly propagate?: PropagateConfig;
   /** Batch only texts of one length, so no text is padded and a text's vector never varies. */
   readonly exactBatches?: boolean;
+  /**
+   * Rank the symbols channel with a hub penalty and, when a model is named, an XGBoost ranker
+   * over the top results (see `learned-ranker.ts`).
+   */
+  readonly learnedRanker?: LearnedRankerConfig;
+}
+
+export interface LearnedRankerConfig {
+  /**
+   * An XGBoost JSON model (relative to the root) that reorders the top `depth` symbols. Absent,
+   * symbols are ranked by the hub-penalised first stage alone.
+   */
+  readonly model?: string;
+  /** How much a card's mean similarity to its 10 nearest cards is taken off its score. */
+  readonly hub: number;
+  /** How many of the first stage's symbols the ranker reorders. */
+  readonly depth: number;
 }
 
 export interface PropagateConfig {
@@ -430,11 +447,11 @@ function validateExperimental(
 ): ExperimentalConfig {
   if (!isRecord(raw)) return fail('experimental', 'must be an object');
   for (const key of Object.keys(raw)) {
-    if (!['cardPath', 'scip', 'propagate', 'exactBatches'].includes(key)) {
+    if (!['cardPath', 'scip', 'propagate', 'exactBatches', 'learnedRanker'].includes(key)) {
       fail(`experimental.${key}`, 'is not a known setting');
     }
   }
-  const { cardPath, scip, propagate, exactBatches } = raw;
+  const { cardPath, scip, propagate, exactBatches, learnedRanker } = raw;
   if (cardPath !== undefined && cardPath !== 'words' && cardPath !== 'wql') {
     fail('experimental.cardPath', 'must be "words" or "wql"');
   }
@@ -459,11 +476,36 @@ function validateExperimental(
     }
     propagation = { alpha: alpha as number, edges: (edges as string[] | undefined) ?? ['calls'] };
   }
+  let ranker: LearnedRankerConfig | undefined;
+  if (learnedRanker !== undefined) {
+    if (!isRecord(learnedRanker)) return fail('experimental.learnedRanker', 'must be an object');
+    for (const key of Object.keys(learnedRanker)) {
+      if (!['model', 'hub', 'depth'].includes(key)) {
+        fail(`experimental.learnedRanker.${key}`, 'is not a known setting');
+      }
+    }
+    const { model, hub, depth } = learnedRanker;
+    if (model !== undefined && (typeof model !== 'string' || model.length === 0)) {
+      fail('experimental.learnedRanker.model', 'must be the path of an XGBoost JSON model');
+    }
+    if (hub !== undefined && (typeof hub !== 'number' || !Number.isFinite(hub) || hub < 0)) {
+      fail('experimental.learnedRanker.hub', 'must be a number of 0 or more');
+    }
+    if (depth !== undefined && !(Number.isSafeInteger(depth) && (depth as number) >= 1)) {
+      fail('experimental.learnedRanker.depth', 'must be a whole number of at least 1');
+    }
+    ranker = {
+      ...(model !== undefined ? { model: model as string } : {}),
+      hub: (hub as number | undefined) ?? 0.3,
+      depth: (depth as number | undefined) ?? 30,
+    };
+  }
   return {
     ...(cardPath !== undefined ? { cardPath: cardPath as 'words' | 'wql' } : {}),
     ...(scip !== undefined ? { scip: scip as string } : {}),
     ...(propagation !== undefined ? { propagate: propagation } : {}),
     ...(exactBatches !== undefined ? { exactBatches: exactBatches as boolean } : {}),
+    ...(ranker !== undefined ? { learnedRanker: ranker } : {}),
   };
 }
 

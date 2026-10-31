@@ -348,6 +348,7 @@ describe('project config', () => {
           scip: 'index.scip',
           exactBatches: true,
           propagate: { alpha: 0.3 },
+          learnedRanker: { model: 'ranker.json' },
         },
       }).experimental,
     ).toEqual({
@@ -355,7 +356,12 @@ describe('project config', () => {
       scip: 'index.scip',
       exactBatches: true,
       propagate: { alpha: 0.3, edges: ['calls'] },
+      learnedRanker: { model: 'ranker.json', hub: 0.3, depth: 30 },
     });
+    expect(
+      validateProjectConfig({ experimental: { learnedRanker: { hub: 0.5, depth: 10 } } })
+        .experimental,
+    ).toEqual({ learnedRanker: { hub: 0.5, depth: 10 } });
     expect(validateProjectConfig({}).experimental).toBeUndefined();
   });
 
@@ -372,6 +378,11 @@ describe('project config', () => {
     [{ experimental: { cardPath: 'tree' } }, 'experimental.cardPath'],
     [{ experimental: { propagate: { alpha: -1 } } }, 'experimental.propagate.alpha'],
     [{ experimental: { gnn: true } }, 'experimental.gnn'],
+    [{ experimental: { learnedRanker: true } }, 'experimental.learnedRanker'],
+    [{ experimental: { learnedRanker: { hub: -1 } } }, 'experimental.learnedRanker.hub'],
+    [{ experimental: { learnedRanker: { depth: 0 } } }, 'experimental.learnedRanker.depth'],
+    [{ experimental: { learnedRanker: { model: '' } } }, 'experimental.learnedRanker.model'],
+    [{ experimental: { learnedRanker: { intent: true } } }, 'experimental.learnedRanker.intent'],
   ])('%j is refused at %s', (raw, location) => {
     try {
       validateProjectConfig(raw);
@@ -1100,5 +1111,75 @@ describe('an index kept in shards', () => {
         x.proposeFragments({ tier: 'path' }),
       ),
     ).rejects.toBeInstanceOf(NotIndexedError);
+  });
+});
+
+describe('experimental: the learned ranker', () => {
+  const RANKER = resolve(FIXTURES, 'learned-ranker', 'ranker.json');
+  const symbolsOnly = (page: SearchPage) =>
+    page.items.filter((item) => item.foundBy.some((hit) => hit.lane === 'symbols'));
+
+  test('indexing measures every symbol card, and search ranks symbols with the hub and the trees', async () => {
+    const r = await retriever(makeProject(), {
+      config: validateProjectConfig({
+        experimental: { cardPath: 'wql', learnedRanker: { model: RANKER } },
+      }),
+    });
+    const { report } = await r.index();
+    expect(report.warnings?.join('\n')).toMatch(/learnedRanker: hub means of \d+ symbol cards/);
+    const db = new Database(join(r.root, '.anvesa', 'index.db'), { readonly: true });
+    try {
+      const count = (table: string) =>
+        (
+          db.query(`SELECT count(*) AS n FROM ${table} WHERE channel = 'symbols'`).get() as {
+            n: number;
+          }
+        ).n;
+      expect(count('card_hub')).toBe(count('card_vectors'));
+      expect(count('card_hub')).toBeGreaterThan(3);
+    } finally {
+      db.close();
+    }
+
+    const page = await r.search('parse the configuration file', { channels: ['symbols'] });
+    const found = symbolsOnly(page);
+    expect(found.length).toBeGreaterThan(3);
+    // One hit per symbol, each with the cosine of the card shown.
+    expect(new Set(found.map((item) => item.key)).size).toBe(found.length);
+    for (const item of found) expect(item.bestScore).toBeGreaterThan(-1.01);
+
+    // Nothing changed: a second run measures nothing again.
+    const again = await r.index();
+    expect(again.report.warnings?.join('\n') ?? '').not.toMatch(/learnedRanker/);
+  });
+
+  test('without a model the hub-penalised first stage ranks alone; turning it off removes the hub', async () => {
+    const root = makeProject();
+    const hubOnly = await retriever(root, {
+      config: validateProjectConfig({ experimental: { learnedRanker: {} } }),
+    });
+    await hubOnly.index();
+    const page = await hubOnly.search('start the http server', { channels: ['symbols'] });
+    expect(['startServer', 'Server.start']).toContain(symbolsOnly(page)[0]?.title as string);
+    await hubOnly.close();
+    open.splice(open.indexOf(hubOnly), 1);
+
+    const plain = await retriever(root, { config: validateProjectConfig({}) });
+    const { report } = await plain.index();
+    expect(report.warnings?.join('\n')).toMatch(/learnedRanker: off/);
+  });
+
+  test('a ranker file that cannot be run fails the symbols lane by name, not the search', async () => {
+    const root = makeProject();
+    writeFileSync(join(root, 'ranker.json'), '{"learner": {}}');
+    const r = await retriever(root, {
+      config: validateProjectConfig({ experimental: { learnedRanker: { model: 'ranker.json' } } }),
+    });
+    await r.index();
+    const page = await r.search('start the http server');
+    expect(page.degraded.map((entry) => entry.lane)).toContain('symbols');
+    expect(page.degraded.find((entry) => entry.lane === 'symbols')?.error.message).toMatch(
+      /learnedRanker\.model/,
+    );
   });
 });

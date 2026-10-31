@@ -275,6 +275,20 @@ export const MIGRATIONS: readonly Migration[] = [
         SELECT channel, id, vector FROM card_vectors;
     `,
   },
+  {
+    version: 11,
+    description:
+      'experimental: how crowded each card is, its mean similarity to its nearest cards (the hub penalty of the learned ranker)',
+    sql: `
+      CREATE TABLE card_hub (
+        channel TEXT NOT NULL,
+        id TEXT NOT NULL,
+        mean REAL NOT NULL,
+        PRIMARY KEY (channel, id),
+        FOREIGN KEY (channel, id) REFERENCES cards(channel, id) ON DELETE CASCADE
+      ) WITHOUT ROWID;
+    `,
+  },
 ];
 
 /** The schema version a database has once fully migrated. */

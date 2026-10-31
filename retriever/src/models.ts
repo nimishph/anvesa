@@ -16,8 +16,10 @@ import {
   type Pooling,
   probeHardware,
   resolveModel,
+  retired,
   type Tier,
   type TierChoice,
+  weightBytes,
 } from '@cntxt-labs/anvesa-embedder';
 import type { ProjectConfig } from './config.ts';
 
@@ -41,9 +43,9 @@ const rowOf = async (cache: ModelCache, spec: ModelSpec): Promise<ModelRow> => (
   tier: spec.tier,
   dimensions: spec.dimensions,
   maxTokens: spec.maxTokens,
-  sizeMb: Math.round(spec.model.bytes / 1024 / 1024),
+  sizeMb: Math.round(weightBytes(spec) / 1024 / 1024),
   installed: (await cache.find(spec)) !== undefined,
-  estimatedMemoryMb: Math.round(estimatePeakRssMb(spec.model.bytes)),
+  estimatedMemoryMb: Math.round(estimatePeakRssMb(weightBytes(spec))),
   license: spec.license,
   notes: spec.notes,
 });
@@ -52,7 +54,10 @@ const rowOf = async (cache: ModelCache, spec: ModelSpec): Promise<ModelRow> => (
 export async function listModels(cache: ModelCache): Promise<readonly ModelRow[]> {
   const rows: ModelRow[] = [];
   for (const spec of MODEL_CATALOG) rows.push(await rowOf(cache, spec));
-  for (const spec of await cache.customModels()) rows.push(await rowOf(cache, spec));
+  // A model brought in under an id that is now built in is that built-in's row, not a second one.
+  for (const spec of await cache.customModels()) {
+    if (!builtinModel(spec.id)) rows.push(await rowOf(cache, spec));
+  }
   return rows;
 }
 
@@ -86,6 +91,7 @@ export async function installModel(
   const spec = builtinModel(id);
   if (!spec) {
     if (options.from === undefined) {
+      retired(id);
       throw new InvalidArgumentError(
         'model',
         `a built-in model (${MODEL_CATALOG.map((spec) => spec.id).join(', ')}), or a new name with --from <dir|file.onnx> to bring in your own`,
@@ -202,4 +208,5 @@ export {
   ModelCache,
   modelsDirectory,
   probeHardware,
+  weightBytes,
 } from '@cntxt-labs/anvesa-embedder';

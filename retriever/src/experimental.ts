@@ -9,10 +9,12 @@ import {
   type SymbolFact,
 } from '@cntxt-labs/anvesa-indexer';
 import type { ExperimentalConfig, PropagateConfig } from './config.ts';
+import { syncLearnedRanker } from './learned-ranker.ts';
 
 /**
- * Experiments run after an index pass, in order: a SCIP index replaces call edges, then symbol
- * vectors are mixed with their graph neighbours'. Each says what it did, as a line of the report.
+ * Experiments run after an index pass, in order: a SCIP index replaces call edges, symbol vectors
+ * are mixed with their graph neighbours', then the learned ranker measures how crowded each
+ * searched vector is. Each says what it did, as a line of the report.
  */
 export async function runExperiments(
   root: string,
@@ -37,10 +39,19 @@ export async function runExperiments(
   if (database) {
     const note = await syncPropagation(store, database, config?.propagate);
     if (note) notes.push(note);
-  } else if (config?.propagate) {
-    notes.push(
-      'experimental propagate: skipped, it needs a single index database (fragments are on)',
-    );
+    const ranked = await syncLearnedRanker(store, database, config?.learnedRanker);
+    if (ranked) notes.push(ranked);
+  } else {
+    for (const [name, on] of [
+      ['propagate', config?.propagate],
+      ['learnedRanker', config?.learnedRanker],
+    ] as const) {
+      if (on) {
+        notes.push(
+          `experimental ${name}: skipped, it needs a single index database (fragments are on)`,
+        );
+      }
+    }
   }
   return notes;
 }

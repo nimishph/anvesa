@@ -15,6 +15,7 @@ import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import { ModelCache } from './cache.ts';
 import { installCustomModel, planCustomModel } from './custom.ts';
 import { InferenceError, ModelInstallError, ModelIntegrityError } from './errors.ts';
+import { ANVESA_CODE_MODELS, builtinModel, MODEL_CATALOG, weightBytes } from './models.ts';
 import { openLocalEmbedder, resolveModel } from './open.ts';
 
 const dirs: string[] = [];
@@ -99,7 +100,7 @@ describe('deciding what a custom model is from its own files', () => {
 
   test('an id is a plain name, and not one a built-in already has', async () => {
     const dir = modelFolder();
-    for (const id of ['', 'a b', '../x', '.hidden', 'all-MiniLM-L6-v2']) {
+    for (const id of ['', 'a b', '../x', '.hidden', 'anvesa-code-150m']) {
       await expect(
         planCustomModel({ id, from: dir, pooling: 'mean', maxTokens: 512 }),
       ).rejects.toBeInstanceOf(InvalidArgumentError);
@@ -137,6 +138,42 @@ describe('deciding what a custom model is from its own files', () => {
       maxTokens: 512,
     });
     expect(named.model.endsWith('other.onnx')).toBe(true);
+  });
+
+  test('a card form is kept only when asked for', async () => {
+    const dir = modelFolder({ '1_Pooling/config.json': '{"pooling_mode_mean_tokens": true}' });
+    expect(
+      (await planCustomModel({ id: 'mine', from: dir, maxTokens: 64 })).cardForm,
+    ).toBeUndefined();
+    expect(
+      (await planCustomModel({ id: 'mine', from: dir, maxTokens: 64, cardForm: 'nopath' }))
+        .cardForm,
+    ).toBe('nopath');
+  });
+
+  test('the anvesa-code models are built in: they cannot be brought in under their own ids', async () => {
+    await expect(
+      planCustomModel({
+        id: 'anvesa-code-400m',
+        from: modelFolder(),
+        pooling: 'mean',
+        maxTokens: 64,
+      }),
+    ).rejects.toBeInstanceOf(InvalidArgumentError);
+  });
+
+  test('a model over 2 GB brings its external weights file along', async () => {
+    const dir = modelFolder({ 'onnx/model.onnx_data': 'weights' });
+    const plan = await planCustomModel({ id: 'mine', from: dir, pooling: 'mean', maxTokens: 64 });
+    expect(plan.data?.endsWith(join('onnx', 'model.onnx_data'))).toBe(true);
+    expect(
+      (await planCustomModel({ id: 'mine', from: modelFolder(), pooling: 'mean', maxTokens: 64 }))
+        .data,
+    ).toBeUndefined();
+    writeFileSync(join(dir, 'onnx', 'model.onnx.data'), 'more');
+    await expect(
+      planCustomModel({ id: 'mine', from: dir, pooling: 'mean', maxTokens: 64 }),
+    ).rejects.toThrow(/several external/);
   });
 });
 
@@ -203,6 +240,34 @@ describe('keeping a model the user brought', () => {
       install(cache, modelFolder({}, { onnx: 'other' }), { replace: true, fail: true }),
     ).rejects.toBeInstanceOf(InferenceError);
     expect((await cache.findCustom('mine'))?.model.sha256).toBe(spec.model.sha256);
+  });
+
+  test('external weights and a card form are kept, pinned and checked like the model', async () => {
+    const cache = new ModelCache(scratch());
+    const source = modelFolder({ 'onnx/model.onnx_data': 'weights' });
+    const spec = await cache.installCustom({
+      id: 'big',
+      maxTokens: 512,
+      pooling: 'mean',
+      cardForm: 'nopath',
+      source,
+      files: {
+        model: join(source, 'onnx', 'model.onnx'),
+        tokenizer: join(source, 'tokenizer.json'),
+        data: join(source, 'onnx', 'model.onnx_data'),
+      },
+      validate: async () => 8,
+    });
+    expect(spec.cardForm).toBe('nopath');
+    expect(spec.modelData).toMatchObject({ path: 'model.onnx_data', bytes: 7 });
+    // The size a model is listed and judged by counts its external weights.
+    expect(weightBytes(spec)).toBe(spec.model.bytes + 7);
+    expect(existsSync(join(cache.directoryOf('big'), 'model.onnx_data'))).toBe(true);
+    expect(await cache.find(spec)).toBeDefined();
+    await expect(cache.verify(spec)).resolves.toBeDefined();
+    // Weights changed under the model: it is no longer what was installed.
+    writeFileSync(join(cache.directoryOf('big'), 'model.onnx_data'), 'other weights');
+    expect(await cache.find(spec)).toBeUndefined();
   });
 
   test('a record that cannot be read is not trusted', async () => {
@@ -275,5 +340,24 @@ maybe('a real model brought in by the user', () => {
     await expect(
       installCustomModel(cache, { id: 'my-minilm', from: source, pooling: 'mean', maxTokens: 256 }),
     ).resolves.toBeDefined();
+  });
+});
+
+describe('the anvesa-code models', () => {
+  test('are built in, pinned with their external weights, and listed by their whole size', () => {
+    for (const spec of ANVESA_CODE_MODELS) {
+      expect(builtinModel(spec.id)).toBe(spec);
+      expect(spec).toMatchObject({
+        pooling: 'mean',
+        maxTokens: 512,
+        cardForm: 'nopath',
+        license: 'MIT',
+      });
+      expect(spec.repo).toBe(`nimishph/${spec.id}`);
+      expect(spec.modelData?.path).toBe('model.onnx_data');
+      expect(weightBytes(spec)).toBeGreaterThan(spec.model.bytes);
+    }
+    const order = MODEL_CATALOG.map(weightBytes);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
   });
 });

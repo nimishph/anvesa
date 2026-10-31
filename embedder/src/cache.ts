@@ -12,7 +12,7 @@ import {
   ModelUnavailableError,
   NetworkForbiddenError,
 } from './errors.ts';
-import type { ModelFileSpec, ModelSpec, Pooling } from './models.ts';
+import type { CardForm, ModelFileSpec, ModelSpec, Pooling } from './models.ts';
 
 /** A model on disk, ready to load. */
 export interface InstalledModel {
@@ -42,10 +42,13 @@ export interface CustomRecord {
   readonly dimensions: number;
   readonly maxTokens: number;
   readonly pooling: Pooling;
+  readonly cardForm?: CardForm;
   /** Where it was installed from, for a person to read. */
   readonly source: string;
   readonly installedAt: string;
   readonly model: { readonly bytes: number; readonly sha256: string };
+  /** The model's external weights, under the file name the model refers to them by. */
+  readonly data?: { readonly name: string; readonly bytes: number; readonly sha256: string };
   readonly tokenizer: { readonly bytes: number; readonly sha256: string };
 }
 
@@ -53,10 +56,14 @@ export interface CustomInstall {
   readonly id: string;
   readonly maxTokens: number;
   readonly pooling: Pooling;
+  readonly cardForm?: CardForm;
   /** Where it came from, for a person to read. */
   readonly source: string;
-  /** The model and tokenizer files to copy in. */
-  readonly files: { readonly model: string; readonly tokenizer: string };
+  /**
+   * The model and tokenizer files to copy in, and the model's external weights when it has them
+   * (kept under their own name: the model refers to them by it).
+   */
+  readonly files: { readonly model: string; readonly tokenizer: string; readonly data?: string };
   /**
    * Runs on the copies before anything is committed, and gives the number of dimensions the model
    * really produces. A model that fails here is not installed and nothing existing is touched.
@@ -117,11 +124,7 @@ export class ModelCache {
     const directory = this.directoryOf(spec.id);
     const manifest = await this.#manifest(directory);
     if (!manifest) return undefined;
-    const expected = new Map([
-      [MODEL_FILE, spec.model],
-      [TOKENIZER_FILE, spec.tokenizer],
-    ]);
-    for (const [name, pinned] of expected) {
+    for (const [name, pinned] of pinnedFiles(spec)) {
       const recorded = manifest.files.find((file) => file.name === name);
       if (!recorded || recorded.sha256 !== pinned.sha256) return undefined;
       const size = await sizeOf(join(directory, name));
@@ -145,10 +148,7 @@ export class ModelCache {
    */
   async verify(spec: ModelSpec, deadline?: Deadline): Promise<InstalledModel> {
     const installed = await this.require(spec);
-    for (const [name, pinned] of [
-      [MODEL_FILE, spec.model],
-      [TOKENIZER_FILE, spec.tokenizer],
-    ] as const) {
+    for (const [name, pinned] of pinnedFiles(spec)) {
       deadline?.throwIfExpired(`verify ${spec.id}`);
       const actual = await hashFile(join(installed.directory, name), deadline);
       if (actual !== pinned.sha256) {
@@ -169,10 +169,7 @@ export class ModelCache {
     options: { readonly deadline?: Deadline } = {},
   ): Promise<InstalledModel> {
     const located: [string, ModelFileSpec, string][] = [];
-    for (const [name, pinned] of [
-      [MODEL_FILE, spec.model],
-      [TOKENIZER_FILE, spec.tokenizer],
-    ] as const) {
+    for (const [name, pinned] of pinnedFiles(spec)) {
       const found = [
         join(source, pinned.path),
         join(source, basename(pinned.path)),
@@ -218,10 +215,11 @@ export class ModelCache {
   async download(spec: ModelSpec, options: DownloadOptions): Promise<InstalledModel> {
     const fetcher = options.fetch ?? (fetch as unknown as FetchLike);
     return this.#atomically(spec, async (staging) => {
+      // The tokenizer first (small, fails fast), then the model and any external weights it reads.
       for (const [name, pinned] of [
-        [TOKENIZER_FILE, spec.tokenizer],
-        [MODEL_FILE, spec.model],
-      ] as const) {
+        [TOKENIZER_FILE, spec.tokenizer] as [string, ModelFileSpec],
+        ...pinnedFiles(spec).filter(([file]) => file !== TOKENIZER_FILE),
+      ]) {
         const url = `https://huggingface.co/${spec.repo}/resolve/main/${pinned.path}`;
         if (!options.allowNetwork) throw new NetworkForbiddenError(spec.id, url);
         options.deadline?.throwIfExpired(`download ${spec.id}`);
@@ -284,15 +282,30 @@ export class ModelCache {
         join(staging, TOKENIZER_FILE),
         install,
       );
+      const dataName = install.files.data ? basename(install.files.data) : undefined;
+      const data =
+        install.files.data && dataName
+          ? {
+              name: dataName,
+              ...(await copyHashed(install.files.data, join(staging, dataName), install)),
+            }
+          : undefined;
       if (existing && !install.replace) {
         for (const [name, now, before] of [
           [MODEL_FILE, model, existing.model],
           [TOKENIZER_FILE, tokenizer, existing.tokenizer],
+          [data?.name ?? existing.data?.name ?? 'external weights', data, existing.data],
         ] as const) {
-          if (now.sha256 !== before.sha256) {
-            throw new ModelIntegrityError(install.id, name, before.sha256, now.sha256, {
-              hint: 'These are not the files installed before. If the change is meant, install again with --force.',
-            });
+          if (now?.sha256 !== before?.sha256) {
+            throw new ModelIntegrityError(
+              install.id,
+              name,
+              before?.sha256 ?? 'none',
+              now?.sha256 ?? 'none',
+              {
+                hint: 'These are not the files installed before. If the change is meant, install again with --force.',
+              },
+            );
           }
         }
       }
@@ -305,15 +318,18 @@ export class ModelCache {
         dimensions,
         maxTokens: install.maxTokens,
         pooling: install.pooling,
+        ...(install.cardForm ? { cardForm: install.cardForm } : {}),
         source: install.source,
         installedAt: existing?.installedAt ?? new Date().toISOString(),
         model,
+        ...(data ? { data } : {}),
         tokenizer,
       };
       const manifest: Manifest = {
         id: install.id,
         files: [
           { name: MODEL_FILE, ...model },
+          ...(data ? [data] : []),
           { name: TOKENIZER_FILE, ...tokenizer },
         ],
       };
@@ -404,10 +420,11 @@ export class ModelCache {
       await fill(staging);
       const manifest: Manifest = {
         id: spec.id,
-        files: [
-          { name: MODEL_FILE, bytes: spec.model.bytes, sha256: spec.model.sha256 },
-          { name: TOKENIZER_FILE, bytes: spec.tokenizer.bytes, sha256: spec.tokenizer.sha256 },
-        ],
+        files: pinnedFiles(spec).map(([name, pinned]) => ({
+          name,
+          bytes: pinned.bytes,
+          sha256: pinned.sha256,
+        })),
       };
       await writeFile(join(staging, MANIFEST_FILE), JSON.stringify(manifest, null, 2));
       const destination = this.directoryOf(spec.id);
@@ -441,6 +458,18 @@ export class ModelCache {
   }
 }
 
+/** Every file a spec pins, by the name it has in the model's directory. */
+function pinnedFiles(spec: ModelSpec): [string, ModelFileSpec][] {
+  return [
+    [MODEL_FILE, spec.model],
+    // Kept under its own file name: the ONNX model refers to its external weights by it.
+    ...(spec.modelData
+      ? [[basename(spec.modelData.path), spec.modelData] as [string, ModelFileSpec]]
+      : []),
+    [TOKENIZER_FILE, spec.tokenizer],
+  ];
+}
+
 async function sizeOf(path: string): Promise<number | undefined> {
   try {
     return (await stat(path)).size;
@@ -465,10 +494,20 @@ function customSpec(record: CustomRecord): ModelSpec {
     tier: undefined,
     repo: `local:${record.source}`,
     model: { path: MODEL_FILE, ...record.model },
+    ...(record.data
+      ? {
+          modelData: {
+            path: record.data.name,
+            bytes: record.data.bytes,
+            sha256: record.data.sha256,
+          },
+        }
+      : {}),
     tokenizer: { path: TOKENIZER_FILE, ...record.tokenizer },
     dimensions: record.dimensions,
     maxTokens: record.maxTokens,
     pooling: record.pooling,
+    ...(record.cardForm ? { cardForm: record.cardForm } : {}),
     paramsM: undefined,
     license: 'not recorded',
     notes: `Installed from ${record.source} on ${record.installedAt}.`,
