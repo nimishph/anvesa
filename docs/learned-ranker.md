@@ -1,12 +1,14 @@
-# Symbol search with the anvesa-code encoders, a hub penalty and a learned ranker (experimental)
+# Symbol search with the anvesa-code encoders, and an experimental hub penalty and learned ranker
 
-What anvesa-gen-lab measured best (2026-10-29), behind `experimental.learnedRanker`:
+What anvesa-gen-lab measured best (2026-10-29). The encoders are built in and the 150m is the default. The hub
+penalty and the ranker are experimental: both are off unless `experimental.learnedRanker` is set, and without it
+the symbols lane ranks by plain cosine.
 
-| piece | what it does |
-| --- | --- |
-| encoder `anvesa-code-150m` (the default; or `-400m`, `-1b`) | Ettin-encoder (MIT) fine-tuned on 105 MIT-licensed repositories; the 400m and 150m also learned the 1B fine-tune's scores. Mean pooling, L2-normalised, 512 tokens, no prefix. Each embeds symbol cards without their WQL path line (`cardForm: "nopath"`); the stored card keeps it. |
-| hub penalty | A symbol scores as its best card's `cos(query, card) - 0.3 x mean`, where `mean` is the card's mean cosine to its 10 nearest cards (itself left out). Measured at index time into `card_hub`. |
-| learned ranker | An XGBoost LambdaMART model reorders the top 30 symbols from the first-stage score and its gap to the top, the first card's cosine and hub penalty, kind, documentation, card length, path depth, same-file count and query length. Evaluated in TypeScript from the model's JSON, fit on the encoder it is used with. |
+| piece | status | what it does |
+| --- | --- | --- |
+| encoder `anvesa-code-150m` (the default; or `-400m`, `-1b`) | built in | Ettin-encoder (MIT) fine-tuned on 105 MIT-licensed repositories; the 400m and 150m also learned the 1B fine-tune's scores. Mean pooling, L2-normalised, 512 tokens, no prefix. Each embeds symbol cards without their WQL path line (`cardForm: "nopath"`); the stored card keeps it. |
+| hub penalty | experimental | A symbol scores as its best card's `cos(query, card) - 0.3 x mean`, where `mean` is the card's mean cosine to its 10 nearest cards (itself left out). Measured at index time into `card_hub`. |
+| learned ranker | experimental | An XGBoost LambdaMART model reorders the top 30 symbols from the first-stage score and its gap to the top, the first card's cosine and hub penalty, kind, documentation, card length, path depth, same-file count and query length. Evaluated in TypeScript from the model's JSON, fit on the encoder it is used with. |
 
 No intent cards, and no word-overlap features in the ranker (see below).
 
@@ -14,6 +16,8 @@ No intent cards, and no word-overlap features in the ranker (see below).
 
 First stage with the hub penalty, no ranker. Corpus: 1,710 generated queries over 57 repositories in 13 languages;
 bench: 241 hand-written queries over 8 repositories. CPU: the ONNX model, one card at a time on 12 threads (Colab).
+Every row has the experimental hub penalty on. The encoders by plain cosine, as anvesa ranks by default, were not
+measured on these sets, so these scores are not what the default gives.
 
 | encoder | corpus MRR | bench MRR | CPU per card | weights (fp32) |
 | --- | --- | --- | --- | --- |
@@ -50,6 +54,9 @@ On every encoder it helps generated queries by about +0.02 and leaves hand-writt
 bench repositories (10,555 symbol cards) on an A100 took 98 s with the 400m and 78 s with the 150m.
 
 ## Use it
+
+The ranker stays experimental until it shows a gain on hand-written queries: the 20-feature ranker's bench
+intervals above all include 0. Its features, defaults and model format may change.
 
 1. Install the model; it downloads from Hugging Face (`nimishph/anvesa-code-<size>`) and every file is checked
    against its pinned SHA-256:
