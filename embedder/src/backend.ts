@@ -159,7 +159,9 @@ export async function openOnnx(options: OnnxOptions): Promise<InferenceBackend> 
       break;
     } catch (failure) {
       // CUDA without its libraries (cuDNN, or the provider files onnxruntime-node did not install)
-      tried.push(`${provider}: ${failure instanceof Error ? failure.message.split('\n')[0] : String(failure)}`);
+      tried.push(
+        `${provider}: ${failure instanceof Error ? failure.message.split('\n')[0] : String(failure)}`,
+      );
     }
   }
   if (!session && device === 'gpu') {

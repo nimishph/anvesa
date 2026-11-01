@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { builtinMappings } from '@cntxt-labs/anvesa-structural';
+import { builtinMappings, type LanguageMapping } from '@cntxt-labs/anvesa-structural';
 import { auditMapping, mappingStoreFor, refineMapping } from './mappings.ts';
 
 const roots: string[] = [];
@@ -47,8 +47,9 @@ const host = {
  * samples show, which is what audit and refine are for.
  */
 async function withoutMethods(root: string): Promise<void> {
-  const bundled = builtinMappings().find((entry) => entry.languages.includes('csharp'))?.mapping;
-  if (!bundled) throw new Error('no bundled C# mapping');
+  const found = builtinMappings().find((entry) => entry.languages.includes('csharp'))?.mapping;
+  expect(found).toBeDefined();
+  const bundled = found as LanguageMapping;
   const { method_declaration: _method, ...nodeTypeMap } = bundled.nodeTypeMap;
   const { method_declaration: _name, ...nameExtractors } = bundled.nameExtractors;
   await mappingStoreFor(root, host).install(
