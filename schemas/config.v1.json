@@ -141,13 +141,8 @@
         "ranking": {
           "type": "object",
           "additionalProperties": false,
-          "description": "Symbol search ranks in two stages: cosine less a hub penalty, then the top reordered by the learned ranker that came with the encoder. Only the second stage is shown.",
+          "description": "Symbol search ranks in two stages: cosine less a hub penalty, then the top reordered by the learned ranker an anvesa-code model comes with. Only the second stage is shown; other encoders rank by the first alone.",
           "properties": {
-            "model": {
-              "type": "string",
-              "minLength": 1,
-              "description": "An XGBoost JSON ranker, relative to the root, to use instead of the encoder's own."
-            },
             "hub": {
               "type": "number",
               "minimum": 0,

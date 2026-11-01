@@ -1040,8 +1040,8 @@ export class Retriever {
 
   /**
    * The symbols lane: every symbol card scored by cosine less its hub penalty (the first stage),
-   * the top reordered by the ranker that came with the encoder, or the one `search.ranking.model`
-   * names (the second). Both stages go to `onRanking`; only the second's order is returned. Hits
+   * the top reordered by the ranker that came with the encoder (the second); only the anvesa-code
+   * models come with one, so any other encoder ranks by the first stage alone. Both stages go to `onRanking`; only the second's order is returned. Hits
    * are screened again like any dense hit.
    */
   async #rankedSymbols(
@@ -1052,9 +1052,9 @@ export class Retriever {
   ): Promise<SearchHit[]> {
     const config = this.config.search?.ranking;
     const embedder = this.#requireEmbedder();
-    const model = config?.model ?? embedder.info.ranker;
+    const model = embedder.info.ranker;
     this.#ranking ??= (async () => ({
-      ranker: model ? await loadTreeRanker(this.root, model) : undefined,
+      ranker: model ? await loadTreeRanker(model) : undefined,
       stats: await storedBm25(this.store),
     }))();
     const { ranker, stats } = await this.#ranking;

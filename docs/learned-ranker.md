@@ -4,7 +4,8 @@ What anvesa-gen-lab measured best (2026-10-29), and how anvesa's symbol search w
 in two stages, and only the second is shown:
 
 1. **First stage:** every symbol card scored by its cosine to the query less a hub penalty.
-2. **Second stage:** the top 30 of those reordered by the learned ranker that came with the encoder.
+2. **Second stage:** the top 30 of those reordered by the learned ranker that came with the encoder. Only the
+   anvesa-code models come with one; any other encoder ranks by the first stage alone.
 
 Both stages are recorded for telemetry and evaluation (see [Telemetry](#telemetry)).
 
@@ -71,12 +72,13 @@ where there is one (`ANVESA_DEVICE=gpu`).
 Nothing needs configuring. `search.ranking` in `.anvesa/config.json` tunes it:
 
 ```json
-{ "search": { "ranking": { "hub": 0.3, "depth": 30, "model": "my-ranker.json" } } }
+{ "search": { "ranking": { "hub": 0.3, "depth": 30 } } }
 ```
 
-`model` names another XGBoost JSON ranker to use instead of the encoder's own; a ranker fit on one encoder's scores is
-not meant for another. An encoder without a ranker (one brought in with `model install --from`) ranks by the first
-stage alone.
+The ranker is only supported with the anvesa-code models, each with the one fit on its own scores: a ranker's trees
+split on score thresholds learned from one encoder, so it is not meant for another. A model brought in with
+`model install --from <folder>` (a custom id) has no ranker and ranks by the first stage alone; the hub penalty
+needs no training, and lost on none of the encoders anvesa-gen-lab measured it with.
 
 ## Telemetry
 

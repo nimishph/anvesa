@@ -1,9 +1,8 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { isAbsolute, join } from 'node:path';
 import { type Card, cardTextFor } from '@cntxt-labs/anvesa-dense';
 import { type IndexStore, StoreCorruptError, type StoreDatabase } from '@cntxt-labs/anvesa-indexer';
-import { ProjectConfigError } from './errors.ts';
+import { RankerError } from './errors.ts';
 
 /**
  * How the symbols lane ranks, in two stages (anvesa-gen-lab, 2026-10-29). First, a symbol scores
@@ -341,7 +340,7 @@ export class TreeRanker {
 
   static parse(text: string, source: string): TreeRanker {
     const bad = (problem: string): never => {
-      throw new ProjectConfigError(source, 'search.ranking.model', problem);
+      throw new RankerError(source, problem);
     };
     let json: Record<string, unknown>;
     try {
@@ -431,15 +430,12 @@ export function rerank<T>(top: readonly T[], scores: Float32Array): T[] {
     .map((entry) => entry.item);
 }
 
-export async function loadTreeRanker(root: string, path: string): Promise<TreeRanker> {
-  const file = isAbsolute(path) ? path : join(root, path);
+export async function loadTreeRanker(file: string): Promise<TreeRanker> {
   let text: string;
   try {
     text = await readFile(file, 'utf8');
   } catch (failure) {
-    throw new ProjectConfigError(file, 'search.ranking.model', 'cannot be read', {
-      cause: failure,
-    });
+    throw new RankerError(file, 'it cannot be read', { cause: failure });
   }
   return TreeRanker.parse(text, file);
 }

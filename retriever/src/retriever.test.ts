@@ -23,6 +23,7 @@ import {
   ModelMismatchError,
   NotIndexedError,
   ProjectConfigError,
+  RankerError,
   TargetError,
 } from './errors.ts';
 import { fuse } from './fuse.ts';
@@ -370,10 +371,9 @@ describe('project config', () => {
   });
 
   test('ranking settings are read as given, the defaults left to search', () => {
-    expect(
-      validateProjectConfig({ search: { ranking: { model: 'ranker.json', hub: 0.5, depth: 10 } } })
-        .search,
-    ).toEqual({ ranking: { model: 'ranker.json', hub: 0.5, depth: 10 } });
+    expect(validateProjectConfig({ search: { ranking: { hub: 0.5, depth: 10 } } }).search).toEqual({
+      ranking: { hub: 0.5, depth: 10 },
+    });
     expect(validateProjectConfig({ search: { ranking: {} } }).search).toBeUndefined();
   });
 
@@ -394,7 +394,8 @@ describe('project config', () => {
     [{ search: { ranking: true } }, 'search.ranking'],
     [{ search: { ranking: { hub: -1 } } }, 'search.ranking.hub'],
     [{ search: { ranking: { depth: 0 } } }, 'search.ranking.depth'],
-    [{ search: { ranking: { model: '' } } }, 'search.ranking.model'],
+    // Only the ranker an anvesa-code model comes with is used: there is no other to name.
+    [{ search: { ranking: { model: 'ranker.json' } } }, 'search.ranking.model'],
     [{ search: { ranking: { intent: true } } }, 'search.ranking.intent'],
   ])('%j is refused at %s', (raw, location) => {
     try {
@@ -1196,19 +1197,16 @@ describe('symbol search in two stages', () => {
     expect(search.stages.ranked).toBeUndefined();
   });
 
-  test('search.ranking.model overrides the encoder ranker; a broken one fails the symbols lane by name', async () => {
+  test('a damaged ranker fails the symbols lane by name, not the search', async () => {
     const root = makeProject();
-    writeFileSync(join(root, 'ranker.json'), '{"learner": {}}');
-    const r = await retriever(root, {
-      embedder: embedder({ ranker: RANKER }),
-      config: validateProjectConfig({ search: { ranking: { model: 'ranker.json' } } }),
-    });
+    const broken = join(root, 'ranker.json');
+    writeFileSync(broken, '{"learner": {}}');
+    const r = await retriever(root, { embedder: embedder({ ranker: broken }) });
     await r.index();
     const page = await r.search('start the http server');
-    expect(page.degraded.map((entry) => entry.lane)).toContain('symbols');
-    expect(page.degraded.find((entry) => entry.lane === 'symbols')?.error.message).toMatch(
-      /search\.ranking\.model/,
-    );
+    const symbols = page.degraded.find((entry) => entry.lane === 'symbols');
+    expect(symbols?.error).toBeInstanceOf(RankerError);
+    expect(symbols?.error.message).toContain(broken);
   });
 
   test('an observer that throws changes no result, and the index run says so', async () => {

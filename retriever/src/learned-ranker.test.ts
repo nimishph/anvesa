@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { cardTextFor } from '@cntxt-labs/anvesa-dense';
-import { ProjectConfigError } from './errors.ts';
+import { RankerError } from './errors.ts';
 import {
   bm25,
   bm25Stats,
@@ -215,7 +215,7 @@ describe('the pieces', () => {
 
   test('a ranker file that is not one anvesa can run is refused, naming why', () => {
     const model = JSON.parse(readFileSync(resolve(FIXTURE, 'ranker.json'), 'utf8'));
-    expect(() => TreeRanker.parse('{', 'x.json')).toThrow(ProjectConfigError);
+    expect(() => TreeRanker.parse('{', 'x.json')).toThrow(RankerError);
     const unknown = structuredClone(model);
     unknown.learner.feature_names[0] = 'intent_max';
     expect(() => TreeRanker.parse(JSON.stringify(unknown), 'x.json')).toThrow(/intent_max/);

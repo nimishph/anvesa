@@ -1,7 +1,7 @@
 /**
  * The symbols a project's search returns for many queries, one model load for all of them: what
  * anvesa-gen-lab's `bench.py score --anvesa` reads to score anvesa's own ranking (with the
- * encoder's ranker, or the one `search.ranking.model` names) against its hand-written queries.
+ * ranker an anvesa-code encoder came with) against its hand-written queries.
  *
  *   bun run eval/src/symbol-ranks.ts <project root> [--limit 100] < queries.jsonl > ranks.jsonl
  *

@@ -36,14 +36,10 @@ export interface SearchTuningConfig {
 /**
  * Symbol search runs in two stages: every symbol card scored by cosine less a hub penalty, then the
  * top `depth` reordered by the learned ranker that came with the encoder. Only the second stage's
- * order is shown.
+ * order is shown. Only the anvesa-code models come with a ranker; any other encoder ranks by the
+ * first stage alone.
  */
 export interface RankingConfig {
-  /**
-   * An XGBoost JSON ranker (relative to the root) to use instead of the one the encoder came with.
-   * An encoder without one, and no ranker here, ranks by the first stage alone.
-   */
-  readonly model?: string;
   /** How much a card's mean similarity to its 10 nearest cards is taken off its score. Default 0.3. */
   readonly hub?: number;
   /** How many of the first stage's symbols the ranker reorders. Default 30. */
@@ -497,14 +493,11 @@ function validateRanking(
 ): RankingConfig {
   if (!isRecord(raw)) return fail('search.ranking', 'must be an object');
   for (const key of Object.keys(raw)) {
-    if (!['model', 'hub', 'depth'].includes(key)) {
+    if (!['hub', 'depth'].includes(key)) {
       fail(`search.ranking.${key}`, 'is not a known setting');
     }
   }
-  const { model, hub, depth } = raw;
-  if (model !== undefined && (typeof model !== 'string' || model.length === 0)) {
-    fail('search.ranking.model', 'must be the path of an XGBoost JSON model');
-  }
+  const { hub, depth } = raw;
   if (hub !== undefined && (typeof hub !== 'number' || !Number.isFinite(hub) || hub < 0)) {
     fail('search.ranking.hub', 'must be a number of 0 or more');
   }
@@ -512,7 +505,6 @@ function validateRanking(
     fail('search.ranking.depth', 'must be a whole number of at least 1');
   }
   return {
-    ...(model !== undefined ? { model: model as string } : {}),
     ...(hub !== undefined ? { hub: hub as number } : {}),
     ...(depth !== undefined ? { depth: depth as number } : {}),
   };
