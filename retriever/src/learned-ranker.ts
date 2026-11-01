@@ -3,17 +3,18 @@ import { readFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { type Card, cardTextFor } from '@cntxt-labs/anvesa-dense';
 import { type IndexStore, StoreCorruptError, type StoreDatabase } from '@cntxt-labs/anvesa-indexer';
-import type { LearnedRankerConfig } from './config.ts';
 import { ProjectConfigError } from './errors.ts';
 
 /**
- * Experimental: the symbol search anvesa-gen-lab measured best (2026-10-28). A symbol scores as
- * its best card's cosine to the query less a hub penalty, `hub` times the card's mean cosine to
- * its 10 nearest cards (cards that sit close to everything stop crowding every answer), and an
- * XGBoost LambdaMART ranker reorders the top `depth` symbols from cheap features of the query and
- * each card. The ranker computes every feature below, but the one to ship leaves out word overlap
- * (name, path and card matches, BM25): fit on generated queries, those features hurt hand-written
- * ones. The model names the features it reads; results are in docs/learned-ranker.md.
+ * How the symbols lane ranks, in two stages (anvesa-gen-lab, 2026-10-29). First, a symbol scores
+ * as its best card's cosine to the query less a hub penalty, `hub` times the card's mean cosine to
+ * its 10 nearest cards (cards that sit close to everything stop crowding every answer). Second, an
+ * XGBoost LambdaMART ranker, the one that came with the encoder, reorders the top `depth` symbols
+ * from cheap features of the query and each card. Both stages are recorded (`SearchStages`); only
+ * the second's order is shown. The ranker computes every feature below, but the ones shipped leave
+ * out word overlap (name, path and card matches, BM25): fit on generated queries, those features
+ * hurt hand-written ones. The model names the features it reads; results are in
+ * docs/learned-ranker.md.
  *
  * Everything here is a port of anvesa-gen-lab's `corpus_bench.py` (`score_repo`, `_features`) and
  * must stay equal to it: the ranker was trained on those numbers. `learned-ranker.test.ts` checks
@@ -25,8 +26,8 @@ export const HUB_NEIGHBOURS = 10;
 export const DEFAULT_HUB = 0.3;
 export const DEFAULT_DEPTH = 30;
 const CHANNEL = 'symbols';
-const STATE_META = 'experimental.learnedRanker';
-const BM25_META = 'experimental.learnedRanker.bm25';
+const STATE_META = 'ranking.hub';
+const BM25_META = 'ranking.bm25';
 
 // ------------------------------------------------------------------------- words and BM25
 
@@ -340,7 +341,7 @@ export class TreeRanker {
 
   static parse(text: string, source: string): TreeRanker {
     const bad = (problem: string): never => {
-      throw new ProjectConfigError(source, 'experimental.learnedRanker.model', problem);
+      throw new ProjectConfigError(source, 'search.ranking.model', problem);
     };
     let json: Record<string, unknown>;
     try {
@@ -436,7 +437,7 @@ export async function loadTreeRanker(root: string, path: string): Promise<TreeRa
   try {
     text = await readFile(file, 'utf8');
   } catch (failure) {
-    throw new ProjectConfigError(file, 'experimental.learnedRanker.model', 'cannot be read', {
+    throw new ProjectConfigError(file, 'search.ranking.model', 'cannot be read', {
       cause: failure,
     });
   }
@@ -451,26 +452,29 @@ interface CardRow {
   card: string;
 }
 
+/** What bringing the hub means up to date measured, and what it cost. */
+export interface HubReport {
+  /** Symbol cards whose hub mean was measured, over every model. */
+  readonly cards: number;
+  /** Symbols BM25's statistics were taken over. */
+  readonly symbols: number;
+  /** Time spent on the hub means alone: quadratic in the cards of each model. */
+  readonly hubMs: number;
+  /** Time for the whole update: reading cards and vectors, the hub means, BM25, writing. */
+  readonly totalMs: number;
+}
+
 /**
  * Bring the ranker's index-time numbers up to date: every symbol card's hub mean (per model), and
  * BM25's collection statistics over each symbol's first card. Recomputed only when the symbol
- * cards changed since the last run. Without a config, what an earlier run stored is removed.
+ * cards changed since the last run; `undefined` when nothing had to be.
  */
-export async function syncLearnedRanker(
+export async function syncHubMeans(
   store: IndexStore,
   database: StoreDatabase,
-  config: LearnedRankerConfig | undefined,
-): Promise<string | undefined> {
+): Promise<HubReport | undefined> {
+  const started = performance.now();
   const previous = await store.getMeta(STATE_META);
-  if (!config) {
-    if (previous === undefined) return undefined;
-    database.transaction('remove hub means', (db) => {
-      db.query('DELETE FROM card_hub WHERE channel = ?').run(CHANNEL);
-    });
-    await store.deleteMeta(STATE_META);
-    await store.deleteMeta(BM25_META);
-    return 'experimental learnedRanker: off, hub means removed';
-  }
 
   // The symbol cards as they are now: their sources, and how propagation (which rewrites searched
   // vectors without touching a source) is set.
@@ -532,6 +536,7 @@ export async function syncLearnedRanker(
   });
   let measured = 0;
   const means = new Map<string, number>();
+  const hubStarted = performance.now();
   for (const list of byModel.values()) {
     const found = hubMeans(list.map((entry) => entry.vector));
     list.forEach((entry, index) => {
@@ -539,6 +544,7 @@ export async function syncLearnedRanker(
     });
     measured += list.length;
   }
+  const hubMs = performance.now() - hubStarted;
   database.transaction('store hub means', (db) => {
     db.query('DELETE FROM card_hub WHERE channel = ?').run(CHANNEL);
     const insert = db.query('INSERT INTO card_hub (channel, id, mean) VALUES (?, ?, ?)');
@@ -546,7 +552,7 @@ export async function syncLearnedRanker(
   });
   await store.setMeta(BM25_META, JSON.stringify(stats));
   await store.setMeta(STATE_META, fingerprint);
-  return `experimental learnedRanker: hub means of ${measured} symbol cards over their ${HUB_NEIGHBOURS} nearest, BM25 over ${stats.docs} symbols`;
+  return { cards: measured, symbols: stats.docs, hubMs, totalMs: performance.now() - started };
 }
 
 function floats(bytes: Uint8Array): Float32Array {
@@ -562,9 +568,27 @@ export interface RankedHit {
   readonly score: number;
 }
 
+/** One stage of a symbol search: the symbols it ranked, in its order, and how long it took. */
+export interface SearchStage {
+  readonly symbols: readonly { readonly symbol: string; readonly score: number }[];
+  readonly ms: number;
+}
+
+/**
+ * Both stages of one symbol search, for telemetry and evaluation: what the first stage alone would
+ * have shown, and what the ranker made of it. Never shown to the user.
+ */
+export interface SearchStages {
+  /** Cosine less the hub penalty: its top `depth`, the candidates the ranker saw. */
+  readonly first: SearchStage;
+  /** The ranker's order of those candidates. Absent when there was no ranker to run. */
+  readonly ranked?: SearchStage;
+}
+
 /**
  * Symbols for a query, best first: the hub-penalised first stage over every symbol card, its top
- * `depth` reordered by the ranker when there is one. At most `limit` are returned.
+ * `depth` reordered by the ranker when there is one. At most `limit` are returned, with both
+ * stages as they were.
  */
 export function rankSymbols(options: {
   readonly database: StoreDatabase;
@@ -577,8 +601,9 @@ export function rankSymbols(options: {
   readonly ranker: TreeRanker | undefined;
   readonly stats: Bm25Stats | undefined;
   readonly include?: (path: string) => boolean;
-}): RankedHit[] {
+}): { readonly hits: RankedHit[]; readonly stages: SearchStages } {
   const { database, hub, depth } = options;
+  const firstStarted = performance.now();
   const query = unit(options.vector);
   const rows = database.guard('read symbol vectors', (db) => {
     const out: VectorRow[] = [];
@@ -608,6 +633,10 @@ export function rankSymbols(options: {
     return out;
   });
   const order = scoreSymbols(rows, query, hub);
+  const first: SearchStage = {
+    symbols: order.slice(0, depth).map(({ symbol, score }) => ({ symbol, score })),
+    ms: performance.now() - firstStarted,
+  };
   const cardOf = (id: string): Card =>
     database.guard('read a card', (db) => {
       const row = db
@@ -618,19 +647,85 @@ export function rankSymbols(options: {
     });
 
   let ranked = order;
+  let second: SearchStage | undefined;
   if (options.ranker && options.stats && order.length > 1) {
+    const rankStarted = performance.now();
     const top = order.slice(0, depth);
     const features = rankerFeatures(
       options.query,
       top.map((symbol) => ({ ...symbol, card: cardOf(symbol.firstId) })),
       options.stats,
     );
-    ranked = [...rerank(top, options.ranker.score(features)), ...order.slice(depth)];
+    const scores = options.ranker.score(features);
+    const reordered = rerank(
+      top.map((symbol, index) => ({ symbol, score: scores[index] as number })),
+      scores,
+    );
+    ranked = [...reordered.map((entry) => entry.symbol), ...order.slice(depth)];
+    second = {
+      symbols: reordered.map((entry) => ({ symbol: entry.symbol.symbol, score: entry.score })),
+      ms: performance.now() - rankStarted,
+    };
   }
-  return ranked.slice(0, options.limit).map((symbol) => ({
-    card: cardOf(symbol.bestId),
-    score: symbol.bestCosine,
-  }));
+  return {
+    hits: ranked.slice(0, options.limit).map((symbol) => ({
+      card: cardOf(symbol.bestId),
+      score: symbol.bestCosine,
+    })),
+    stages: second ? { first, ranked: second } : { first },
+  };
+}
+
+/**
+ * What ranking did, told to `RetrieverOptions.onRanking` as it happens: the hub means an index run
+ * brought up to date, or both stages of a symbol search. Local and complete (it names symbols and
+ * carries the query); what may leave the machine is `summarizeStages` of it.
+ */
+export type RankingEvent =
+  | { readonly kind: 'index'; readonly hub: HubReport }
+  | {
+      readonly kind: 'search';
+      readonly query: string;
+      readonly model: string;
+      readonly stages: SearchStages;
+    };
+
+/**
+ * What telemetry may carry of a search's stages: how much the ranker moved, and how long each
+ * stage took. No symbol, path or query: only ranks, counts and times.
+ */
+export interface StagesSummary {
+  /** Candidates the first stage handed on. */
+  readonly candidates: number;
+  /** Whether the ranker ran. */
+  readonly reranked: boolean;
+  /** Whether the result shown first differs from the first stage's first. */
+  readonly topChanged: boolean;
+  /** Where the result shown first stood in the first stage (0 is first). */
+  readonly shownTopFirstRank: number | undefined;
+  /** Share of the first stage's top 10 that is also in the top 10 shown. */
+  readonly overlapAt10: number;
+  readonly firstMs: number;
+  readonly rankedMs: number | undefined;
+}
+
+export function summarizeStages(stages: SearchStages): StagesSummary {
+  const first = stages.first.symbols.map((entry) => entry.symbol);
+  const shown = (stages.ranked ?? stages.first).symbols.map((entry) => entry.symbol);
+  // biome-ignore lint/plugin: the top 10 is what overlap@10 is defined over, not a cap on results
+  const head = new Set(first.slice(0, 10));
+  // biome-ignore lint/plugin: as above, the metric's own window
+  const kept = shown.slice(0, 10).filter((symbol) => head.has(symbol)).length;
+  const top = shown[0];
+  return {
+    candidates: first.length,
+    reranked: stages.ranked !== undefined,
+    topChanged: top !== first[0],
+    shownTopFirstRank: top === undefined ? undefined : first.indexOf(top),
+    overlapAt10: head.size > 0 ? kept / head.size : 1,
+    firstMs: stages.first.ms,
+    rankedMs: stages.ranked?.ms,
+  };
 }
 
 /** BM25 statistics stored at index time, or undefined before the first index with the ranker. */

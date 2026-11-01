@@ -29,6 +29,25 @@ export interface SearchTuningConfig {
   readonly excludeLanes?: readonly string[];
   readonly minScore?: number;
   readonly collapse?: boolean;
+  /** How the symbols lane ranks (see `learned-ranker.ts`). Every setting has a default. */
+  readonly ranking?: RankingConfig;
+}
+
+/**
+ * Symbol search runs in two stages: every symbol card scored by cosine less a hub penalty, then the
+ * top `depth` reordered by the learned ranker that came with the encoder. Only the second stage's
+ * order is shown.
+ */
+export interface RankingConfig {
+  /**
+   * An XGBoost JSON ranker (relative to the root) to use instead of the one the encoder came with.
+   * An encoder without one, and no ranker here, ranks by the first stage alone.
+   */
+  readonly model?: string;
+  /** How much a card's mean similarity to its 10 nearest cards is taken off its score. Default 0.3. */
+  readonly hub?: number;
+  /** How many of the first stage's symbols the ranker reorders. Default 30. */
+  readonly depth?: number;
 }
 
 export interface IndexingTuningConfig {
@@ -55,31 +74,17 @@ export interface RedTeamTuningConfig {
  * project without this block indexes exactly as before.
  */
 export interface ExperimentalConfig {
-  /** Add the W-expression path of a symbol (its enclosing declarations) to its card. */
-  readonly cardPath?: 'words' | 'wql';
+  /**
+   * The form of a symbol card's W-expression path line (its enclosing declarations), instead of
+   * the default WQL path the learned ranker was trained on: as words, or left out.
+   */
+  readonly cardPath?: 'wql' | 'words' | 'none';
   /** A SCIP index (path relative to the root): its references replace the linker's call edges. */
   readonly scip?: string;
   /** Mix each symbol vector with its graph neighbours': `v + alpha * mean(neighbours)`. */
   readonly propagate?: PropagateConfig;
   /** Batch only texts of one length, so no text is padded and a text's vector never varies. */
   readonly exactBatches?: boolean;
-  /**
-   * Rank the symbols channel with a hub penalty and, when a model is named, an XGBoost ranker
-   * over the top results (see `learned-ranker.ts`).
-   */
-  readonly learnedRanker?: LearnedRankerConfig;
-}
-
-export interface LearnedRankerConfig {
-  /**
-   * An XGBoost JSON model (relative to the root) that reorders the top `depth` symbols. Absent,
-   * symbols are ranked by the hub-penalised first stage alone.
-   */
-  readonly model?: string;
-  /** How much a card's mean similarity to its 10 nearest cards is taken off its score. */
-  readonly hub: number;
-  /** How many of the first stage's symbols the ranker reorders. */
-  readonly depth: number;
 }
 
 export interface PropagateConfig {
@@ -310,7 +315,7 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
     if (!isRecord(raw.search)) fail('search', 'must be an object');
     const s = raw.search as Record<string, unknown>;
     for (const key of Object.keys(s)) {
-      if (!['defaultLimit', 'excludeLanes', 'minScore', 'collapse'].includes(key)) {
+      if (!['defaultLimit', 'excludeLanes', 'minScore', 'collapse', 'ranking'].includes(key)) {
         fail(`search.${key}`, 'is not a known setting');
       }
     }
@@ -339,6 +344,7 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
     if (s.collapse !== undefined && typeof s.collapse !== 'boolean') {
       fail('search.collapse', 'must be a boolean');
     }
+    const ranking = s.ranking === undefined ? undefined : validateRanking(s.ranking, fail);
     search = {
       ...(s.defaultLimit !== undefined ? { defaultLimit: s.defaultLimit as number } : {}),
       ...(s.excludeLanes !== undefined
@@ -346,6 +352,7 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
         : {}),
       ...(s.minScore !== undefined ? { minScore: s.minScore as number } : {}),
       ...(s.collapse !== undefined ? { collapse: s.collapse as boolean } : {}),
+      ...(ranking !== undefined && Object.keys(ranking).length > 0 ? { ranking } : {}),
     };
   }
 
@@ -447,13 +454,13 @@ function validateExperimental(
 ): ExperimentalConfig {
   if (!isRecord(raw)) return fail('experimental', 'must be an object');
   for (const key of Object.keys(raw)) {
-    if (!['cardPath', 'scip', 'propagate', 'exactBatches', 'learnedRanker'].includes(key)) {
+    if (!['cardPath', 'scip', 'propagate', 'exactBatches'].includes(key)) {
       fail(`experimental.${key}`, 'is not a known setting');
     }
   }
-  const { cardPath, scip, propagate, exactBatches, learnedRanker } = raw;
-  if (cardPath !== undefined && cardPath !== 'words' && cardPath !== 'wql') {
-    fail('experimental.cardPath', 'must be "words" or "wql"');
+  const { cardPath, scip, propagate, exactBatches } = raw;
+  if (cardPath !== undefined && cardPath !== 'wql' && cardPath !== 'words' && cardPath !== 'none') {
+    fail('experimental.cardPath', 'must be "wql", "words" or "none"');
   }
   if (scip !== undefined && (typeof scip !== 'string' || scip.length === 0)) {
     fail('experimental.scip', 'must be the path of a SCIP index');
@@ -476,36 +483,38 @@ function validateExperimental(
     }
     propagation = { alpha: alpha as number, edges: (edges as string[] | undefined) ?? ['calls'] };
   }
-  let ranker: LearnedRankerConfig | undefined;
-  if (learnedRanker !== undefined) {
-    if (!isRecord(learnedRanker)) return fail('experimental.learnedRanker', 'must be an object');
-    for (const key of Object.keys(learnedRanker)) {
-      if (!['model', 'hub', 'depth'].includes(key)) {
-        fail(`experimental.learnedRanker.${key}`, 'is not a known setting');
-      }
-    }
-    const { model, hub, depth } = learnedRanker;
-    if (model !== undefined && (typeof model !== 'string' || model.length === 0)) {
-      fail('experimental.learnedRanker.model', 'must be the path of an XGBoost JSON model');
-    }
-    if (hub !== undefined && (typeof hub !== 'number' || !Number.isFinite(hub) || hub < 0)) {
-      fail('experimental.learnedRanker.hub', 'must be a number of 0 or more');
-    }
-    if (depth !== undefined && !(Number.isSafeInteger(depth) && (depth as number) >= 1)) {
-      fail('experimental.learnedRanker.depth', 'must be a whole number of at least 1');
-    }
-    ranker = {
-      ...(model !== undefined ? { model: model as string } : {}),
-      hub: (hub as number | undefined) ?? 0.3,
-      depth: (depth as number | undefined) ?? 30,
-    };
-  }
   return {
-    ...(cardPath !== undefined ? { cardPath: cardPath as 'words' | 'wql' } : {}),
+    ...(cardPath !== undefined ? { cardPath: cardPath as 'wql' | 'words' | 'none' } : {}),
     ...(scip !== undefined ? { scip: scip as string } : {}),
     ...(propagation !== undefined ? { propagate: propagation } : {}),
     ...(exactBatches !== undefined ? { exactBatches: exactBatches as boolean } : {}),
-    ...(ranker !== undefined ? { learnedRanker: ranker } : {}),
+  };
+}
+
+function validateRanking(
+  raw: unknown,
+  fail: (location: string, problem: string) => never,
+): RankingConfig {
+  if (!isRecord(raw)) return fail('search.ranking', 'must be an object');
+  for (const key of Object.keys(raw)) {
+    if (!['model', 'hub', 'depth'].includes(key)) {
+      fail(`search.ranking.${key}`, 'is not a known setting');
+    }
+  }
+  const { model, hub, depth } = raw;
+  if (model !== undefined && (typeof model !== 'string' || model.length === 0)) {
+    fail('search.ranking.model', 'must be the path of an XGBoost JSON model');
+  }
+  if (hub !== undefined && (typeof hub !== 'number' || !Number.isFinite(hub) || hub < 0)) {
+    fail('search.ranking.hub', 'must be a number of 0 or more');
+  }
+  if (depth !== undefined && !(Number.isSafeInteger(depth) && (depth as number) >= 1)) {
+    fail('search.ranking.depth', 'must be a whole number of at least 1');
+  }
+  return {
+    ...(model !== undefined ? { model: model as string } : {}),
+    ...(hub !== undefined ? { hub: hub as number } : {}),
+    ...(depth !== undefined ? { depth: depth as number } : {}),
   };
 }
 

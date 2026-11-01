@@ -41,6 +41,11 @@ export interface ModelSpec {
    */
   readonly modelData?: ModelFileSpec;
   readonly tokenizer: ModelFileSpec;
+  /**
+   * The learned ranker fit on this encoder's scores (an XGBoost JSON model), which reorders the top
+   * of symbol search. Absent: symbols are ranked by the hub-penalised first stage alone.
+   */
+  readonly ranker?: ModelFileSpec;
   /** Declared output size. The loader reads the real one from the model and refuses a mismatch. */
   readonly dimensions: number;
   /** Input window, in tokens, special tokens included. */
@@ -67,8 +72,8 @@ const ETTIN_TOKENIZER: ModelFileSpec = {
  * ONNX in fp32 with the weights in model.onnx_data. Mean pooling, 512 tokens, and symbol cards
  * embedded without their WQL path line. Numbers are anvesa-gen-lab's (2026-10-29): first stage with
  * the hub penalty and no ranker, on the corpus test set (1,710 generated queries, 57 repos, 13
- * languages) and the 241 hand-written bench queries; CPU time is one card on 12 threads. Each repo
- * also publishes the learned ranker fit on that encoder (ranker-noword.json).
+ * languages) and the 241 hand-written bench queries; CPU time is one card on 12 threads. Each comes
+ * with the learned ranker fit on its scores (ranker-noword.json, 20 features, no word overlap).
  */
 const CODE_400M: ModelSpec = {
   id: 'anvesa-code-400m',
@@ -85,6 +90,11 @@ const CODE_400M: ModelSpec = {
     sha256: 'd4155cb27211ff1c90d3dc1c2bcb13887ddc8a1bc78f4c93fea258161a25c75e',
   },
   tokenizer: ETTIN_TOKENIZER,
+  ranker: {
+    path: 'ranker-noword.json',
+    bytes: 243592,
+    sha256: 'e81c135ca4ff4decf37c1348b37f01feafb9203aabcc88fd180a2ee0d3d30670',
+  },
   dimensions: 1024,
   maxTokens: 512,
   pooling: 'mean',
@@ -112,6 +122,11 @@ const CODE_150M: ModelSpec = {
     sha256: '78c8202253b8d54565987e93a499e6c065be6d49018e0de2379876be6e975600',
   },
   tokenizer: ETTIN_TOKENIZER,
+  ranker: {
+    path: 'ranker-noword.json',
+    bytes: 244225,
+    sha256: '400012bb93db7c4a021e4a2ebd736d9a119532aa7b9a37126e09789063981e6e',
+  },
   dimensions: 768,
   maxTokens: 512,
   pooling: 'mean',
@@ -139,6 +154,11 @@ const CODE_1B: ModelSpec = {
     sha256: '2bf8038ac17358a505091b27816beac37a32e64cf3d928212b36a634ef775805',
   },
   tokenizer: ETTIN_TOKENIZER,
+  ranker: {
+    path: 'ranker-noword.json',
+    bytes: 244475,
+    sha256: '7d49fa95580cb568be0bb1eb6105da9557bf91e3e4436dfbbc640d3efc2304ca',
+  },
   dimensions: 1792,
   maxTokens: 512,
   pooling: 'mean',

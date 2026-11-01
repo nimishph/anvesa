@@ -72,9 +72,10 @@ with the one the new version ships.
 Built-in encoders: `anvesa-code-150m` (0.6 GB, the default), `anvesa-code-400m` (1.6 GB) and
 `anvesa-code-1b` (4 GB). They are Ettin fine-tuned for code search (MIT, `nimishph/anvesa-code-*` on
 Hugging Face); on 241 hand-written queries they score 0.626, 0.684 and 0.685 MRR, against 0.547 for MiniLM,
-the previous default, all measured with the experimental hub penalty on (`experimental.learnedRanker`; see
-`docs/learned-ranker.md`, which also covers the experimental learned ranker). The 150m is what automatic choice and `init` propose:
-it indexes on a CPU at about 40 ms a symbol card. Choose a bigger one with `--model` (best on a GPU).
+the previous default. Each comes with a learned ranker: symbol search scores every symbol by cosine less a hub
+penalty, then reorders the top 30 with the encoder's ranker, and shows that second order (see
+`docs/learned-ranker.md`). The 150m is what automatic choice and `init` propose: it indexes on a CPU at about 40 ms
+a symbol card. Choose a bigger one with `--model` (best on a GPU).
 Models that used to be built in (MiniLM, BGE, GTE, jina) are refused by name with what replaced them; a
 project configured with one needs the replacement installed and an index run.
 

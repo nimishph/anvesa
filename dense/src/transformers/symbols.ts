@@ -10,10 +10,11 @@ export interface SymbolsOptions {
   /** Which files count as source code. Defaults to the built-in language registry. */
   readonly languages?: LanguageRegistry;
   /**
-   * Experimental: add where the symbol sits in the W-expression (its enclosing nodes) to the card,
-   * as words (`in export, function cart modal`) or as a WQL path.
+   * Where the symbol sits in the W-expression (its enclosing nodes), as the card's second line: a
+   * WQL path (the default; the learned ranker was trained on these cards), as words (`in export,
+   * function cart modal`), or left out (`none`).
    */
-  readonly path?: 'words' | 'wql';
+  readonly path?: 'wql' | 'words' | 'none';
 }
 
 /** The nodes from the root (excluded) down to `target` (included), or `undefined` if not found. */
@@ -60,10 +61,11 @@ function pathWql(path: readonly WNode[]): string {
  */
 export function symbolsTransformer(options: SymbolsOptions = {}): Transformer {
   const languages = options.languages ?? new LanguageRegistry();
+  const pathForm = options.path ?? 'wql';
   return defineTransformer({
     name: options.name ?? 'symbols',
     // bump when the cards this makes would change, so they are rebuilt
-    version: options.path ? `2+path-${options.path}` : '2',
+    version: pathForm === 'none' ? '2' : `2+path-${pathForm}`,
     channel: options.channel ?? 'symbols',
     categoryId: 'code.symbol',
     categoryLabel: 'Code symbol',
@@ -87,8 +89,8 @@ export function symbolsTransformer(options: SymbolsOptions = {}): Transformer {
           .join(' — ');
 
         const doc = symbol.doc ? normalizeDoc(symbol.doc) : '';
-        const path = options.path ? pathTo(encoded.root, symbol.node) : undefined;
-        const where = path ? (options.path === 'wql' ? pathWql(path) : pathWords(path)) : '';
+        const path = pathForm === 'none' ? undefined : pathTo(encoded.root, symbol.node);
+        const where = path ? (pathForm === 'wql' ? pathWql(path) : pathWords(path)) : '';
         const blocks = [
           ...(where ? [{ text: where }] : []),
           ...(doc ? [{ text: doc }] : []),

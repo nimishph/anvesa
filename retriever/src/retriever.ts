@@ -119,9 +119,14 @@ import {
 } from './insight.ts';
 import {
   type Bm25Stats,
+  DEFAULT_DEPTH,
+  DEFAULT_HUB,
+  type HubReport,
   loadTreeRanker,
+  type RankingEvent,
   rankSymbols,
   storedBm25,
+  syncHubMeans,
   type TreeRanker,
 } from './learned-ranker.ts';
 import { mappingStoreFor } from './mappings.ts';
@@ -198,6 +203,11 @@ export interface RetrieverOptions {
   readonly databasePath?: string;
   /** Index only these languages. */
   readonly only?: readonly string[];
+  /**
+   * Told what ranking did: the hub means an index run updated, and both stages of every symbol
+   * search. For telemetry and evaluation; it never changes a result, and a throw here is ignored.
+   */
+  readonly onRanking?: (event: RankingEvent) => void;
 }
 
 /** One found thing, whichever lane found it. */
@@ -330,6 +340,9 @@ export class Retriever {
     | undefined;
   /** The learned ranker's model and BM25 statistics, read once and again after an index run. */
   #ranking: Promise<{ ranker: TreeRanker | undefined; stats: Bm25Stats | undefined }> | undefined;
+  readonly #onRanking: ((event: RankingEvent) => void) | undefined;
+  /** The first failure of `onRanking` since the last index run reported one. */
+  #observerFailure: CodeLensError | undefined;
 
   private constructor(parts: {
     root: string;
@@ -346,7 +359,9 @@ export class Retriever {
     runtime: SyntaxRuntime;
     ownsRuntime: boolean;
     only: readonly string[] | undefined;
+    onRanking: ((event: RankingEvent) => void) | undefined;
   }) {
+    this.#onRanking = parts.onRanking;
     this.root = parts.root;
     this.workspace = parts.workspace;
     this.store = parts.store;
@@ -433,6 +448,7 @@ export class Retriever {
       runtime,
       ownsRuntime,
       only: options.only,
+      onRanking: options.onRanking,
     });
     try {
       await retriever.#registerChannels();
@@ -480,11 +496,14 @@ export class Retriever {
 
   /**
    * Bring the index up to date: files, graph and dense cards for changed files (see `Indexer`),
-   * then every channel that reads from a source of its own.
+   * the hub means symbol search ranks by, then every channel that reads from a source of its own.
+   * `ranking` is what the hub means cost, when they had to be measured again.
    */
-  async index(
-    options: RunOptions = {},
-  ): Promise<{ readonly report: IndexReport; readonly synced: readonly SyncReport[] }> {
+  async index(options: RunOptions = {}): Promise<{
+    readonly report: IndexReport;
+    readonly synced: readonly SyncReport[];
+    readonly ranking?: HubReport;
+  }> {
     await this.#settleShards();
     // Cards are built for every channel at once; one left out would look indexed and be empty.
     if (this.#ingester) this.#requireLoaded(...this.#unloaded.keys());
@@ -503,7 +522,19 @@ export class Retriever {
       this.store,
       this.vectors instanceof SqliteVectorStore ? this.vectors.database : undefined,
     );
-    const notes = [...(unused ? [unused] : []), ...experiments];
+    // After the experiments: propagation rewrites the vectors the hub means are measured on.
+    const ranking =
+      this.#ingester && this.vectors instanceof SqliteVectorStore
+        ? await syncHubMeans(this.store, this.vectors.database)
+        : undefined;
+    if (ranking) this.#tell({ kind: 'index', hub: ranking });
+    const observer = this.#observerFailure;
+    this.#observerFailure = undefined;
+    const notes = [
+      ...(unused ? [unused] : []),
+      ...experiments,
+      ...(observer ? [`onRanking failed and was skipped: ${observer.message}`] : []),
+    ];
     const report =
       notes.length > 0
         ? { ...indexed, warnings: [...(indexed.warnings ?? []), ...notes] }
@@ -522,7 +553,19 @@ export class Retriever {
     await this.#structure.refresh();
     this.#indexedModels = undefined;
     this.#ranking = undefined;
-    return { report, synced };
+    return ranking ? { report, synced, ranking } : { report, synced };
+  }
+
+  /**
+   * Tell `onRanking` what ranking did. Whatever it does, a search or an index run goes on: its
+   * first failure is kept, and the next index run reports it.
+   */
+  #tell(event: RankingEvent): void {
+    try {
+      this.#onRanking?.(event);
+    } catch (failure) {
+      this.#observerFailure ??= toCodeLensError(failure, `tell onRanking of a ${event.kind} event`);
+    }
   }
 
   /** Bring one channel up to date from its own source, or from the project's files. */
@@ -987,17 +1030,19 @@ export class Retriever {
     };
   }
 
-  /** Whether the symbols lane is ranked by the learned ranker: configured, on one database. */
+  /**
+   * Whether the symbols lane ranks in two stages. It does on one database; with fragments, whose
+   * vectors are spread over several, it falls back to plain cosine.
+   */
   #learnedRanking(): boolean {
-    return (
-      this.config.experimental?.learnedRanker !== undefined &&
-      this.vectors instanceof SqliteVectorStore
-    );
+    return this.vectors instanceof SqliteVectorStore;
   }
 
   /**
-   * The symbols lane under `experimental.learnedRanker`: every symbol card scored by cosine less
-   * its hub penalty, the top reordered by the ranker. Hits are screened again like any dense hit.
+   * The symbols lane: every symbol card scored by cosine less its hub penalty (the first stage),
+   * the top reordered by the ranker that came with the encoder, or the one `search.ranking.model`
+   * names (the second). Both stages go to `onRanking`; only the second's order is returned. Hits
+   * are screened again like any dense hit.
    */
   async #rankedSymbols(
     query: string,
@@ -1005,27 +1050,29 @@ export class Retriever {
     include: ((path: string) => boolean) | undefined,
     deadline: Deadline | undefined,
   ): Promise<SearchHit[]> {
-    const config = this.config.experimental?.learnedRanker;
+    const config = this.config.search?.ranking;
     const embedder = this.#requireEmbedder();
+    const model = config?.model ?? embedder.info.ranker;
     this.#ranking ??= (async () => ({
-      ranker: config?.model ? await loadTreeRanker(this.root, config.model) : undefined,
+      ranker: model ? await loadTreeRanker(this.root, model) : undefined,
       stats: await storedBm25(this.store),
     }))();
     const { ranker, stats } = await this.#ranking;
     const [vector] = await embedAll(embedder, [query], deadline ? { deadline } : {});
     deadline?.throwIfExpired(`search for "${query}"`);
-    const hits = rankSymbols({
+    const { hits, stages } = rankSymbols({
       database: (this.vectors as SqliteVectorStore).database,
       model: embedder.info.id,
       query,
       vector: vector as Float32Array,
       limit,
-      hub: config?.hub ?? 0,
-      depth: config?.depth ?? 0,
+      hub: config?.hub ?? DEFAULT_HUB,
+      depth: config?.depth ?? DEFAULT_DEPTH,
       ranker,
       stats,
       ...(include ? { include } : {}),
     });
+    this.#tell({ kind: 'search', query, model: embedder.info.id, stages });
     const screened: SearchHit[] = [];
     for (const hit of hits) {
       const result = this.#gate.screen(hit.card);

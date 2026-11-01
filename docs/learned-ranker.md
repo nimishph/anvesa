@@ -1,23 +1,26 @@
-# Symbol search with the anvesa-code encoders, and an experimental hub penalty and learned ranker
+# Symbol search: the anvesa-code encoders, a hub penalty and a learned ranker
 
-What anvesa-gen-lab measured best (2026-10-29). The encoders are built in and the 150m is the default. The hub
-penalty and the ranker are experimental: both are off unless `experimental.learnedRanker` is set, and without it
-the symbols lane ranks by plain cosine.
+What anvesa-gen-lab measured best (2026-10-29), and how anvesa's symbol search works by default. Symbol search runs
+in two stages, and only the second is shown:
 
-| piece | status | what it does |
-| --- | --- | --- |
-| encoder `anvesa-code-150m` (the default; or `-400m`, `-1b`) | built in | Ettin-encoder (MIT) fine-tuned on 105 MIT-licensed repositories; the 400m and 150m also learned the 1B fine-tune's scores. Mean pooling, L2-normalised, 512 tokens, no prefix. Each embeds symbol cards without their WQL path line (`cardForm: "nopath"`); the stored card keeps it. |
-| hub penalty | experimental | A symbol scores as its best card's `cos(query, card) - 0.3 x mean`, where `mean` is the card's mean cosine to its 10 nearest cards (itself left out). Measured at index time into `card_hub`. |
-| learned ranker | experimental | An XGBoost LambdaMART model reorders the top 30 symbols from the first-stage score and its gap to the top, the first card's cosine and hub penalty, kind, documentation, card length, path depth, same-file count and query length. Evaluated in TypeScript from the model's JSON, fit on the encoder it is used with. |
+1. **First stage:** every symbol card scored by its cosine to the query less a hub penalty.
+2. **Second stage:** the top 30 of those reordered by the learned ranker that came with the encoder.
+
+Both stages are recorded for telemetry and evaluation (see [Telemetry](#telemetry)).
+
+| piece | what it does |
+| --- | --- |
+| encoder `anvesa-code-150m` (the default; or `-400m`, `-1b`) | Ettin-encoder (MIT) fine-tuned on 105 MIT-licensed repositories; the 400m and 150m also learned the 1B fine-tune's scores. Mean pooling, L2-normalised, 512 tokens, no prefix. Each embeds symbol cards without their WQL path line (`cardForm: "nopath"`); the stored card keeps it. |
+| symbol cards | Each card's second line is the symbol's WQL path (`/export/class[@name="X"]/method[@name="X.y"]`), the form the ranker was trained on. |
+| hub penalty (first stage) | A symbol scores as its best card's `cos(query, card) - 0.3 x mean`, where `mean` is the card's mean cosine to its 10 nearest cards (itself left out). Measured at index time into `card_hub`. |
+| learned ranker (second stage) | An XGBoost LambdaMART model reorders the top 30 symbols from the first-stage score and its gap to the top, the first card's cosine and hub penalty, kind, documentation, card length, path depth, same-file count and query length. Evaluated in TypeScript from the model's JSON. Each anvesa-code size comes with the ranker fit on its own scores (`ranker-noword.json`), downloaded and pinned with the model. |
 
 No intent cards, and no word-overlap features in the ranker (see below).
 
 ## Results
 
-First stage with the hub penalty, no ranker. Corpus: 1,710 generated queries over 57 repositories in 13 languages;
-bench: 241 hand-written queries over 8 repositories. CPU: the ONNX model, one card at a time on 12 threads (Colab).
-Every row has the experimental hub penalty on. The encoders by plain cosine, as anvesa ranks by default, were not
-measured on these sets, so these scores are not what the default gives.
+First stage alone. Corpus: 1,710 generated queries over 57 repositories in 13 languages; bench: 241 hand-written
+queries over 8 repositories. CPU: the ONNX model, one card at a time on 12 threads (Colab).
 
 | encoder | corpus MRR | bench MRR | CPU per card | weights (fp32) |
 | --- | --- | --- | --- | --- |
@@ -30,13 +33,13 @@ The 400m is level with the 1B (paired differences -0.003 [-0.014 +0.008] on the 
 the bench) at about a quarter of its CPU time, so it is the one to pick where there is a GPU. The 150m is the default:
 below both (about -0.05) but well above MiniLM on hand-written queries, at 40 ms a card on a CPU.
 
-The ranker, with the 1B (paired against the hub penalty alone, 95% bootstrap intervals):
+Both stages, with the 1B (paired against the first stage alone, 95% bootstrap intervals):
 
-| ranker | corpus | bench |
+| second stage | corpus | bench |
 | --- | --- | --- |
-| hub penalty alone | 0.352 | 0.685 |
-| all 26 features | 0.446, +0.094 [+0.083 +0.105] | 0.629, **-0.056 [-0.100 -0.013]** |
-| without word overlap (20 features) | 0.370, +0.018 [+0.011 +0.025] | 0.699, +0.014 [-0.001 +0.030] |
+| none (first stage alone) | 0.352 | 0.685 |
+| ranker, all 26 features | 0.446, +0.094 [+0.083 +0.105] | 0.629, **-0.056 [-0.100 -0.013]** |
+| ranker without word overlap (20 features, shipped) | 0.370, +0.018 [+0.011 +0.025] | 0.699, +0.014 [-0.001 +0.030] |
 
 The corpus queries were generated by a model that read the cards, so they share the cards' words far more than
 people's queries do; a ranker that reads word overlap (name, path and card matches, BM25) learns that and hurts
@@ -45,54 +48,51 @@ anvesa reproduces the Python numbers: 0.705 on the bench with the 20-feature ran
 
 The 20-feature ranker fit on each smaller encoder's own scores:
 
-| encoder | corpus: hub, ranker | bench: hub, ranker | anvesa on the bench |
+| encoder | corpus: first stage, both | bench: first stage, both | anvesa on the bench |
 | --- | --- | --- | --- |
 | `anvesa-code-400m` | 0.349, 0.369 (+0.020 [+0.013 +0.027]) | 0.684, 0.682 (-0.002 [-0.023 +0.018]) | 0.684 |
 | `anvesa-code-150m` | 0.301, 0.322 (+0.021 [+0.014 +0.027]) | 0.626, 0.632 (+0.006 [-0.013 +0.025]) | 0.629 |
 
-On every encoder it helps generated queries by about +0.02 and leaves hand-written ones unchanged. Indexing the 8
-bench repositories (10,555 symbol cards) on an A100 took 98 s with the 400m and 78 s with the 150m.
+On every encoder the second stage helps generated queries by about +0.02 and leaves hand-written ones unchanged.
+Indexing the 8 bench repositories (10,555 symbol cards) on an A100 took 98 s with the 400m and 78 s with the 150m.
 
 ## Use it
 
-The ranker stays experimental until it shows a gain on hand-written queries: the 20-feature ranker's bench
-intervals above all include 0. Its features, defaults and model format may change.
+```bash
+anvesa model install anvesa-code-150m --download   # or -400m on a GPU
+anvesa index
+```
 
-1. Install the model; it downloads from Hugging Face (`nimishph/anvesa-code-<size>`) and every file is checked
-   against its pinned SHA-256:
+The download fetches the model, its weights, the tokenizer and its ranker from Hugging Face
+(`nimishph/anvesa-code-<size>`), each checked against its pinned SHA-256. Offline, `--from <folder>` installs the same
+files from a local copy (`model.onnx`, `model.onnx_data`, `tokenizer.json`, `ranker-noword.json`). Index on a GPU
+where there is one (`ANVESA_DEVICE=gpu`).
 
-   ```bash
-   anvesa model install anvesa-code-150m --download   # or -400m on a GPU
-   ```
+Nothing needs configuring. `search.ranking` in `.anvesa/config.json` tunes it:
 
-   Offline, `--from <folder>` installs the same files from a local copy (`model.onnx`, `model.onnx_data`,
-   `tokenizer.json`), checked the same way.
-2. Put the size's ranker in the project: `ranker-noword.json` from the same Hugging Face repo, as
-   `.anvesa/ranker-noword.json`.
-3. In `.anvesa/config.json`:
+```json
+{ "search": { "ranking": { "hub": 0.3, "depth": 30, "model": "my-ranker.json" } } }
+```
 
-   ```json
-   {
-     "model": "anvesa-code-150m",
-     "experimental": {
-       "cardPath": "wql",
-       "learnedRanker": { "model": ".anvesa/ranker-noword.json" }
-     }
-   }
-   ```
+`model` names another XGBoost JSON ranker to use instead of the encoder's own; a ranker fit on one encoder's scores is
+not meant for another. An encoder without a ranker (one brought in with `model install --from`) ranks by the first
+stage alone.
 
-   `cardPath: "wql"` makes the stored cards the ones the ranker was trained on (card length reads the card as
-   indexed, path line included). `hub` (default 0.3) and `depth` (default 30) can be set; without `model` the
-   hub-penalised first stage ranks alone. A ranker fit on one encoder's scores is not meant for another.
+## Telemetry
 
-4. `anvesa index`, then search as usual. Index on a GPU where there is one (`ANVESA_DEVICE=gpu`).
+Every symbol search records both stages: the first stage's top 30 with their scores, the ranker's order of them, and
+how long each took. `RetrieverOptions.onRanking` receives them (and, after an index run, how many cards the hub step
+measured and how long it took). That record names symbols and carries the query, so it stays on the machine;
+`summarizeStages` reduces it to what telemetry may carry: whether the ranker changed the top result, where the result
+shown first stood in the first stage, the overlap of the two top 10s, and the time of each stage.
 
 ## Limits
 
-- Only the symbols lane of `search` is ranked this way, and only with one index database (not with fragments).
-  Conjunction searches and `retrieve` still use plain cosine.
+- Only the symbols lane of `search` is ranked this way, and only with one index database: with fragments the symbols
+  lane ranks by plain cosine. Conjunction searches and `retrieve` also use plain cosine.
 - The hub means are recomputed over every symbol card whenever the symbol cards change: quadratic in the number of
-  cards, and done at the end of `anvesa index`.
+  cards, and done at the end of `anvesa index`. It is exact on every repository; the hub step's card count and time
+  are recorded so telemetry can show where that starts to cost.
 - Parity with the Python port is tested on a fixture written by anvesa-gen-lab `ranker_fixture.py` from
   `corpus_bench.py` itself (`retriever/src/learned-ranker.test.ts`). With real vectors a cosine can differ from
   numpy's in its last bit, which rarely flips a tree split.

@@ -12,6 +12,8 @@ export interface EncoderOptions {
   readonly pooling: Pooling;
   /** How cards are reshaped before they are embedded (see `ModelSpec.cardForm`). */
   readonly cardForm?: CardForm;
+  /** The learned ranker fit on this model's scores, when it has one (see `ModelSpec.ranker`). */
+  readonly ranker?: string;
   readonly tokenizer: Tokenizer;
   readonly backend: InferenceBackend;
   /**
@@ -75,6 +77,7 @@ export class LocalEmbedder implements Embedder {
       specialTokens: options.tokenizer.specialTokens,
       ...(options.backend.device ? { device: options.backend.device } : {}),
       ...(options.cardForm ? { cardForm: options.cardForm } : {}),
+      ...(options.ranker ? { ranker: options.ranker } : {}),
     };
   }
 

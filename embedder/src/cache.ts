@@ -20,6 +20,8 @@ export interface InstalledModel {
   readonly directory: string;
   readonly modelPath: string;
   readonly tokenizerPath: string;
+  /** The learned ranker fit on this model, when the model comes with one. */
+  readonly rankerPath?: string;
 }
 
 interface Manifest {
@@ -29,6 +31,7 @@ interface Manifest {
 
 const MODEL_FILE = 'model.onnx';
 const TOKENIZER_FILE = 'tokenizer.json';
+const RANKER_FILE = 'ranker.json';
 const MANIFEST_FILE = 'manifest.json';
 const CUSTOM_FILE = 'custom.json';
 
@@ -130,7 +133,7 @@ export class ModelCache {
       const size = await sizeOf(join(directory, name));
       if (size !== pinned.bytes) return undefined;
     }
-    return this.#installed(spec.id, directory);
+    return this.#installed(spec, directory);
   }
 
   /** The model, or `ModelUnavailableError` saying where it looked. */
@@ -430,19 +433,20 @@ export class ModelCache {
       const destination = this.directoryOf(spec.id);
       await rm(destination, { recursive: true, force: true });
       await rename(staging, destination);
-      return this.#installed(spec.id, destination);
+      return this.#installed(spec, destination);
     } catch (failure) {
       await rm(staging, { recursive: true, force: true });
       throw failure;
     }
   }
 
-  #installed(id: string, directory: string): InstalledModel {
+  #installed(spec: ModelSpec, directory: string): InstalledModel {
     return {
-      id,
+      id: spec.id,
       directory,
       modelPath: join(directory, MODEL_FILE),
       tokenizerPath: join(directory, TOKENIZER_FILE),
+      ...(spec.ranker ? { rankerPath: join(directory, RANKER_FILE) } : {}),
     };
   }
 
@@ -467,6 +471,7 @@ function pinnedFiles(spec: ModelSpec): [string, ModelFileSpec][] {
       ? [[basename(spec.modelData.path), spec.modelData] as [string, ModelFileSpec]]
       : []),
     [TOKENIZER_FILE, spec.tokenizer],
+    ...(spec.ranker ? [[RANKER_FILE, spec.ranker] as [string, ModelFileSpec]] : []),
   ];
 }
 

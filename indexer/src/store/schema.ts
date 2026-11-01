@@ -278,7 +278,7 @@ export const MIGRATIONS: readonly Migration[] = [
   {
     version: 11,
     description:
-      'experimental: how crowded each card is, its mean similarity to its nearest cards (the hub penalty of the learned ranker)',
+      'how crowded each card is, its mean similarity to its nearest cards (the first stage of symbol search)',
     sql: `
       CREATE TABLE card_hub (
         channel TEXT NOT NULL,

@@ -64,6 +64,7 @@ export async function openLocalEmbedder(
     maxTokens: spec.maxTokens,
     pooling: spec.pooling,
     ...(spec.cardForm ? { cardForm: spec.cardForm } : {}),
+    ...(installed.rankerPath ? { ranker: installed.rankerPath } : {}),
     tokenizer,
     backend,
     maxBatchTokens: batchTokensFor(spec.dimensions, budget, backend.device),

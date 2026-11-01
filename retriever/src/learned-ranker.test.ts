@@ -10,12 +10,50 @@ import {
   hubMeans,
   rankerFeatures,
   rerank,
+  type SearchStage,
   scoreSymbols,
+  summarizeStages,
   symbolOf,
   TreeRanker,
   type VectorRow,
   words,
 } from './learned-ranker.ts';
+
+describe('the stages telemetry may carry', () => {
+  const stage = (symbols: string[], ms: number): SearchStage => ({
+    symbols: symbols.map((symbol, rank) => ({ symbol, score: 1 - rank / 10 })),
+    ms,
+  });
+
+  test('how far the ranker moved the first stage, in ranks and times only', () => {
+    const first = stage(['a#A', 'b#B', 'c#C', 'd#D'], 4);
+    const summary = summarizeStages({ first, ranked: stage(['c#C', 'a#A', 'b#B', 'd#D'], 2) });
+    expect(summary).toEqual({
+      candidates: 4,
+      reranked: true,
+      topChanged: true,
+      shownTopFirstRank: 2,
+      overlapAt10: 1,
+      firstMs: 4,
+      rankedMs: 2,
+    });
+    // Nothing in it names a symbol.
+    expect(JSON.stringify(summary)).not.toMatch(/#/);
+  });
+
+  test('without a ranker, what was shown is the first stage', () => {
+    expect(summarizeStages({ first: stage(['a#A'], 1) })).toEqual({
+      candidates: 1,
+      reranked: false,
+      topChanged: false,
+      shownTopFirstRank: 0,
+      overlapAt10: 1,
+      firstMs: 1,
+      rankedMs: undefined,
+    });
+    expect(summarizeStages({ first: stage([], 1) }).shownTopFirstRank).toBeUndefined();
+  });
+});
 
 /**
  * The port must give the numbers anvesa-gen-lab's corpus_bench.py gives, or the ranker reads
@@ -57,7 +95,7 @@ const rows: VectorRow[] = fixture.cards.map((card, index) => ({
   hubMean: means[index] as number,
 }));
 
-/** BM25 over each symbol's first card without its path line, as `syncLearnedRanker` builds it. */
+/** BM25 over each symbol's first card without its path line, as `syncHubMeans` builds it. */
 const stats = (() => {
   const first = new Map<string, FixtureCard>();
   for (const card of fixture.cards) {

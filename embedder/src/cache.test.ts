@@ -1,6 +1,14 @@
 import { afterAll, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Deadline, OperationAbortedError } from '@cntxt-labs/anvesa-core';
@@ -11,7 +19,7 @@ import {
   ModelUnavailableError,
   NetworkForbiddenError,
 } from './errors.ts';
-import type { ModelSpec } from './models.ts';
+import type { ModelFileSpec, ModelSpec } from './models.ts';
 
 const dirs: string[] = [];
 const scratch = (): string => {
@@ -253,6 +261,31 @@ describe('downloading', () => {
     expect(existsSync(join(installed.directory, 'model.onnx_data'))).toBe(true);
     expect(await cache.find(big)).toBeDefined();
     await expect(cache.verify(big)).resolves.toBeDefined();
+  });
+
+  test('a model with a ranker downloads it, pinned, and says where it is', async () => {
+    const ranker = new TextEncoder().encode('{"learner": {}}');
+    const ranked: ModelSpec = {
+      ...spec,
+      ranker: { path: 'ranker-noword.json', bytes: ranker.length, sha256: sha(ranker) },
+    };
+    const cache = new ModelCache(scratch());
+    const installed = await cache.download(ranked, {
+      allowNetwork: true,
+      fetch: serving({ ...upstream, 'ranker-noword.json': ranker }),
+    });
+    expect(installed.rankerPath).toBe(join(installed.directory, 'ranker.json'));
+    expect(readFileSync(installed.rankerPath as string, 'utf8')).toBe('{"learner": {}}');
+    expect((await cache.find(spec))?.rankerPath).toBeUndefined();
+
+    // A ranker that is not the pinned one is refused like any other file.
+    const tampered = new TextEncoder().encode('{"learner": 1}');
+    await expect(
+      new ModelCache(scratch()).download(
+        { ...ranked, ranker: { ...(ranked.ranker as ModelFileSpec), bytes: tampered.length } },
+        { allowNetwork: true, fetch: serving({ ...upstream, 'ranker-noword.json': tampered }) },
+      ),
+    ).rejects.toBeInstanceOf(ModelIntegrityError);
   });
 
   test('offline, a missing model is a typed error naming the URL, and the network is not touched', async () => {

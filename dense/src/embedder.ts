@@ -9,9 +9,8 @@ import { isUsableVector } from './vectors.ts';
  */
 export type CardForm =
   /**
-   * Without the WQL path line (`/class[@name="X"]/method[@name="X.y"]`) that
-   * `experimental.cardPath: "wql"` adds as a symbol card's second line: its names are already in
-   * the head line.
+   * Without the WQL path line (`/class[@name="X"]/method[@name="X.y"]`) that a symbol card
+   * carries as its second line: its names are already in the head line.
    */
   'nopath';
 
@@ -37,6 +36,11 @@ export interface EmbedderInfo {
   readonly device?: string;
   /** How cards are reshaped before they are embedded. Queries are embedded as written. */
   readonly cardForm?: CardForm;
+  /**
+   * The learned ranker fit on this encoder's scores: the path of its XGBoost JSON model. Symbol
+   * search reorders its top results with it; without one the first stage ranks alone.
+   */
+  readonly ranker?: string;
 }
 
 /**

@@ -110,7 +110,7 @@ describe('symbols transformer', () => {
     for (const part of parts) expect(part.text.startsWith('function wide')).toBe(true);
   });
 
-  describe('experimental: the W-expression path in the card', () => {
+  describe('the W-expression path in the card', () => {
     const nested = `export class ConfigLoader {
   load(name: string) {
     const parse = (text: string) => text.trim();
@@ -118,16 +118,25 @@ describe('symbols transformer', () => {
   }
 }
 `;
-    const cardsWith = async (path?: 'words' | 'wql') =>
+    const cardsWith = async (path?: 'wql' | 'words' | 'none') =>
       (await symbolsTransformer(path ? { path } : {}).transform(
         inputFile('src/loader.ts', nested),
         context(),
       )) as CardDraft[];
 
-    test('off by default: the card and the transformer version are as before', async () => {
+    test('a WQL path by default, the form the learned ranker was trained on', async () => {
       const card = (await cardsWith()).find((d) => d.key === 'ConfigLoader.load') as CardDraft;
+      expect(card.text).toContain('/export/class[@name="ConfigLoader"]');
+      expect(symbolsTransformer().version).toBe('2+path-wql');
+    });
+
+    test('left out, the card and the transformer version are as they were before paths', async () => {
+      const card = (await cardsWith('none')).find(
+        (d) => d.key === 'ConfigLoader.load',
+      ) as CardDraft;
+      expect(card.text).not.toContain('/export');
       expect(card.text).not.toContain('in export');
-      expect(symbolsTransformer().version).toBe('2');
+      expect(symbolsTransformer({ path: 'none' }).version).toBe('2');
     });
 
     test('as words, the enclosing nodes outermost first, the symbol itself left out', async () => {

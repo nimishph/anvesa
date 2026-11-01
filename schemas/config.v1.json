@@ -137,6 +137,30 @@
           "type": "boolean",
           "default": true,
           "description": "Collapse multiple search result chunks originating from the same symbol or card group."
+        },
+        "ranking": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Symbol search ranks in two stages: cosine less a hub penalty, then the top reordered by the learned ranker that came with the encoder. Only the second stage is shown.",
+          "properties": {
+            "model": {
+              "type": "string",
+              "minLength": 1,
+              "description": "An XGBoost JSON ranker, relative to the root, to use instead of the encoder's own."
+            },
+            "hub": {
+              "type": "number",
+              "minimum": 0,
+              "default": 0.3,
+              "description": "Weight of each card's mean similarity to its 10 nearest cards."
+            },
+            "depth": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 30,
+              "description": "How many first-stage symbols the ranker reorders."
+            }
+          }
         }
       }
     },
@@ -188,8 +212,8 @@
       "description": "Experiments that are not yet part of the product. Each is off when absent.",
       "properties": {
         "cardPath": {
-          "enum": ["words", "wql"],
-          "description": "Add the W-expression path of a symbol to its card."
+          "enum": ["wql", "words", "none"],
+          "description": "The form of a symbol card's W-expression path line, instead of the default WQL path the learned ranker was trained on."
         },
         "scip": {
           "type": "string",
@@ -217,28 +241,6 @@
         "exactBatches": {
           "type": "boolean",
           "description": "Batch only texts of one length, so no text is padded."
-        },
-        "learnedRanker": {
-          "type": "object",
-          "additionalProperties": false,
-          "description": "Rank symbols by cosine less a hub penalty, then reorder the top with an XGBoost ranker.",
-          "properties": {
-            "model": {
-              "type": "string",
-              "minLength": 1,
-              "description": "An XGBoost JSON ranker, relative to the root. Absent: the hub-penalised ranking alone."
-            },
-            "hub": {
-              "type": "number",
-              "minimum": 0,
-              "description": "Weight of each card's mean similarity to its 10 nearest cards. Default 0.3."
-            },
-            "depth": {
-              "type": "integer",
-              "minimum": 1,
-              "description": "How many symbols the ranker reorders. Default 30."
-            }
-          }
         }
       }
     }
