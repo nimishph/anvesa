@@ -262,7 +262,7 @@ describe('command line', () => {
       );
       expect(ran.code).toBe(0);
       expect(ran.err).toContain('This machine:');
-      for (const id of ['all-MiniLM-L6-v2', 'bge-small-en-v1.5', 'jina-embeddings-v2-base-code']) {
+      for (const id of ['anvesa-code-150m', 'anvesa-code-400m', 'anvesa-code-1b']) {
         expect(ran.err).toContain(id);
       }
       expect(ran.err).toContain('recommended');
@@ -347,7 +347,7 @@ describe('command line', () => {
         'nope',
       );
       expect(ran.code).toBe(2);
-      expect(ran.err).toContain('bge-small-en-v1.5');
+      expect(ran.err).toContain('anvesa-code-150m');
     });
   });
 
@@ -1064,7 +1064,7 @@ describe('command line', () => {
       root,
       'model',
       'install',
-      'bge-small-en-v1.5',
+      'anvesa-code-150m',
       '--download',
       '--no-network',
     );
@@ -1155,7 +1155,7 @@ describe('native grammars', () => {
       expect(rows.find((row) => row.language === 'csharp')).toMatchObject({
         state: 'ready',
         detail: 'native (compiled into the addon)',
-        mapped: false,
+        mapped: true,
       });
 
       const rendered = await cliWith(
@@ -1166,7 +1166,7 @@ describe('native grammars', () => {
       );
       expect(rendered.out).toContain('* python');
       expect(rendered.out).toContain('no structural mapping: cannot be indexed');
-      expect(rendered.out).not.toContain('* csharp');
+      expect(rendered.out).toContain('* csharp');
       rmSync(root, { recursive: true, force: true });
     },
   );
@@ -1307,8 +1307,8 @@ describe('bringing your own model', () => {
 });
 
 describe('teaching it a language', () => {
-  // C# has no bundled mapping (its grammar needs more than a mapping can say), so it stands for any
-  // language a person teaches.
+  // C# stands for any language a person teaches. It ships with a mapping, so these tests train with
+  // --replace: learned from the samples alone, not laid over the bundled one.
   const CSHARP = {
     'App.csproj': '<Project Sdk="Microsoft.NET.Sdk"></Project>',
     'server/Server.cs': `namespace App;
@@ -1368,12 +1368,9 @@ public interface IThing { void Run(); }
     grammars: { npmFrom: import.meta.filename, home: join(root, 'home') },
   });
 
-  test('without a mapping a language has no outline; a learned one gives it symbols, and is pinned', async () => {
+  test('a learned mapping takes the place of the bundled one in the project, gives symbols, and is pinned', async () => {
     const root = csharpProject();
     const options = own(root);
-    await cliWith(options, root, 'index', '--no-embed');
-    const before = await cliWith(options, root, 'query', '//method', '--json');
-    expect(before.code === 0 ? json(before).items : []).toEqual([]);
 
     const dry = await cliWith(
       options,
@@ -1381,6 +1378,7 @@ public interface IThing { void Run(); }
       'mapping',
       'train',
       'csharp',
+      '--replace',
       '--samples',
       'server',
       '--min-samples',
@@ -1398,6 +1396,7 @@ public interface IThing { void Run(); }
       'mapping',
       'train',
       'csharp',
+      '--replace',
       '--samples',
       'server',
       '--min-samples',
@@ -1413,8 +1412,10 @@ public interface IThing { void Run(); }
 
     const listed = json(await cliWith(options, root, 'mapping', 'list', '--json'));
     // biome-ignore lint/suspicious/noExplicitAny: asserting a JSON shape
-    const learned = listed.find((m: any) => m.mapping.name === 'csharp');
+    const learned = listed.find((m: any) => m.mapping.name === 'csharp' && m.tier === 'project');
     expect(learned).toMatchObject({ tier: 'project', languages: ['csharp'] });
+    // biome-ignore lint/suspicious/noExplicitAny: asserting a JSON shape
+    expect(listed.some((m: any) => m.tier === 'bundled' && m.mapping.name === 'csharp')).toBe(true);
     // biome-ignore lint/suspicious/noExplicitAny: asserting a JSON shape
     expect(listed.some((m: any) => m.tier === 'bundled' && m.mapping.name === 'python')).toBe(true);
 
@@ -1442,6 +1443,7 @@ public interface IThing { void Run(); }
       'mapping',
       'train',
       'csharp',
+      '--replace',
       '--samples',
       'server/Server.cs',
       'server/Config.cs',
@@ -1453,7 +1455,16 @@ public interface IThing { void Run(); }
     expect(both.code).toBe(0);
     expect(json(both).samples).toBe(2);
 
-    const few = await cliWith(options, root, 'mapping', 'train', 'csharp', '--samples', 'server');
+    const few = await cliWith(
+      options,
+      root,
+      'mapping',
+      'train',
+      'csharp',
+      '--replace',
+      '--samples',
+      'server',
+    );
     expect(few.code).toBe(1);
     expect(few.err).toContain('too few to trust');
     expect(existsSync(join(root, '.anvesa', 'mappings', 'csharp.json'))).toBe(false);
@@ -1461,7 +1472,16 @@ public interface IThing { void Run(); }
 
   test('--assist asks a model with the key from the environment, and reports what it rejected', async () => {
     const root = csharpProject();
-    const train = ['mapping', 'train', 'csharp', '--samples', 'server', '--min-samples', '1'];
+    const train = [
+      'mapping',
+      'train',
+      'csharp',
+      '--replace',
+      '--samples',
+      'server',
+      '--min-samples',
+      '1',
+    ];
     const missing = await cliWith(own(root), root, ...train, '--assist');
     expect(missing.code).toBe(2);
     expect(missing.err).toContain('OPENROUTER_API_KEY');
@@ -1517,6 +1537,7 @@ public interface IThing { void Run(); }
       'mapping',
       'train',
       'csharp',
+      '--replace',
       '--samples',
       'server',
       '--min-samples',
@@ -1536,6 +1557,7 @@ public interface IThing { void Run(); }
       'mapping',
       'train',
       'csharp',
+      '--replace',
       '--samples',
       'server',
       '--tags',
@@ -1553,6 +1575,7 @@ public interface IThing { void Run(); }
       'mapping',
       'train',
       'csharp',
+      '--replace',
       '--samples',
       'server',
       '--min-samples',
@@ -1596,9 +1619,20 @@ public interface IThing { void Run(); }
       'bundled',
     ]);
     expect((await cliWith(options, root, 'mapping', 'show', 'klingon')).code).toBe(2);
-    expect((await cliWith(options, root, 'mapping', 'train', 'csharp')).code).toBe(2);
+    expect((await cliWith(options, root, 'mapping', 'train', 'csharp', '--replace')).code).toBe(2);
     expect(
-      (await cliWith(options, root, 'mapping', 'train', 'csharp', '--samples', 'nowhere')).code,
+      (
+        await cliWith(
+          options,
+          root,
+          'mapping',
+          'train',
+          'csharp',
+          '--replace',
+          '--samples',
+          'nowhere',
+        )
+      ).code,
     ).toBe(2);
   });
 });
@@ -2394,5 +2428,87 @@ app.post('/api/checkout', (req, res) => res.json({ ok: true }));
     expect(rendered).toContain(
       'not source: 20 .x00, 19 .x01, 18 .x02, 17 .x03, 16 .x04, 15 .x05, 14 .x06, 13 .x07, 33 more in 3 other kinds',
     );
+  });
+
+  describe('workspace federation CLI (anv-fn9)', () => {
+    test('anvesa federation status reports repository statuses', async () => {
+      const child = makeProject();
+      expect((await cli(child, 'index')).code).toBe(0);
+
+      const host = makeProject();
+      mkdirSync(join(host, '.anvesa'), { recursive: true });
+      writeFileSync(
+        join(host, '.anvesa', 'workspace.json'),
+        JSON.stringify({
+          federation: {
+            enabled: true,
+            repositories: [{ name: 'child-repo', path: child }],
+          },
+        }),
+      );
+      expect((await cli(host, 'index')).code).toBe(0);
+
+      const status = await cli(host, 'federation', 'status');
+      expect(status.code).toBe(0);
+      expect(status.out).toContain('child-repo');
+      expect(status.out).toContain('[ready]');
+
+      const json = await cli(host, 'federation', 'status', '--json');
+      expect(json.code).toBe(0);
+      const parsed = JSON.parse(json.out);
+      expect(parsed[0].name).toBe('child-repo');
+      expect(parsed[0].status).toBe('ready');
+    });
+
+    test('anvesa search --federated fans out across federated repositories', async () => {
+      const child = makeProject();
+      expect((await cli(child, 'index')).code).toBe(0);
+
+      const host = makeProject();
+      mkdirSync(join(host, '.anvesa'), { recursive: true });
+      writeFileSync(
+        join(host, '.anvesa', 'workspace.json'),
+        JSON.stringify({
+          federation: {
+            enabled: true,
+            repositories: [{ name: 'sub-service', path: child }],
+          },
+        }),
+      );
+      expect((await cli(host, 'index')).code).toBe(0);
+
+      const search = await cli(host, 'search', 'server', '--federated');
+      expect(search.code).toBe(0);
+      expect(search.out).toContain('sub-service');
+
+      const json = await cli(host, 'search', 'server', '--federated', '--json');
+      expect(json.code).toBe(0);
+      const parsed = JSON.parse(json.out);
+      expect(parsed.items.some((item: { repo?: string }) => item.repo === 'sub-service')).toBe(
+        true,
+      );
+    });
+
+    test('anvesa dependents --federated finds cross-repository dependents', async () => {
+      const child = makeProject();
+      expect((await cli(child, 'index')).code).toBe(0);
+
+      const host = makeProject();
+      mkdirSync(join(host, '.anvesa'), { recursive: true });
+      writeFileSync(
+        join(host, '.anvesa', 'workspace.json'),
+        JSON.stringify({
+          federation: {
+            enabled: true,
+            repositories: [{ name: 'child', path: child }],
+          },
+        }),
+      );
+      expect((await cli(host, 'index')).code).toBe(0);
+
+      const deps = await cli(host, 'dependents', 'src/config.ts', '--federated');
+      expect(deps.code).toBe(0);
+      expect(deps.out).toContain('cross-repo dependent(s) found across federation');
+    });
   });
 });

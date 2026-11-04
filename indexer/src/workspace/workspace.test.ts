@@ -371,6 +371,20 @@ describe('configuration', () => {
     [{ nestedRepos: 'maybe' }, 'nestedRepos'],
     [{ discover: 'yes' }, 'discover'],
     [{ exclude: [''] }, 'exclude[0]'],
+    [{ federation: 'nope' }, 'federation'],
+    [{ federation: { repositories: 'nope' } }, 'federation.repositories'],
+    [
+      { federation: { repositories: [{ name: '', path: 'a' }] } },
+      'federation.repositories[0].name',
+    ],
+    [
+      { federation: { repositories: [{ name: 'a', path: '' }] } },
+      'federation.repositories[0].path',
+    ],
+    [
+      { federation: { repositories: [{ name: 'a', path: 'b', weight: -1 }] } },
+      'federation.repositories[0].weight',
+    ],
   ])('a bad config names the field: %j', (raw, location) => {
     try {
       validateWorkspaceConfig(raw);
@@ -379,6 +393,34 @@ describe('configuration', () => {
       expect(thrown).toBeInstanceOf(WorkspaceConfigError);
       expect((thrown as WorkspaceConfigError).context.location).toBe(location);
     }
+  });
+
+  test('federation config is parsed and validated', () => {
+    const parsed = validateWorkspaceConfig({
+      version: 1,
+      federation: {
+        enabled: true,
+        repositories: [
+          {
+            name: 'core-api',
+            path: '../backend-service',
+            defaultLanes: ['symbols', 'docs'],
+            weight: 1.5,
+          },
+          { name: 'web-frontend', path: '../frontend-app' },
+        ],
+      },
+    });
+    expect(parsed.federation).toBeDefined();
+    expect(parsed.federation?.enabled).toBe(true);
+    expect(parsed.federation?.repositories).toHaveLength(2);
+    expect(parsed.federation?.repositories[0]?.name).toBe('core-api');
+    expect(parsed.federation?.repositories[0]?.path).toBe('../backend-service');
+    expect(parsed.federation?.repositories[0]?.defaultLanes).toEqual(['symbols', 'docs']);
+    expect(parsed.federation?.repositories[0]?.weight).toBe(1.5);
+    expect(parsed.federation?.repositories[1]?.name).toBe('web-frontend');
+    expect(parsed.federation?.repositories[1]?.path).toBe('../frontend-app');
+    expect(parsed.federation?.repositories[1]?.weight).toBeUndefined();
   });
 
   test('a workspace.json that is not JSON is a typed error with the cause kept', async () => {

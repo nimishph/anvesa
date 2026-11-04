@@ -29,6 +29,21 @@ export interface SearchTuningConfig {
   readonly excludeLanes?: readonly string[];
   readonly minScore?: number;
   readonly collapse?: boolean;
+  /** How the symbols lane ranks (see `learned-ranker.ts`). Every setting has a default. */
+  readonly ranking?: RankingConfig;
+}
+
+/**
+ * Symbol search runs in two stages: every symbol card scored by cosine less a hub penalty, then the
+ * top `depth` reordered by the learned ranker that came with the encoder. Only the second stage's
+ * order is shown. Only the anvesa-code models come with a ranker; any other encoder ranks by the
+ * first stage alone.
+ */
+export interface RankingConfig {
+  /** How much a card's mean similarity to its 10 nearest cards is taken off its score. Default 0.3. */
+  readonly hub?: number;
+  /** How many of the first stage's symbols the ranker reorders. Default 30. */
+  readonly depth?: number;
 }
 
 export interface IndexingTuningConfig {
@@ -50,6 +65,30 @@ export interface RedTeamTuningConfig {
   readonly quarantineOnSuspect?: boolean;
 }
 
+/**
+ * Switches for experiments that are not yet part of the product. Each is off when absent, so a
+ * project without this block indexes exactly as before.
+ */
+export interface ExperimentalConfig {
+  /**
+   * The form of a symbol card's W-expression path line (its enclosing declarations), instead of
+   * the default WQL path the learned ranker was trained on: as words, or left out.
+   */
+  readonly cardPath?: 'wql' | 'words' | 'none';
+  /** A SCIP index (path relative to the root): its references replace the linker's call edges. */
+  readonly scip?: string;
+  /** Mix each symbol vector with its graph neighbours': `v + alpha * mean(neighbours)`. */
+  readonly propagate?: PropagateConfig;
+  /** Batch only texts of one length, so no text is padded and a text's vector never varies. */
+  readonly exactBatches?: boolean;
+}
+
+export interface PropagateConfig {
+  readonly alpha: number;
+  /** Edge kinds that make two symbols neighbours. Containment (a member and its parent) always does. */
+  readonly edges: readonly string[];
+}
+
 export interface ProjectConfig {
   readonly $schema?: string;
   /** A built-in model id. Unset means the tier the machine suits, among those installed. */
@@ -68,6 +107,7 @@ export interface ProjectConfig {
   readonly indexing?: IndexingTuningConfig;
   readonly syntax?: SyntaxTuningConfig;
   readonly redteam?: RedTeamTuningConfig;
+  readonly experimental?: ExperimentalConfig;
 }
 
 export function defaultProjectConfig(): ProjectConfig {
@@ -116,6 +156,7 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
         'search',
         'syntax',
         'redteam',
+        'experimental',
       ].includes(key)
     )
       fail(key, 'is not a known setting');
@@ -270,7 +311,7 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
     if (!isRecord(raw.search)) fail('search', 'must be an object');
     const s = raw.search as Record<string, unknown>;
     for (const key of Object.keys(s)) {
-      if (!['defaultLimit', 'excludeLanes', 'minScore', 'collapse'].includes(key)) {
+      if (!['defaultLimit', 'excludeLanes', 'minScore', 'collapse', 'ranking'].includes(key)) {
         fail(`search.${key}`, 'is not a known setting');
       }
     }
@@ -299,6 +340,7 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
     if (s.collapse !== undefined && typeof s.collapse !== 'boolean') {
       fail('search.collapse', 'must be a boolean');
     }
+    const ranking = s.ranking === undefined ? undefined : validateRanking(s.ranking, fail);
     search = {
       ...(s.defaultLimit !== undefined ? { defaultLimit: s.defaultLimit as number } : {}),
       ...(s.excludeLanes !== undefined
@@ -306,6 +348,7 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
         : {}),
       ...(s.minScore !== undefined ? { minScore: s.minScore as number } : {}),
       ...(s.collapse !== undefined ? { collapse: s.collapse as boolean } : {}),
+      ...(ranking !== undefined && Object.keys(ranking).length > 0 ? { ranking } : {}),
     };
   }
 
@@ -381,6 +424,9 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
     };
   }
 
+  const experimental =
+    raw.experimental === undefined ? undefined : validateExperimental(raw.experimental, fail);
+
   return {
     ...(raw.$schema !== undefined ? { $schema: raw.$schema as string } : {}),
     model: model as string | undefined,
@@ -394,6 +440,73 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
       : {}),
     ...(syntax !== undefined && Object.keys(syntax).length > 0 ? { syntax } : {}),
     ...(redteam !== undefined && Object.keys(redteam).length > 0 ? { redteam } : {}),
+    ...(experimental !== undefined && Object.keys(experimental).length > 0 ? { experimental } : {}),
+  };
+}
+
+function validateExperimental(
+  raw: unknown,
+  fail: (location: string, problem: string) => never,
+): ExperimentalConfig {
+  if (!isRecord(raw)) return fail('experimental', 'must be an object');
+  for (const key of Object.keys(raw)) {
+    if (!['cardPath', 'scip', 'propagate', 'exactBatches'].includes(key)) {
+      fail(`experimental.${key}`, 'is not a known setting');
+    }
+  }
+  const { cardPath, scip, propagate, exactBatches } = raw;
+  if (cardPath !== undefined && cardPath !== 'wql' && cardPath !== 'words' && cardPath !== 'none') {
+    fail('experimental.cardPath', 'must be "wql", "words" or "none"');
+  }
+  if (scip !== undefined && (typeof scip !== 'string' || scip.length === 0)) {
+    fail('experimental.scip', 'must be the path of a SCIP index');
+  }
+  if (exactBatches !== undefined && typeof exactBatches !== 'boolean') {
+    fail('experimental.exactBatches', 'must be true or false');
+  }
+  let propagation: PropagateConfig | undefined;
+  if (propagate !== undefined) {
+    if (!isRecord(propagate)) return fail('experimental.propagate', 'must be an object');
+    const { alpha, edges } = propagate;
+    if (typeof alpha !== 'number' || !Number.isFinite(alpha) || alpha < 0) {
+      fail('experimental.propagate.alpha', 'must be a number of 0 or more');
+    }
+    if (
+      edges !== undefined &&
+      !(Array.isArray(edges) && edges.every((e) => typeof e === 'string'))
+    ) {
+      fail('experimental.propagate.edges', 'must be an array of edge kinds');
+    }
+    propagation = { alpha: alpha as number, edges: (edges as string[] | undefined) ?? ['calls'] };
+  }
+  return {
+    ...(cardPath !== undefined ? { cardPath: cardPath as 'wql' | 'words' | 'none' } : {}),
+    ...(scip !== undefined ? { scip: scip as string } : {}),
+    ...(propagation !== undefined ? { propagate: propagation } : {}),
+    ...(exactBatches !== undefined ? { exactBatches: exactBatches as boolean } : {}),
+  };
+}
+
+function validateRanking(
+  raw: unknown,
+  fail: (location: string, problem: string) => never,
+): RankingConfig {
+  if (!isRecord(raw)) return fail('search.ranking', 'must be an object');
+  for (const key of Object.keys(raw)) {
+    if (!['hub', 'depth'].includes(key)) {
+      fail(`search.ranking.${key}`, 'is not a known setting');
+    }
+  }
+  const { hub, depth } = raw;
+  if (hub !== undefined && (typeof hub !== 'number' || !Number.isFinite(hub) || hub < 0)) {
+    fail('search.ranking.hub', 'must be a number of 0 or more');
+  }
+  if (depth !== undefined && !(Number.isSafeInteger(depth) && (depth as number) >= 1)) {
+    fail('search.ranking.depth', 'must be a whole number of at least 1');
+  }
+  return {
+    ...(hub !== undefined ? { hub: hub as number } : {}),
+    ...(depth !== undefined ? { depth: depth as number } : {}),
   };
 }
 

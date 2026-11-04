@@ -24,8 +24,8 @@ export {
   validateCard,
 } from './card.ts';
 export { ChannelRegistry } from './channel.ts';
-export type { Embedder, EmbedderInfo } from './embedder.ts';
-export { budgetSourceOf, embedAll } from './embedder.ts';
+export type { CardForm, Embedder, EmbedderInfo } from './embedder.ts';
+export { budgetSourceOf, cardTextFor, embedAll } from './embedder.ts';
 export * from './errors.ts';
 export type {
   IngesterOptions,

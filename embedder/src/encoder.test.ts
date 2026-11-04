@@ -2,7 +2,12 @@ import { describe, expect, test } from 'bun:test';
 import { Deadline, DeadlineExceededError } from '@cntxt-labs/anvesa-core';
 import { embedAll } from '@cntxt-labs/anvesa-dense';
 import type { InferenceBackend, ModelOutput, TokenBatch } from './backend.ts';
-import { batchTokensFor, LocalEmbedder, THROUGHPUT_BATCH_TOKENS } from './encoder.ts';
+import {
+  batchTokensFor,
+  GPU_BATCH_TOKENS,
+  LocalEmbedder,
+  THROUGHPUT_BATCH_TOKENS,
+} from './encoder.ts';
 import { InferenceError, InputTooLongError, ModelShapeError } from './errors.ts';
 import type { Pooling } from './models.ts';
 import { tokenizerFromVocabulary } from './tokenizer.ts';
@@ -48,6 +53,7 @@ function embedder(
     backend?: FakeBackend;
     maxBatchTokens?: number;
     maxTokens?: number;
+    exactBatches?: boolean;
   } = {},
 ) {
   const backend = options.backend ?? new FakeBackend();
@@ -61,6 +67,7 @@ function embedder(
       tokenizer,
       backend,
       maxBatchTokens: options.maxBatchTokens ?? 1000,
+      ...(options.exactBatches ? { exactBatches: true } : {}),
     }),
   };
 }
@@ -155,6 +162,26 @@ describe('batching', () => {
     expect([...lengths].sort((a, b) => b - a)).toEqual(lengths);
   });
 
+  test('exact batches hold texts of one length only, so nothing is padded', async () => {
+    const backend = new FakeBackend((batch) => {
+      for (let at = 0; at < batch.mask.length; at += 1) expect(batch.mask[at]).toBe(1n);
+      return states(batch);
+    });
+    const { embedder: e } = embedder({ backend, exactBatches: true });
+    const texts = ['hello', 'hello world foo bar', 'world', 'foo bar baz', 'baz', 'qux qux qux'];
+    const vectors = await e.embed(texts);
+    // Lengths 3, 6, 3, 5, 3, 5: one batch per length, the three of length 3 together.
+    expect(backend.batches).toEqual([
+      { rows: 1, length: 6 },
+      { rows: 2, length: 5 },
+      { rows: 3, length: 3 },
+    ]);
+    const separately = await Promise.all(texts.map(async (t) => (await e.embed([t]))[0]));
+    vectors.forEach((vector, index) => {
+      expect(Array.from(vector)).toEqual(Array.from(separately[index] as Float32Array));
+    });
+  });
+
   test('a text longer than the batch budget still goes through, alone', async () => {
     const { embedder: e, backend } = embedder({ maxBatchTokens: 3 });
     await e.embed(['hello world foo bar baz']);
@@ -165,6 +192,9 @@ describe('batching', () => {
     expect(batchTokensFor(768, 10 * 1024 ** 3)).toBe(THROUGHPUT_BATCH_TOKENS);
     expect(batchTokensFor(768, 768 * 24 * 4 * 40)).toBe(40);
     expect(batchTokensFor(768, 1)).toBe(1);
+    // A GPU gets bigger batches, still within the memory budget.
+    expect(batchTokensFor(768, 10 * 1024 ** 3, 'cuda')).toBe(GPU_BATCH_TOKENS);
+    expect(batchTokensFor(768, 768 * 24 * 4 * 40, 'cuda')).toBe(40);
   });
 
   test('no texts is no batches', async () => {

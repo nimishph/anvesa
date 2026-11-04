@@ -17,7 +17,12 @@ export { proposeClustered, proposePathPrior, slug } from './fragments/propose.ts
 export * from './graph/index.ts';
 export * from './run/index.ts';
 export * from './store/index.ts';
-export type { ConfiguredPackage, WorkspaceConfig } from './workspace/config.ts';
+export type {
+  ConfiguredPackage,
+  FederatedRepository,
+  FederationConfig,
+  WorkspaceConfig,
+} from './workspace/config.ts';
 export {
   CONFIG_PATH,
   defaultConfig,

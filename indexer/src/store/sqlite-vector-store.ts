@@ -109,24 +109,28 @@ export class SqliteVectorStore implements VectorStore {
         `INSERT INTO card_vectors (channel, id, model, group_key, dims, vector)
          VALUES (?, ?, ?, ?, ?, ?)`,
       );
-      for (const { card, unit } of prepared) {
-        const group = collapseKey(card);
-        insertCard.run(
-          update.channel,
-          card.id,
-          update.path,
-          update.model,
-          group,
-          JSON.stringify(card),
-        );
-        insertVector.run(
-          update.channel,
-          card.id,
-          update.model,
-          group,
-          unit.length,
-          Buffer.from(unit.buffer, unit.byteOffset, unit.byteLength),
-        );
+      // Prepared and finalised here, not cached: on bun 1.3 this cached statement, left unrun for
+      // a source with no cards, kept the database file locked and the strict close failed.
+      const insertRaw = db.prepare(
+        'INSERT OR REPLACE INTO card_vectors_raw (channel, id, vector) VALUES (?, ?, ?)',
+      );
+      try {
+        for (const { card, unit } of prepared) {
+          const group = collapseKey(card);
+          insertCard.run(
+            update.channel,
+            card.id,
+            update.path,
+            update.model,
+            group,
+            JSON.stringify(card),
+          );
+          const blob = Buffer.from(unit.buffer, unit.byteOffset, unit.byteLength);
+          insertVector.run(update.channel, card.id, update.model, group, unit.length, blob);
+          insertRaw.run(update.channel, card.id, blob);
+        }
+      } finally {
+        insertRaw.finalize();
       }
 
       const insertQuarantine = db.query(

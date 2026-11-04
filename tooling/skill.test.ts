@@ -27,6 +27,7 @@ const NAMES: Readonly<Record<string, readonly string[]>> = {
   Ruby: ['ruby'],
   C: ['c'],
   'C++': ['cpp'],
+  'C#': ['csharp'],
 };
 
 describe('the agent skill', () => {

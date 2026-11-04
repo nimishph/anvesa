@@ -28,7 +28,7 @@ const isHidden = (codePoint: number) =>
 
 const workspace = join(import.meta.dir, '..');
 const SOURCE = /\.(ts|json|cjs|grit|md)$/;
-const SKIPPED = new Set(['node_modules', 'probe', 'target', 'dist', '.git']);
+const SKIPPED = new Set(['node_modules', 'probe', 'target', 'dist', '.git', 'fixtures']);
 
 function sourceFiles(directory: string): string[] {
   const files: string[] = [];
