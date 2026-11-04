@@ -1,7 +1,13 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { type Card, cardTextFor } from '@cntxt-labs/anvesa-dense';
-import { type IndexStore, StoreCorruptError, type StoreDatabase } from '@cntxt-labs/anvesa-indexer';
+import {
+  allRows,
+  getRow,
+  type IndexStore,
+  StoreCorruptError,
+  type StoreDatabase,
+} from '@cntxt-labs/anvesa-indexer';
 import { RankerError } from './errors.ts';
 
 /**
@@ -477,21 +483,20 @@ export async function syncHubMeans(
   const propagate = (await store.getMeta('experimental.propagate')) ?? '';
   const { fingerprint, complete } = database.guard('read symbol sources', (db) => {
     const hash = createHash('sha256');
-    for (const row of db
-      .query(
-        `SELECT path, model, content_hash, transformer_version FROM vector_sources
-          WHERE channel = ? ORDER BY path`,
-      )
-      .all(CHANNEL) as Record<string, string>[]) {
+    // Every read here prepares and finalises its statement (`getRow`, `allRows`): a cached one
+    // left active keeps the file locked, and the strict close of the database then fails.
+    for (const row of allRows(
+      db,
+      `SELECT path, model, content_hash, transformer_version FROM vector_sources
+        WHERE channel = ? ORDER BY path`,
+      CHANNEL,
+    ) as Record<string, string>[]) {
       hash.update(`${row.path}\0${row.model}\0${row.content_hash}\0${row.transformer_version}\n`);
     }
     hash.update(propagate);
     const count = (table: string): number =>
-      (
-        db.query(`SELECT count(*) AS n FROM ${table} WHERE channel = ?`).get(CHANNEL) as {
-          n: number;
-        }
-      ).n;
+      (getRow(db, `SELECT count(*) AS n FROM ${table} WHERE channel = ?`, CHANNEL) as { n: number })
+        .n;
     // A card rewritten since (by a watcher, say) lost its hub row with its old self.
     return {
       fingerprint: hash.digest('hex'),
@@ -501,7 +506,7 @@ export async function syncHubMeans(
   if (previous === fingerprint && complete) return undefined;
 
   const cards = database.guard('read symbol cards', (db) =>
-    db.query('SELECT id, group_key, card FROM cards WHERE channel = ?').all(CHANNEL),
+    allRows(db, 'SELECT id, group_key, card FROM cards WHERE channel = ?', CHANNEL),
   ) as CardRow[];
   const first = new Map<string, CardRow>();
   for (const row of cards) {
@@ -522,12 +527,21 @@ export async function syncHubMeans(
 
   const byModel = new Map<string, { id: string; vector: Float32Array }[]>();
   database.guard('read symbol vectors', (db) => {
-    for (const row of db
-      .query('SELECT id, model, vector FROM card_vectors WHERE channel = ?')
-      .iterate(CHANNEL) as Iterable<{ id: string; model: string; vector: Uint8Array }>) {
-      const list = byModel.get(row.model) ?? [];
-      list.push({ id: row.id, vector: floats(row.vector) });
-      byModel.set(row.model, list);
+    // Prepared and finalised here, not cached: a cached statement still mid-scan would make the
+    // strict close of the database fail.
+    const statement = db.prepare('SELECT id, model, vector FROM card_vectors WHERE channel = ?');
+    try {
+      for (const row of statement.iterate(CHANNEL) as Iterable<{
+        id: string;
+        model: string;
+        vector: Uint8Array;
+      }>) {
+        const list = byModel.get(row.model) ?? [];
+        list.push({ id: row.id, vector: floats(row.vector) });
+        byModel.set(row.model, list);
+      }
+    } finally {
+      statement.finalize();
     }
   });
   let measured = 0;
@@ -542,9 +556,17 @@ export async function syncHubMeans(
   }
   const hubMs = performance.now() - hubStarted;
   database.transaction('store hub means', (db) => {
-    db.query('DELETE FROM card_hub WHERE channel = ?').run(CHANNEL);
-    const insert = db.query('INSERT INTO card_hub (channel, id, mean) VALUES (?, ?, ?)');
-    for (const [id, mean] of means) insert.run(CHANNEL, id, mean);
+    // Prepared and finalised, like every read here: a cached statement used inside the store's
+    // grouped transaction can stay active and make the strict close of the database fail.
+    const clear = db.prepare('DELETE FROM card_hub WHERE channel = ?');
+    const insert = db.prepare('INSERT INTO card_hub (channel, id, mean) VALUES (?, ?, ?)');
+    try {
+      clear.run(CHANNEL);
+      for (const [id, mean] of means) insert.run(CHANNEL, id, mean);
+    } finally {
+      clear.finalize();
+      insert.finalize();
+    }
   });
   await store.setMeta(BM25_META, JSON.stringify(stats));
   await store.setMeta(STATE_META, fingerprint);
@@ -603,28 +625,32 @@ export function rankSymbols(options: {
   const query = unit(options.vector);
   const rows = database.guard('read symbol vectors', (db) => {
     const out: VectorRow[] = [];
-    for (const row of db
-      .query(
-        `SELECT v.id, v.group_key, v.vector, c.path, h.mean
-           FROM card_vectors v
-           JOIN cards c ON c.channel = v.channel AND c.id = v.id
-           LEFT JOIN card_hub h ON h.channel = v.channel AND h.id = v.id
-          WHERE v.channel = ? AND v.model = ?`,
-      )
-      .iterate(CHANNEL, options.model) as Iterable<{
-      id: string;
-      group_key: string;
-      vector: Uint8Array;
-      path: string;
-      mean: number | null;
-    }>) {
-      if (options.include && !options.include(row.path)) continue;
-      out.push({
-        id: row.id,
-        group: row.group_key,
-        vector: floats(row.vector),
-        hubMean: row.mean ?? 0,
-      });
+    // Prepared and finalised here, not cached, as in `syncHubMeans`.
+    const statement = db.prepare(
+      `SELECT v.id, v.group_key, v.vector, c.path, h.mean
+         FROM card_vectors v
+         JOIN cards c ON c.channel = v.channel AND c.id = v.id
+         LEFT JOIN card_hub h ON h.channel = v.channel AND h.id = v.id
+        WHERE v.channel = ? AND v.model = ?`,
+    );
+    try {
+      for (const row of statement.iterate(CHANNEL, options.model) as Iterable<{
+        id: string;
+        group_key: string;
+        vector: Uint8Array;
+        path: string;
+        mean: number | null;
+      }>) {
+        if (options.include && !options.include(row.path)) continue;
+        out.push({
+          id: row.id,
+          group: row.group_key,
+          vector: floats(row.vector),
+          hubMean: row.mean ?? 0,
+        });
+      }
+    } finally {
+      statement.finalize();
     }
     return out;
   });
@@ -635,9 +661,14 @@ export function rankSymbols(options: {
   };
   const cardOf = (id: string): Card =>
     database.guard('read a card', (db) => {
-      const row = db
-        .query('SELECT card FROM cards WHERE channel = ? AND id = ?')
-        .get(CHANNEL, id) as { card: string } | null;
+      const row = getRow(
+        db,
+        'SELECT card FROM cards WHERE channel = ? AND id = ?',
+        CHANNEL,
+        id,
+      ) as {
+        card: string;
+      } | null;
       if (!row) throw new StoreCorruptError('cards', id, 'the card vanished during a search');
       return JSON.parse(row.card) as Card;
     });
