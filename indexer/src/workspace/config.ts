@@ -193,8 +193,12 @@ export function validateWorkspaceConfig(raw: unknown, path = CONFIG_PATH): Works
       if (typeof item.path !== 'string' || item.path.trim() === '') {
         bad(`${where}.path`, 'expected a non-empty string');
       }
-      const repoName = item.name as string;
+      const repoName = (item.name as string).trim();
       const repoPath = item.path as string;
+      // Results, cached connections and --repo all go by name: two repositories cannot share one.
+      if (repositories.some((other) => other.name === repoName)) {
+        bad(`${where}.name`, `"${repoName}" is already the name of another repository`);
+      }
       let weight: number | undefined;
       if (item.weight !== undefined) {
         if (typeof item.weight !== 'number' || !Number.isFinite(item.weight) || item.weight <= 0) {
@@ -203,7 +207,7 @@ export function validateWorkspaceConfig(raw: unknown, path = CONFIG_PATH): Works
         weight = item.weight as number;
       }
       repositories.push({
-        name: repoName.trim(),
+        name: repoName,
         path: repoPath.trim(),
         defaultLanes:
           item.defaultLanes === undefined

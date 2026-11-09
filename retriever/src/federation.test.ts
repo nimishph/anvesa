@@ -2,6 +2,7 @@ import { afterAll, afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { Deadline, InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import type { Embedder } from '@cntxt-labs/anvesa-dense';
 import { npmPackageSource, SyntaxRuntime } from '@cntxt-labs/anvesa-syntax';
 import { FederatedRetriever } from './federation.ts';
@@ -318,5 +319,186 @@ export function runGateway() { return new ApiClient(); }
     expect(blast.total).toBeGreaterThan(0);
     expect(blast.byRepo['core-gateway']).toBeGreaterThanOrEqual(1);
     expect(blast.byRepo.consumer).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('federation: failures, paging and matching', () => {
+  /** A host whose workspace.json federates `repositories`, indexed. */
+  async function hostWith(
+    repositories: readonly Record<string, unknown>[],
+    files: Record<string, string> = {},
+  ): Promise<Retriever> {
+    const dir = makeProject({
+      'package.json': '{"name":"host"}',
+      '.anvesa/workspace.json': JSON.stringify({ federation: { enabled: true, repositories } }),
+      'src/host.ts': '/** Route incoming requests. */ export function route() {}',
+      ...files,
+    });
+    const host = await createRetriever(dir);
+    await host.index();
+    return host;
+  }
+
+  async function indexedRepo(files: Record<string, string>): Promise<string> {
+    const dir = makeProject({ 'package.json': '{"name":"repo"}', ...files });
+    await (await createRetriever(dir)).index();
+    return dir;
+  }
+
+  const services = Object.fromEntries(
+    Array.from({ length: 6 }, (_, i) => [
+      `src/service${i}.ts`,
+      `/** Service ${i} handles payment requests. */ export function payment${i}() {}`,
+    ]),
+  );
+
+  test('a repository whose search fails is reported in degraded, not dropped', async () => {
+    const child = await indexedRepo(services);
+    const host = await hostWith([{ name: 'payments', path: child }]);
+    const fed = new FederatedRetriever(host, 'host');
+    open.push(fed);
+
+    const controller = new AbortController();
+    controller.abort();
+    const page = await fed.search('payment', {
+      deadline: Deadline.of({ signal: controller.signal }),
+    });
+    expect(page.items).toEqual([]);
+    expect(page.degraded.map((d) => [d.lane, d.repo])).toEqual([
+      ['search', 'host'],
+      ['search', 'payments'],
+    ]);
+  });
+
+  test('a repository that cannot be opened is reported in degraded', async () => {
+    const child = await indexedRepo(services);
+    writeFileSync(join(child, '.anvesa', 'config.json'), '{ not json');
+    const host = await hostWith([{ name: 'payments', path: child }]);
+    const fed = new FederatedRetriever(host, 'host');
+    open.push(fed);
+
+    const page = await fed.search('payment');
+    expect(page.degraded.find((d) => d.repo === 'payments')?.lane).toBe('open');
+    expect(page.items.every((item) => item.repo === 'host')).toBe(true);
+  });
+
+  test('pages continue with a cursor and agree with one larger page', async () => {
+    const child = await indexedRepo(services);
+    const host = await hostWith([{ name: 'payments', path: child }], services);
+    const fed = new FederatedRetriever(host, 'host');
+    open.push(fed);
+
+    const first = await fed.search('payment requests', { limit: 3 });
+    expect(first.items.length).toBe(3);
+    expect(first.limit).toMatchObject({ applied: 3, source: 'caller', reached: true });
+    expect(first.nextCursor).not.toBeNull();
+    const second = await fed.search('payment requests', {
+      limit: 3,
+      cursor: first.nextCursor as string,
+    });
+    const whole = await fed.search('payment requests', { limit: 6 });
+    expect([...first.items, ...second.items].map((item) => item.key)).toEqual(
+      whole.items.map((item) => item.key),
+    );
+    expect((await fed.search('payment requests')).limit.source).toBe('default');
+  });
+
+  test('a scope is refused across several repositories, and applies to one picked with repos', async () => {
+    const child = await indexedRepo(services);
+    const host = await hostWith([{ name: 'payments', path: child }]);
+    const fed = new FederatedRetriever(host, 'host');
+    open.push(fed);
+
+    await expect(fed.search('payment', { scope: 'src' })).rejects.toBeInstanceOf(
+      InvalidArgumentError,
+    );
+    const page = await fed.search('payment', { scope: 'src', repos: ['payments'] });
+    expect(page.items.length).toBeGreaterThan(0);
+    expect(page.items.every((item) => item.repo === 'payments')).toBe(true);
+  });
+
+  test('dependents match an import by its module path, once per file, past one page', async () => {
+    const importers = Object.fromEntries(
+      Array.from({ length: 25 }, (_, i) => [
+        `src/use${i}.ts`,
+        `import { ApiClient } from '../lib/client';\nimport { x } from '../lib/client.js';\nexport const u${i} = 1;\n`,
+      ]),
+    );
+    const consumer = await indexedRepo({
+      ...importers,
+      // Names that contain "client" but are not the file.
+      'src/other.ts': `import { y } from '@acme/client-utils';\nimport { z } from './clientele';\nexport const o = 1;\n`,
+    });
+    const host = await hostWith([{ name: 'consumer', path: consumer }], {
+      'src/lib/client.ts': 'export class ApiClient {}',
+    });
+    const fed = new FederatedRetriever(host, 'host');
+    open.push(fed);
+
+    const blast = await fed.dependents('src/lib/client.ts', { limit: 10 });
+    expect(blast.byRepo.consumer).toBe(25);
+    expect(blast.dependents.filter((d) => d.repo === 'consumer').length).toBe(10);
+    expect(blast.dependents.some((d) => d.path === 'src/other.ts')).toBe(false);
+    expect(blast.degraded).toEqual([]);
+  });
+
+  test('an index file is matched by its folder', async () => {
+    const consumer = await indexedRepo({
+      'src/a.ts': `import { a } from '../lib';\nexport const one = a;\n`,
+      'src/b.ts': `import { b } from '../lib/index';\nexport const two = b;\n`,
+      'src/c.ts': `import { c } from '../other/index';\nexport const three = c;\n`,
+    });
+    const host = await hostWith([{ name: 'consumer', path: consumer }], {
+      'src/lib/index.ts': 'export const a = 1, b = 2;',
+    });
+    const fed = new FederatedRetriever(host, 'host');
+    open.push(fed);
+
+    const blast = await fed.dependents('src/lib/index.ts');
+    expect(blast.dependents.filter((d) => d.repo === 'consumer').map((d) => d.path)).toEqual([
+      'src/a.ts',
+      'src/b.ts',
+    ]);
+  });
+
+  test('errors in the host reach the caller; a repository that cannot be read is degraded', async () => {
+    const broken = await indexedRepo(services);
+    writeFileSync(join(broken, '.anvesa', 'config.json'), '{ not json');
+    const host = await hostWith([{ name: 'broken', path: broken }]);
+    const fed = new FederatedRetriever(host, 'host');
+    open.push(fed);
+
+    await expect(fed.dependents('src/host.ts', { depth: 0 })).rejects.toBeInstanceOf(
+      InvalidArgumentError,
+    );
+    const blast = await fed.dependents('src/host.ts');
+    expect(blast.degraded.map((d) => d.repo)).toEqual(['broken']);
+    expect(blast.byRepo.broken).toBeUndefined();
+  });
+
+  test('dependents can be limited to some repositories', async () => {
+    const consumer = await indexedRepo({
+      'src/use.ts': `import { ApiClient } from '../client';\nexport const u = 1;\n`,
+    });
+    const host = await hostWith([{ name: 'consumer', path: consumer }], {
+      'src/client.ts': 'export class ApiClient {}',
+      'src/gateway.ts': `import { ApiClient } from './client';\nexport const g = 1;\n`,
+    });
+    const fed = new FederatedRetriever(host, 'host');
+    open.push(fed);
+
+    const only = await fed.dependents('src/client.ts', { repos: ['consumer'] });
+    expect(Object.keys(only.byRepo)).toEqual(['consumer']);
+  });
+
+  test('a repository named like the host is an error, not merged with the host results', async () => {
+    const child = await indexedRepo(services);
+    const host = await hostWith([{ name: 'host', path: child }]);
+    const fed = new FederatedRetriever(host, 'host');
+    open.push(fed);
+
+    const [status] = await fed.status();
+    expect(status?.status).toBe('error');
+    expect(status?.error).toContain('own name');
   });
 });
