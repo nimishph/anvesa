@@ -1,4 +1,4 @@
-import { ATTR, outlineSymbols } from '@cntxt-labs/anvesa-structural';
+import { ATTR, outlineSymbols, type WNode, walk } from '@cntxt-labs/anvesa-structural';
 import { LanguageRegistry } from '@cntxt-labs/anvesa-syntax';
 import { packCards } from '../budget.ts';
 import { type CardDraft, defineTransformer, type Transformer } from '../card.ts';
@@ -9,6 +9,45 @@ export interface SymbolsOptions {
   readonly channel?: string;
   /** Which files count as source code. Defaults to the built-in language registry. */
   readonly languages?: LanguageRegistry;
+  /**
+   * Where the symbol sits in the W-expression (its enclosing nodes), as the card's second line: a
+   * WQL path (the default; the learned ranker was trained on these cards), as words (`in export,
+   * function cart modal`), or left out (`none`).
+   */
+  readonly path?: 'wql' | 'words' | 'none';
+}
+
+/** The nodes from the root (excluded) down to `target` (included), or `undefined` if not found. */
+function pathTo(root: WNode, target: WNode): WNode[] | undefined {
+  const parents = new Map<WNode, WNode | undefined>();
+  for (const { node, parent } of walk(root)) {
+    parents.set(node, parent);
+    if (node === target) break;
+  }
+  if (!parents.has(target)) return undefined;
+  const path: WNode[] = [];
+  for (let at: WNode | undefined = target; at && at !== root; at = parents.get(at))
+    path.unshift(at);
+  return path;
+}
+
+/** `in export, function cart modal, variable close cart`: the enclosing nodes, read as words. */
+function pathWords(path: readonly WNode[]): string {
+  const steps = path.slice(0, -1).map((node) => {
+    const name = node.attrs.get(ATTR.baseName) ?? node.attrs.get(ATTR.name);
+    return name ? `${node.tag} ${decomposeIdentifier(name).join(' ')}` : node.tag;
+  });
+  return steps.length > 0 ? `in ${steps.join(', ')}` : '';
+}
+
+/** `/export/function[@name="CartModal"]/variable[@name="CartModal.closeCart"]`, the node itself last. */
+function pathWql(path: readonly WNode[]): string {
+  return path
+    .map((node) => {
+      const name = node.attrs.get(ATTR.name);
+      return name ? `/${node.tag}[@name=${JSON.stringify(name)}]` : `/${node.tag}`;
+    })
+    .join('');
 }
 
 /**
@@ -22,9 +61,11 @@ export interface SymbolsOptions {
  */
 export function symbolsTransformer(options: SymbolsOptions = {}): Transformer {
   const languages = options.languages ?? new LanguageRegistry();
+  const pathForm = options.path ?? 'wql';
   return defineTransformer({
     name: options.name ?? 'symbols',
-    version: '2', // bump when the cards this makes would change, so they are rebuilt
+    // bump when the cards this makes would change, so they are rebuilt
+    version: pathForm === 'none' ? '2' : `2+path-${pathForm}`,
     channel: options.channel ?? 'symbols',
     categoryId: 'code.symbol',
     categoryLabel: 'Code symbol',
@@ -48,7 +89,10 @@ export function symbolsTransformer(options: SymbolsOptions = {}): Transformer {
           .join(' — ');
 
         const doc = symbol.doc ? normalizeDoc(symbol.doc) : '';
+        const path = pathForm === 'none' ? undefined : pathTo(encoded.root, symbol.node);
+        const where = path ? (pathForm === 'wql' ? pathWql(path) : pathWords(path)) : '';
         const blocks = [
+          ...(where ? [{ text: where }] : []),
           ...(doc ? [{ text: doc }] : []),
           ...(symbol.signature ? [{ text: symbol.signature }] : []),
         ];

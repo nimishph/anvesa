@@ -5,7 +5,13 @@ import { type Deadline, InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import { openOnnx } from './backend.ts';
 import type { ModelCache } from './cache.ts';
 import { ModelInstallError, ModelShapeError } from './errors.ts';
-import { builtinModel, MODEL_CATALOG, type ModelSpec, type Pooling } from './models.ts';
+import {
+  builtinModel,
+  type CardForm,
+  MODEL_CATALOG,
+  type ModelSpec,
+  type Pooling,
+} from './models.ts';
 import { tokenizerFromJson } from './tokenizer.ts';
 
 /** A model id is a folder name and a key of stored vectors: plain characters only. */
@@ -18,6 +24,8 @@ export interface CustomModelOptions {
   readonly from: string;
   /** How token states become one vector. Read from `1_Pooling/config.json` when there is one. */
   readonly pooling?: Pooling;
+  /** How cards are reshaped before they are embedded (see `ModelSpec.cardForm`). */
+  readonly cardForm?: CardForm;
   /** The input window in tokens, specials included. Read from the model's own config when possible. */
   readonly maxTokens?: number;
   /** Accept files that differ from an earlier install of this id. */
@@ -28,6 +36,8 @@ export interface CustomModelOptions {
 
 interface Located {
   readonly model: string;
+  /** The model's external weights, for a model over 2 GB (`model.onnx_data`). */
+  readonly data: string | undefined;
   readonly tokenizer: string;
   /** The directory that may hold the model's own configuration files. */
   readonly config: string;
@@ -85,7 +95,25 @@ function locate(id: string, from: string): Located {
       hint: 'Only Hugging Face tokenizer.json files are read (WordPiece, BPE and unigram).',
     });
   }
-  return { model, tokenizer, config: directory };
+  return { model, data: externalData(id, model), tokenizer, config: directory };
+}
+
+/**
+ * The file holding a large model's weights, beside it: ONNX keeps a model over 2 GB in two files,
+ * and the exporters name the second `model.onnx_data` or `model.onnx.data`.
+ */
+function externalData(id: string, model: string): string | undefined {
+  const directory = dirname(model);
+  const found = readdirSync(directory)
+    .filter((name) => /\.onnx[._]data$/i.test(name))
+    .map((name) => join(directory, name));
+  if (found.length > 1) {
+    throw new ModelInstallError(id, `${directory} holds several external weight files`, {
+      context: { candidates: found },
+      hint: 'Export the model with all its weights in one file (model.onnx_data).',
+    });
+  }
+  return found[0];
 }
 
 async function readJson(path: string): Promise<Record<string, unknown> | undefined> {
@@ -131,8 +159,10 @@ async function windowOf(directory: string): Promise<number | undefined> {
 
 export interface CustomModelPlan {
   readonly model: string;
+  readonly data: string | undefined;
   readonly tokenizer: string;
   readonly pooling: Pooling;
+  readonly cardForm: CardForm | undefined;
   readonly maxTokens: number;
   readonly source: string;
 }
@@ -184,7 +214,15 @@ export async function planCustomModel(options: CustomModelOptions): Promise<Cust
       String(maxTokens),
     );
   }
-  return { model: found.model, tokenizer: found.tokenizer, pooling, maxTokens, source: from };
+  return {
+    model: found.model,
+    data: found.data,
+    tokenizer: found.tokenizer,
+    pooling,
+    cardForm: options.cardForm,
+    maxTokens,
+    source: from,
+  };
 }
 
 /**
@@ -203,8 +241,13 @@ export async function installCustomModel(
     id,
     maxTokens: plan.maxTokens,
     pooling: plan.pooling,
+    ...(plan.cardForm ? { cardForm: plan.cardForm } : {}),
     source: plan.source,
-    files: { model: plan.model, tokenizer: plan.tokenizer },
+    files: {
+      model: plan.model,
+      tokenizer: plan.tokenizer,
+      ...(plan.data ? { data: plan.data } : {}),
+    },
     ...(options.replace ? { replace: true } : {}),
     ...(options.deadline ? { deadline: options.deadline } : {}),
     validate: async ({ modelPath, tokenizerPath }) => {

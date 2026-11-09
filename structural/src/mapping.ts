@@ -1,6 +1,7 @@
 import { MappingConflictError, MappingInvalidError, MappingNotFoundError } from './errors.ts';
 import cJson from './mappings/c.json' with { type: 'json' };
 import cppJson from './mappings/cpp.json' with { type: 'json' };
+import csharpJson from './mappings/csharp.json' with { type: 'json' };
 import goJson from './mappings/go.json' with { type: 'json' };
 import javaJson from './mappings/java.json' with { type: 'json' };
 import phpJson from './mappings/php.json' with { type: 'json' };
@@ -467,5 +468,8 @@ export function builtinMappings(): readonly {
     { mapping: validateMapping(rubyJson, 'ruby.json'), languages: ['ruby'] },
     { mapping: validateMapping(cJson, 'c.json'), languages: ['c'] },
     { mapping: validateMapping(cppJson, 'cpp.json'), languages: ['cpp'] },
+    // Trained on 240 files of four MIT repos with the grammar's tags query, then corrected by hand:
+    // properties and foreach added, `using (...)` is a scope (with), not an import.
+    { mapping: validateMapping(csharpJson, 'csharp.json'), languages: ['csharp'] },
   ];
 }

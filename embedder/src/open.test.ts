@@ -3,7 +3,14 @@ import type { InstalledModel } from './cache.ts';
 import { ModelCache } from './cache.ts';
 import { ModelUnavailableError } from './errors.ts';
 import type { HardwareProbe } from './hardware.ts';
-import { BUILTIN_MODELS, type ModelSpec, TIERS, type Tier } from './models.ts';
+import {
+  BUILTIN_MODELS,
+  estimatePeakRssMb,
+  type ModelSpec,
+  TIERS,
+  type Tier,
+  weightBytes,
+} from './models.ts';
 import { resolveModel } from './open.ts';
 
 /** Reports exactly the given tiers as installed, with no files on disk at all. */
@@ -23,30 +30,23 @@ class FakeCache extends ModelCache {
 
 /** A probe whose memory alone drives `chooseTier` to `tier`. */
 function probeFor(tier: Tier): HardwareProbe {
-  const bytes = BUILTIN_MODELS[tier].model.bytes;
-  // chooseTier budgets half of available memory by default; comfortably clear this tier's
-  // estimated peak without also clearing the tier above it.
+  // chooseTier budgets half of available memory by default: 20% over this tier's expected peak
+  // clears it and not the tier above, whose model is more than twice the size.
+  const peakMb = estimatePeakRssMb(weightBytes(BUILTIN_MODELS[tier]));
   return {
     platform: 'linux',
     arch: 'x64',
     cores: 8,
     totalMemoryMb: 999_999,
-    availableMemoryMb: ((bytes / (1024 * 1024)) * 3) / 0.5,
+    availableMemoryMb: (peakMb * 1.2) / 0.5,
   };
 }
 
 describe('choosing a built-in model automatically', () => {
-  test('the tier the machine suits, when it is installed', async () => {
+  test('the default, anvesa-code-150m, even when everything is installed and the machine is roomy', async () => {
     const cache = new FakeCache(['low', 'medium', 'high']);
-    const resolved = await resolveModel(cache, { probe: probeFor('medium') });
-    expect(resolved.spec.id).toBe(BUILTIN_MODELS.medium.id);
-  });
-
-  test('a smaller installed tier, when the suited one is not installed', async () => {
-    const cache = new FakeCache(['low']);
     const resolved = await resolveModel(cache, { probe: probeFor('high') });
-    expect(resolved.spec.id).toBe(BUILTIN_MODELS.low.id);
-    expect(resolved.reason).toContain('not installed');
+    expect(resolved.spec.id).toBe('anvesa-code-150m');
   });
 
   test('a larger installed tier, when nothing at or below the suited one is installed', async () => {
@@ -67,5 +67,15 @@ describe('choosing a built-in model automatically', () => {
     const failure = await resolveModel(cache, { probe: probeFor('medium') }).catch((e) => e);
     expect(failure).toBeInstanceOf(ModelUnavailableError);
     expect(failure.context?.searched).toHaveLength(TIERS.length);
+  });
+});
+
+describe('a model that is no longer built in', () => {
+  test('is refused by name with what replaced it', async () => {
+    const failure = await resolveModel(new FakeCache(['medium']), {
+      model: 'bge-base-en-v1.5',
+    }).catch((e) => e);
+    expect(failure.message).toContain('anvesa-code-150m');
+    expect(failure.message).toContain('no longer built in');
   });
 });

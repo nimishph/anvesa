@@ -45,6 +45,14 @@ export const COMMAND_HELP: readonly CommandHelp[] = [
   },
   {
     section: 'Get started',
+    keys: ['ui'],
+    name: 'ui',
+    summary: 'launch the interactive visual web dashboard',
+    details:
+      '  ui                        launch the visual web dashboard in browser\n                            (--port <number>, --no-open, --root <dir>, --search <q>,\n                            --mode <fused|semantic|structural>, --wql <expr>, --symbol <name>,\n                            --view <search|graph|wql|status>, --repomap, --routes)',
+  },
+  {
+    section: 'Get started',
     keys: ['where'],
     name: 'where [root|config|index|models]',
     summary: 'the project in use, and its config, index and models paths',
@@ -76,12 +84,20 @@ export const COMMAND_HELP: readonly CommandHelp[] = [
       '  fragments status|propose|enable|disable|settle   keep the index in one database per fragment\n                            propose [--tier path|clusters] [--write]; the manifest is committed',
   },
   {
+    section: 'Index',
+    keys: ['federation'],
+    name: 'federation <subcommand>',
+    summary: 'multi-repository workspace federation status',
+    details:
+      '  federation status         inspect federated repositories configured in .anvesa/workspace.json',
+  },
+  {
     section: 'Search',
     keys: ['search'],
     name: 'search <question>',
     summary: 'fused search over every channel and, for WQL, the structure',
     details:
-      "  search <question>         fused search over every channel and, for WQL, the structure; one row per\n                            result (--expand or --full: each result's card under its row)\n                            (--wql <wql>, --channel, --exclude <lane>, --weight <lane>=<n>,\n                            --scope <path>: only results from that path or under it, relative to\n                            the project root; every lane, documentation included; also on retrieve, query)\n                            (supports conjunction: 'save user && //function', 'save user where //class')",
+      "  search <question>         fused search over every channel and, for WQL, the structure; one row per\n                            result (--expand or --full: each result's card under its row)\n                            (--wql <wql>, --channel, --exclude <lane>, --weight <lane>=<n>,\n                            --federated, --repo <name>,\n                            --scope <path>: only results from that path or under it, relative to\n                            the project root; every lane, documentation included; also on retrieve, query)\n                            (supports conjunction: 'save user && //function', 'save user where //class')",
   },
   {
     section: 'Search',
@@ -124,7 +140,8 @@ export const COMMAND_HELP: readonly CommandHelp[] = [
     keys: ['dependents'],
     name: 'dependents <path>',
     summary: 'files that import a file',
-    details: '  dependents <path>         files that import it (--depth N, --limit N, --types)',
+    details:
+      '  dependents <path>         files that import it (--depth N, --limit N, --types, --federated)',
   },
   {
     section: 'Code graph',

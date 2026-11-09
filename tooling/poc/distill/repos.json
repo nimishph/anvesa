@@ -1,0 +1,24 @@
+{
+  "note": "Permissive-licence repos, cloned shallow; the commit each was taken at is written to data/manifest.json. split: train, val (doc-query eval during training), test (never seen until the end).",
+  "repos": [
+    { "url": "https://github.com/honojs/hono", "lang": "typescript", "split": "train" },
+    { "url": "https://github.com/colinhacks/zod", "lang": "typescript", "split": "train" },
+    { "url": "https://github.com/trpc/trpc", "lang": "typescript", "split": "train" },
+    { "url": "https://github.com/immerjs/immer", "lang": "typescript", "split": "train" },
+    { "url": "https://github.com/sindresorhus/ky", "lang": "typescript", "split": "val" },
+    { "url": "https://github.com/pallets/click", "lang": "python", "split": "train" },
+    { "url": "https://github.com/pallets/flask", "lang": "python", "split": "train" },
+    { "url": "https://github.com/python-attrs/attrs", "lang": "python", "split": "train" },
+    { "url": "https://github.com/Textualize/rich", "lang": "python", "split": "train" },
+    { "url": "https://github.com/encode/httpx", "lang": "python", "split": "val" },
+    { "url": "https://github.com/spf13/cobra", "lang": "go", "split": "train" },
+    { "url": "https://github.com/go-chi/chi", "lang": "go", "split": "train" },
+    { "url": "https://github.com/gin-gonic/gin", "lang": "go", "split": "val" },
+    { "url": "https://github.com/tokio-rs/axum", "lang": "rust", "split": "train" },
+    { "url": "https://github.com/BurntSushi/ripgrep", "lang": "rust", "split": "train" },
+    { "url": "https://github.com/jhy/jsoup", "lang": "java", "split": "train" },
+    { "url": "https://github.com/google/gson", "lang": "java", "split": "val" },
+    { "url": "https://github.com/sinatra/sinatra", "lang": "ruby", "split": "train" },
+    { "url": "https://github.com/guzzle/guzzle", "lang": "php", "split": "train" }
+  ]
+}
