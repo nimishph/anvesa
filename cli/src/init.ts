@@ -108,7 +108,7 @@ export async function setupProject(
   };
 }
 
-/** The encoders on offer, numbered as the prompt takes them, best for code first. */
+/** The encoders on offer, numbered as the prompt takes them, the default first. */
 function choiceTable(models: readonly ModelAdvice[], installed: ReadonlySet<string>): string[] {
   const numbered = models.map((advice, index) => ({ advice, number: index + 1 }));
   return table<(typeof numbered)[number]>(

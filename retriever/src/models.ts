@@ -9,11 +9,9 @@ import {
   type InstalledModel,
   installCustomModel,
   MODEL_CATALOG,
-  MODELS_BY_RANK,
   ModelCache,
   type ModelSpec,
   ModelUnavailableError,
-  modelRank,
   openLocalEmbedder,
   type Pooling,
   probeHardware,
@@ -26,8 +24,6 @@ import {
 import type { ProjectConfig } from './config.ts';
 
 export interface ModelRow {
-  /** Place in the built-in ranking, best for code first, from 1. Undefined for a model brought in. */
-  readonly rank: number | undefined;
   readonly id: string;
   /** Shipped with anvesa (in the catalog), as opposed to brought in by the user. */
   readonly builtin: boolean;
@@ -44,7 +40,6 @@ export interface ModelRow {
 }
 
 const rowOf = async (cache: ModelCache, spec: ModelSpec): Promise<ModelRow> => ({
-  rank: modelRank(spec.id),
   id: spec.id,
   builtin: builtinModel(spec.id) !== undefined,
   tier: spec.tier,
@@ -59,12 +54,12 @@ const rowOf = async (cache: ModelCache, spec: ModelSpec): Promise<ModelRow> => (
 });
 
 /**
- * The built-in models, best for code first, then the ones the user brought in, with which are
- * installed in this cache.
+ * The built-in models (smallest first, so the default leads), then the ones the user brought in,
+ * with which are installed in this cache.
  */
 export async function listModels(cache: ModelCache): Promise<readonly ModelRow[]> {
   const rows: ModelRow[] = [];
-  for (const spec of MODELS_BY_RANK) rows.push(await rowOf(cache, spec));
+  for (const spec of MODEL_CATALOG) rows.push(await rowOf(cache, spec));
   // A model brought in under an id that is now built in is that built-in's row, not a second one.
   for (const spec of await cache.customModels()) {
     if (!builtinModel(spec.id)) rows.push(await rowOf(cache, spec));

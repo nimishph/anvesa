@@ -5,7 +5,7 @@ import {
   BUILTIN_MODELS,
   DEFAULT_TIER,
   estimatePeakRssMb,
-  MODELS_BY_RANK,
+  MODEL_CATALOG,
   type ModelSpec,
   TIERS,
   type Tier,
@@ -197,7 +197,7 @@ export function adviseModels(
     ...(cap === undefined ? {} : { maxParamsM: cap }),
   });
   const budgetMb = choice.budgetMb;
-  const models = MODELS_BY_RANK.map((spec): ModelAdvice => {
+  const models = MODEL_CATALOG.map((spec): ModelAdvice => {
     const estimatedPeakMb = estimatePeakRssMb(weightBytes(spec));
     return {
       spec,

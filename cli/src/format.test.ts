@@ -212,7 +212,6 @@ describe('tables', () => {
 
   it('lists models as a table, in the order given, marking what is installed', () => {
     const row = (over: Partial<ModelRow>): ModelRow => ({
-      rank: 1,
       id: 'model',
       builtin: true,
       tier: undefined,
@@ -227,21 +226,20 @@ describe('tables', () => {
       ...over,
     });
     const out = renderModels([
-      row({ rank: 1, id: 'best-model', summary: 'code', installed: true }),
-      row({ rank: 2, id: 'good-model' }),
+      row({ id: 'best-model', summary: 'code', installed: true }),
+      row({ id: 'good-model' }),
       row({
-        rank: undefined,
         id: 'mine',
         builtin: false,
         summary: 'custom model, brought in by you',
       }),
     ]).split('\n');
     expect(out[0]).toMatch(
-      /^#\s+Model\s+Good for\s+Dims\s+Window\s+Disk\s+Memory\s+License\s+Installed$/,
+      /^Model\s+Good for\s+Dims\s+Window\s+Disk\s+Memory\s+License\s+Installed$/,
     );
-    expect(out[2]).toMatch(/^1\s+best-model\s+code\s+384\s+512\s+32 MB\s+~166 MB\s+MIT\s+✓$/);
-    expect(out[3]).toMatch(/^2\s+good-model .*MIT$/);
-    expect(out[4]).toMatch(/^-\s+mine\s+custom model/);
+    expect(out[2]).toMatch(/^best-model\s+code\s+384\s+512\s+32 MB\s+~166 MB\s+MIT\s+✓$/);
+    expect(out[3]).toMatch(/^good-model .*MIT$/);
+    expect(out[4]).toMatch(/^mine\s+custom model/);
     expect(out.join('\n')).toContain('anvesa model doctor');
   });
 });

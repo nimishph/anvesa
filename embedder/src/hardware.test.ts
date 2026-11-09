@@ -12,9 +12,6 @@ import {
   DEFAULT_TIER,
   estimatePeakRssMb,
   MODEL_CATALOG,
-  MODEL_RANKING,
-  MODELS_BY_RANK,
-  modelRank,
   TIERS,
   weightBytes,
 } from './models.ts';
@@ -163,17 +160,14 @@ describe('the built-in catalog and what init proposes', () => {
     expect(ids).toContain('anvesa-code-1b');
   });
 
-  test('the ranking names every built-in model once, best measured first, each with a summary', () => {
-    expect([...MODEL_RANKING].sort()).toEqual(MODEL_CATALOG.map((spec) => spec.id).sort());
-    expect(MODELS_BY_RANK.map((spec) => spec.id)).toEqual([...MODEL_RANKING]);
-    expect(modelRank('anvesa-code-1b')).toBe(1);
-    expect(modelRank('my-own-model')).toBeUndefined();
+  test('every built-in model says in a few words what it is good for', () => {
     for (const spec of MODEL_CATALOG) expect(spec.summary?.length).toBeGreaterThan(0);
   });
 
-  test('models are offered best for code first', () => {
+  test('models are offered in catalog order, the default first', () => {
     const offered = adviseModels(probeOf(8, 16_000)).models.map((model) => model.spec.id);
-    expect(offered).toEqual([...MODEL_RANKING]);
+    expect(offered).toEqual(MODEL_CATALOG.map((spec) => spec.id));
+    expect(offered[0]).toBe('anvesa-code-150m');
   });
 
   test('the catalog is ordered smallest download first', () => {

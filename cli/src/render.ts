@@ -788,7 +788,6 @@ export function table<Row>(columns: readonly Column<Row>[], rows: readonly Row[]
 }
 
 const MODEL_COLUMNS: readonly Column<ModelRow>[] = [
-  { header: '#', cell: (m) => (m.rank === undefined ? '-' : String(m.rank)), align: 'right' },
   { header: 'Model', cell: (m) => m.id },
   { header: 'Good for', cell: (m) => m.summary },
   { header: 'Dims', cell: (m) => String(m.dimensions), align: 'right' },
@@ -803,8 +802,7 @@ export function renderModels(models: readonly ModelRow[]): string {
   return lines(
     ...table(MODEL_COLUMNS, models),
     '',
-    'Best for searching code first, by MRR on 241 hand-written queries (anvesa-gen-lab).',
-    'Window: input size in tokens. Memory: expected peak while embedding. A model you brought in has no rank.',
+    'Window: input size in tokens. Memory: expected peak while embedding.',
     'Automatic choice takes anvesa-code-150m, which runs well on a CPU (anvesa model doctor says',
     'what this machine suits); name a bigger one with --model.',
     'Install: anvesa model install <model> --download',

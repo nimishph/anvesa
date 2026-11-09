@@ -173,7 +173,7 @@ const CODE_1B: ModelSpec = {
     '0.352 MRR on the corpus test set and 0.685 on the bench: no measurable gain over the 400m ' +
     'for four times its CPU time (373 ms a card) and about 4 GB. Index on a GPU ' +
     '(ANVESA_DEVICE=gpu) where there is one.',
-  summary: 'best measured; needs a GPU',
+  summary: 'level with the 400m at 4x its CPU time; for a GPU',
 };
 
 /**
@@ -225,28 +225,6 @@ export function weightBytes(spec: ModelSpec): number {
 export function builtinModel(id: string): ModelSpec | undefined {
   return MODEL_CATALOG.find((spec) => spec.id === id);
 }
-
-/**
- * The built-in models, best for searching code first, by anvesa-gen-lab's measurements
- * (2026-10-29, MRR on 241 hand-written queries): anvesa-code-1b 0.685, -400m 0.684, -150m 0.626.
- * Nothing chooses a model by it; it only orders what is shown. Automatic choice stays the 150m.
- */
-export const MODEL_RANKING: readonly string[] = [
-  'anvesa-code-1b',
-  'anvesa-code-400m',
-  'anvesa-code-150m',
-];
-
-/** A model's place in `MODEL_RANKING`, from 1. Undefined for a model the user brought in. */
-export function modelRank(id: string): number | undefined {
-  const index = MODEL_RANKING.indexOf(id);
-  return index === -1 ? undefined : index + 1;
-}
-
-/** Every built-in model, best first. A test holds the ranking to naming each one exactly once. */
-export const MODELS_BY_RANK: readonly ModelSpec[] = MODEL_RANKING.flatMap((id) =>
-  MODEL_CATALOG.filter((spec) => spec.id === id),
-);
 
 /**
  * Resident memory of this package running a model, after embedding a hundred lines of code, on
