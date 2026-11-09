@@ -139,32 +139,35 @@ class ActiveProjectWatcher implements ProjectWatcher {
       });
     }
 
-    // 1. Initial index pass (unless disabled)
-    if (this.options.initialIndex !== false) {
-      emit({ kind: 'ready', root: this.root, debounceMs });
-      await this.runIndex('initial');
-      if (this.options.once || !this.isWatcherActive) {
+    const initial = this.options.initialIndex !== false;
+
+    // 1. Listen first, so `ready` means changes are being caught: a change made right after it,
+    // or during the initial pass, is indexed (an initial pass with --once never watches).
+    if (!(initial && this.options.once)) {
+      try {
+        const watchFunc = this.options.watchFn ?? watch;
+        this.fsWatcher = watchFunc(
+          this.root,
+          { recursive: true, ...(this.options.signal ? { signal: this.options.signal } : {}) },
+          (_eventType: string, filename: string | null) => {
+            this.handleFsEvent(filename);
+          },
+        );
+      } catch (failure) {
+        const err = toCodeLensError(failure, `watch ${this.root}`);
+        emit({ kind: 'index-error', error: err });
         await this.close();
         return;
       }
-    } else {
-      emit({ kind: 'ready', root: this.root, debounceMs });
     }
+    emit({ kind: 'ready', root: this.root, debounceMs });
 
-    // 2. Start file system watcher
-    try {
-      const watchFunc = this.options.watchFn ?? watch;
-      this.fsWatcher = watchFunc(
-        this.root,
-        { recursive: true, ...(this.options.signal ? { signal: this.options.signal } : {}) },
-        (_eventType: string, filename: string | null) => {
-          this.handleFsEvent(filename);
-        },
-      );
-    } catch (failure) {
-      const err = toCodeLensError(failure, `watch ${this.root}`);
-      emit({ kind: 'index-error', error: err });
-      await this.close();
+    // 2. Initial index pass (unless disabled)
+    if (initial) {
+      await this.runIndex('initial');
+      if (this.options.once || !this.isWatcherActive) {
+        await this.close();
+      }
     }
   }
 

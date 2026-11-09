@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { InvariantViolationError } from '@cntxt-labs/anvesa-core';
 import { runCli } from './cli.ts';
 import type { Environment } from './environment.ts';
 
@@ -59,6 +60,43 @@ async function run(root: string, ...args: string[]) {
   return { code, stdout, stderr };
 }
 
+/**
+ * Run the command without waiting for it: `until(text)` resolves once its output contains `text`,
+ * and `done` when it exits.
+ */
+function start(root: string, ...args: string[]) {
+  let stdout = '';
+  let stderr = '';
+  const env: Environment = {
+    cwd: root,
+    stdout: (text: string) => {
+      stdout += text;
+    },
+    stderr: (text: string) => {
+      stderr += text;
+    },
+    env: { ANVESA_NO_NETWORK: '1' },
+    isTTY: false,
+    columns: 80,
+  };
+  let exited = false;
+  const done = runCli(args, env).then((code) => {
+    exited = true;
+    return { code, stdout, stderr };
+  });
+  const until = async (text: string): Promise<void> => {
+    while (!stdout.includes(text)) {
+      if (exited) {
+        throw new InvariantViolationError(`watch exited before printing "${text}"`, {
+          context: { stdout, stderr },
+        });
+      }
+      await new Promise((r) => setTimeout(r, 10));
+    }
+  };
+  return { done, until };
+}
+
 describe('anvesa watch CLI command', () => {
   it('displays detailed help with anvesa watch --help', async () => {
     const root = makeProject();
@@ -100,30 +138,29 @@ describe('anvesa watch CLI command', () => {
   it('detects file modifications and triggers incremental index', async () => {
     const root = makeProject();
 
-    // Start watch with short debounce and --once
-    const watchPromise = run(
+    // --once exits after the first batch of changes. The debounce is wide enough that a late event
+    // for the files makeProject wrote (macOS delivers some) lands in the same batch as ours.
+    const watching = start(
       root,
       'watch',
       '--debounce',
-      '50',
+      '500',
       '--no-initial',
       '--once',
       '--no-embed',
     );
 
-    // Wait a brief moment for watcher initialization
-    await new Promise((r) => setTimeout(r, 100));
-
-    // Modify a file in the workspace
+    // `ready` is printed once the watcher listens: a change made after it is caught.
+    await watching.until('anvesa watch: watching');
     writeFileSync(
       join(root, 'src/new-feature.ts'),
       'export function greet(): string { return "hello from watch"; }\n',
       'utf8',
     );
 
-    const result = await watchPromise;
+    const result = await watching.done;
     expect(result.code).toBe(0);
     expect(result.stdout).toContain('change detected: src/new-feature.ts');
     expect(result.stdout).toContain('index up to date');
-  });
+  }, 30_000);
 });
