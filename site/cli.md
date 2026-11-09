@@ -68,7 +68,7 @@ anvesa index [options]
 - `--show-walk`: Print each path the walk offers, with its outcome (`added`, `unchanged`, `quarantined`, ...), on stderr.
 
 The summary names the model the run embedded with and its embedding size, e.g.
-`model: bge-base-en-v1.5 (embedding size 768, 512 max tokens)`, or `model: none (...)` when there is no
+`model: anvesa-code-400m (embedding size 1024, 512 max tokens)`, or `model: none (...)` when there is no
 embedder. With `--json` the same is under `embedder` (`null` when there is none).
 
 It ends with what the index holds per channel after the run, not just what the run changed (under
@@ -125,7 +125,7 @@ no header when the output is piped, and `--format compact` keeps the older layou
 come as `_meta`: `{ query, model: { id, dimensions } | null, index: { files, cards }, elapsedMs }`.
 
 ```
-╭ "save user" · bge-base-en-v1.5 · 768 dims · 1,204 files · 9,812 cards · 12 ms
+╭ "save user" · anvesa-code-400m · 1024 dims · 1,204 files · 9,812 cards · 12 ms
  1  saveUser (function)                       src/api/users.ts:2  symbols  █████░░░ 0.58
  2  Users API › Saving a user (Documentation section)  docs/users.md  docs  ██░░░░░░ 0.25
 ```

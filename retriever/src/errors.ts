@@ -73,6 +73,22 @@ export class NotIndexedError extends RetrieverSubsystemError {
   }
 }
 
+/**
+ * The learned ranker an anvesa-code model came with cannot be read or run. It is pinned with the
+ * model, so this means the install is damaged.
+ */
+export class RankerError extends RetrieverSubsystemError {
+  readonly code = 'RETRIEVER_RANKER';
+
+  constructor(path: string, problem: string, init: ErrorInit = {}) {
+    super(`The learned ranker ${path} cannot be used: ${problem}`, {
+      hint: 'Check the model with `anvesa model verify <id>`, or install it again.',
+      ...init,
+      context: { path, problem, ...init.context },
+    });
+  }
+}
+
 /** The assistant asked about undecided syntax (a language model) could not be used. */
 export class AssistError extends RetrieverSubsystemError {
   readonly code = 'RETRIEVER_ASSIST';

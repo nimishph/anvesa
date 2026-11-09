@@ -40,6 +40,7 @@ describe('validateMapping', () => {
       'ruby',
       'c',
       'cpp',
+      'csharp',
     ]);
   });
 

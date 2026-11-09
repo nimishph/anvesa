@@ -38,6 +38,14 @@ export type { Contribution, Fused, Lane } from './fuse.ts';
 export { DEFAULT_RRF_K, fuse } from './fuse.ts';
 export * from './grammars.ts';
 export * from './insight.ts';
+export {
+  type HubReport,
+  type RankingEvent,
+  type SearchStage,
+  type SearchStages,
+  type StagesSummary,
+  summarizeStages,
+} from './learned-ranker.ts';
 export * from './mappings.ts';
 export * from './models.ts';
 export * from './pattern-runner.ts';

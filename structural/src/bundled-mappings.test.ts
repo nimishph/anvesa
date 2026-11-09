@@ -69,6 +69,24 @@ const RUBY = `module Shop
 end
 `;
 
+const CSHARP = `using System.IO;
+namespace Shop.Orders;
+public record Line(string Sku, int Count);
+public struct Money { public decimal Amount { get; set; } }
+public delegate void Changed(Cart cart);
+public interface ICart { void Add(Line line); }
+public class Cart : ICart {
+  public Cart() {}
+  public int Count => lines.Count;
+  public void Add(Line line) {
+    int Total() { return 1; }
+    using (var w = new StringWriter()) { w.Write(line.Sku); }
+    foreach (var l in lines) { }
+  }
+}
+public enum Status { Open }
+`;
+
 describe('mappings learned from real code and shipped with the package', () => {
   test('cover Go, Rust, Java and Ruby, and every one validates', () => {
     const shipped = builtinMappings();
@@ -83,6 +101,7 @@ describe('mappings learned from real code and shipped with the package', () => {
       'typescript',
       'c',
       'cpp',
+      'csharp',
     ]) {
       expect(languages).toContain(language);
     }
@@ -130,6 +149,28 @@ describe('mappings learned from real code and shipped with the package', () => {
       'method Shape.draw',
       'enum Colour',
     ]);
+  });
+
+  test('C# files have named symbols', async () => {
+    const found = await symbols(CSHARP, 'a.cs');
+    for (const expected of [
+      'module Shop.Orders',
+      'class Line',
+      'struct Money',
+      'type Changed',
+      'interface ICart',
+      'method ICart.Add',
+      'class Cart',
+      'method Cart.Cart',
+      'method Cart.Add',
+      'enum Status',
+    ]) {
+      expect(found).toContain(expected);
+    }
+    // A using block scopes a resource; it imports nothing. Properties are tagged, not outline
+    // symbols, as in TypeScript and PHP.
+    expect(found.filter((name) => /^(import|property) /.test(name))).toEqual([]);
+    expect(found).toContain('function Cart.Add.Total');
   });
 
   test('Ruby files have named symbols', async () => {

@@ -27,6 +27,10 @@ export const EDGE = {
   callsExternal: 'calls:external',
   /** symbol or file -> the called name, when nothing could be found for it. */
   callsUnresolved: 'calls:unresolved',
+  /** symbol or file -> type it names (from a SCIP index): what a change to the type reaches. */
+  referencesType: 'references:type',
+  /** symbol or file -> non-callable value it reads or writes (from a SCIP index). */
+  references: 'references',
 } as const;
 
 export type EdgeKind = (typeof EDGE)[keyof typeof EDGE];

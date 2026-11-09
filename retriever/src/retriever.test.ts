@@ -23,11 +23,15 @@ import {
   ModelMismatchError,
   NotIndexedError,
   ProjectConfigError,
+  RankerError,
   TargetError,
 } from './errors.ts';
 import { fuse } from './fuse.ts';
+import type { HubReport, RankingEvent } from './learned-ranker.ts';
 import { fenceUntrusted } from './render.ts';
 import { Retriever, type SearchPage } from './retriever.ts';
+
+type SearchEvent = Extract<RankingEvent, { kind: 'search' }>;
 
 const FIXTURES = resolve(import.meta.dir, '__fixtures__');
 const roots: string[] = [];
@@ -45,9 +49,14 @@ afterAll(async () => {
 
 /** Word-hash vectors: texts that share words are close. A test double, not a model. */
 const words = (text: string) => text.toLowerCase().match(/[a-z0-9]+/g) ?? [];
-function embedder(options: { failing?: boolean } = {}): Embedder {
+function embedder(options: { failing?: boolean; ranker?: string } = {}): Embedder {
   return {
-    info: { id: 'test-words', dimensions: 256, maxTokens: 512 },
+    info: {
+      id: 'test-words',
+      dimensions: 256,
+      maxTokens: 512,
+      ...(options.ranker ? { ranker: options.ranker } : {}),
+    },
     count: (text) => words(text).length,
     async embed(texts) {
       if (options.failing) throw new EmbedderBroke('the model is gone');
@@ -102,6 +111,7 @@ async function retriever(
   options: {
     embedder?: Embedder | null;
     config?: Parameters<typeof Retriever.open>[0]['config'];
+    onRanking?: Parameters<typeof Retriever.open>[0]['onRanking'];
   } = {},
 ): Promise<Retriever> {
   const runtime = new SyntaxRuntime({ sources: [npmPackageSource(import.meta.filename)] });
@@ -111,6 +121,7 @@ async function retriever(
     runtime,
     ...(options.embedder === null ? {} : { embedder: options.embedder ?? embedder() }),
     ...(options.config ? { config: options.config } : {}),
+    ...(options.onRanking ? { onRanking: options.onRanking } : {}),
   });
   open.push(found);
   return found;
@@ -340,6 +351,32 @@ describe('project config', () => {
     expect(validateProjectConfig({ indexing: { fragments: 'off' } }).fragments).toBe(false);
   });
 
+  test('experimental switches are read, with propagation over call edges unless told otherwise', () => {
+    expect(
+      validateProjectConfig({
+        experimental: {
+          cardPath: 'words',
+          scip: 'index.scip',
+          exactBatches: true,
+          propagate: { alpha: 0.3 },
+        },
+      }).experimental,
+    ).toEqual({
+      cardPath: 'words',
+      scip: 'index.scip',
+      exactBatches: true,
+      propagate: { alpha: 0.3, edges: ['calls'] },
+    });
+    expect(validateProjectConfig({}).experimental).toBeUndefined();
+  });
+
+  test('ranking settings are read as given, the defaults left to search', () => {
+    expect(validateProjectConfig({ search: { ranking: { hub: 0.5, depth: 10 } } }).search).toEqual({
+      ranking: { hub: 0.5, depth: 10 },
+    });
+    expect(validateProjectConfig({ search: { ranking: {} } }).search).toBeUndefined();
+  });
+
   test.each([
     [{ nope: 1 }, 'nope'],
     [{ model: 3 }, 'model'],
@@ -350,6 +387,16 @@ describe('project config', () => {
     [{ fusion: { k: 0 } }, 'fusion.k'],
     [{ indexing: { fragments: 'maybe' } }, 'indexing.fragments'],
     [{ indexing: { shards: 3 } }, 'indexing.shards'],
+    [{ experimental: { cardPath: 'tree' } }, 'experimental.cardPath'],
+    [{ experimental: { propagate: { alpha: -1 } } }, 'experimental.propagate.alpha'],
+    [{ experimental: { gnn: true } }, 'experimental.gnn'],
+    [{ experimental: { learnedRanker: {} } }, 'experimental.learnedRanker'],
+    [{ search: { ranking: true } }, 'search.ranking'],
+    [{ search: { ranking: { hub: -1 } } }, 'search.ranking.hub'],
+    [{ search: { ranking: { depth: 0 } } }, 'search.ranking.depth'],
+    // Only the ranker an anvesa-code model comes with is used: there is no other to name.
+    [{ search: { ranking: { model: 'ranker.json' } } }, 'search.ranking.model'],
+    [{ search: { ranking: { intent: true } } }, 'search.ranking.intent'],
   ])('%j is refused at %s', (raw, location) => {
     try {
       validateProjectConfig(raw);
@@ -923,7 +970,7 @@ describe('an index kept in shards', () => {
     return root;
   }
 
-  test('answers exactly as an index in one database does, and lives in one database per fragment', async () => {
+  test('finds what an index in one database finds, and lives in one database per fragment', async () => {
     const single = await indexed();
     const root = await shardedProject();
     const many = await retriever(root, { config: sharded });
@@ -940,7 +987,9 @@ describe('an index kept in shards', () => {
     ]) {
       const a = await single.search(question, { limit: 20 });
       const b = await many.search(question, { limit: 20 });
-      expect(b.items.map((r) => [r.key, r.score])).toEqual(a.items.map((r) => [r.key, r.score]));
+      // The same results; symbols may come in another order, since fragments rank them by plain
+      // cosine (the two-stage ranking needs one database).
+      expect(b.items.map((r) => r.key).sort()).toEqual(a.items.map((r) => r.key).sort());
       expect(b.total).toBe(a.total);
     }
     const wql = '//function';
@@ -1078,5 +1127,100 @@ describe('an index kept in shards', () => {
         x.proposeFragments({ tier: 'path' }),
       ),
     ).rejects.toBeInstanceOf(NotIndexedError);
+  });
+});
+
+describe('symbol search in two stages', () => {
+  const RANKER = resolve(FIXTURES, 'learned-ranker', 'ranker.json');
+  const symbolsOnly = (page: SearchPage) =>
+    page.items.filter((item) => item.foundBy.some((hit) => hit.lane === 'symbols'));
+
+  test('indexing measures every symbol card, and search ranks with the hub and the ranker the encoder came with', async () => {
+    const events: RankingEvent[] = [];
+    const r = await retriever(makeProject(), {
+      embedder: embedder({ ranker: RANKER }),
+      onRanking: (event) => events.push(event),
+    });
+    const { ranking } = await r.index();
+    expect(ranking?.cards).toBeGreaterThan(3);
+    expect(ranking?.hubMs).toBeGreaterThanOrEqual(0);
+    expect(events).toEqual([{ kind: 'index', hub: ranking as HubReport }]);
+    const db = new Database(join(r.root, '.anvesa', 'index.db'), { readonly: true });
+    try {
+      const count = (table: string) =>
+        (
+          db.query(`SELECT count(*) AS n FROM ${table} WHERE channel = 'symbols'`).get() as {
+            n: number;
+          }
+        ).n;
+      expect(count('card_hub')).toBe(count('card_vectors'));
+      expect(count('card_hub')).toBeGreaterThan(3);
+    } finally {
+      db.close();
+    }
+
+    const page = await r.search('parse the configuration file', { channels: ['symbols'] });
+    const found = symbolsOnly(page);
+    expect(found.length).toBeGreaterThan(3);
+    // One hit per symbol, each with the cosine of the card shown.
+    expect(new Set(found.map((item) => item.key)).size).toBe(found.length);
+    for (const item of found) expect(item.bestScore).toBeGreaterThan(-1.01);
+
+    // Both stages were recorded; what was shown is the ranker's order.
+    const search = events.find((event) => event.kind === 'search') as SearchEvent;
+    expect(search).toBeDefined();
+    expect(search.query).toBe('parse the configuration file');
+    expect(search.stages.ranked?.symbols.length).toBe(search.stages.first.symbols.length);
+    expect(new Set(search.stages.ranked?.symbols.map((entry) => entry.symbol))).toEqual(
+      new Set(search.stages.first.symbols.map((entry) => entry.symbol)),
+    );
+    const shown = found.map((item) => item.card?.attrs.symbol);
+    const rankedNames = (search.stages.ranked?.symbols ?? []).map(
+      (entry) => entry.symbol.split('#')[1],
+    );
+    expect(shown).toEqual(rankedNames.slice(0, shown.length));
+
+    // Nothing changed: a second run measures nothing again.
+    const again = await r.index();
+    expect(again.ranking).toBeUndefined();
+  });
+
+  test('an encoder without a ranker ranks by the hub-penalised first stage alone', async () => {
+    const events: RankingEvent[] = [];
+    const r = await retriever(makeProject(), { onRanking: (event) => events.push(event) });
+    await r.index();
+    const page = await r.search('start the http server', { channels: ['symbols'] });
+    expect(['startServer', 'Server.start']).toContain(symbolsOnly(page)[0]?.title as string);
+    const search = events.find((event) => event.kind === 'search') as SearchEvent;
+    expect(search).toBeDefined();
+    expect(search.stages.first.symbols.length).toBeGreaterThan(0);
+    expect(search.stages.ranked).toBeUndefined();
+  });
+
+  test('a damaged ranker fails the symbols lane by name, not the search', async () => {
+    const root = makeProject();
+    const broken = join(root, 'ranker.json');
+    writeFileSync(broken, '{"learner": {}}');
+    const r = await retriever(root, { embedder: embedder({ ranker: broken }) });
+    await r.index();
+    const page = await r.search('start the http server');
+    const symbols = page.degraded.find((entry) => entry.lane === 'symbols');
+    expect(symbols?.error).toBeInstanceOf(RankerError);
+    expect(symbols?.error.message).toContain(broken);
+  });
+
+  test('an observer that throws changes no result, and the index run says so', async () => {
+    const r = await retriever(makeProject(), {
+      onRanking: () => {
+        throw new TargetError('observer', 'broke', []);
+      },
+    });
+    const { report } = await r.index();
+    expect(report.warnings?.join('\n')).toMatch(
+      /onRanking failed and was skipped: "observer" broke/,
+    );
+    const page = await r.search('start the http server', { channels: ['symbols'] });
+    expect(page.degraded).toEqual([]);
+    expect(symbolsOnly(page).length).toBeGreaterThan(0);
   });
 });

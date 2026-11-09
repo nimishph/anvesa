@@ -1,0 +1,157 @@
+[
+  {
+    "q": "send a GraphQL request to the Shopify storefront API",
+    "rel": ["lib/shopify/index.ts#shopifyFetch"]
+  },
+  {
+    "q": "flatten GraphQL edges and nodes into a plain array",
+    "rel": ["lib/shopify/index.ts#removeEdgesAndNodes"]
+  },
+  {
+    "q": "add a product variant to the shopping cart",
+    "rel": ["components/cart/actions.ts#addItem", "lib/shopify/index.ts#addToCart"]
+  },
+  {
+    "q": "remove a line item from the cart",
+    "rel": ["components/cart/actions.ts#removeItem", "lib/shopify/index.ts#removeFromCart"]
+  },
+  {
+    "q": "change how many of an item are in the cart",
+    "rel": ["components/cart/actions.ts#updateItemQuantity", "lib/shopify/index.ts#updateCart"]
+  },
+  {
+    "q": "create a new cart and remember its id in a cookie",
+    "rel": ["components/cart/actions.ts#createCartAndSetCookie"]
+  },
+  {
+    "q": "send the shopper to the checkout page",
+    "rel": [
+      "components/cart/actions.ts#redirectToCheckout",
+      "components/cart/modal.tsx#CheckoutButton"
+    ]
+  },
+  { "q": "fetch a single product by its handle", "rel": ["lib/shopify/index.ts#getProduct"] },
+  {
+    "q": "list the products in a collection with sorting",
+    "rel": ["lib/shopify/index.ts#getCollectionProducts"]
+  },
+  {
+    "q": "products recommended alongside the one being viewed",
+    "rel": [
+      "lib/shopify/index.ts#getProductRecommendations",
+      "app/product/[handle]/page.tsx#RelatedProducts"
+    ]
+  },
+  {
+    "q": "webhook that refreshes cached data when the store content changes",
+    "rel": ["lib/shopify/index.ts#revalidate", "app/api/revalidate/route.ts#POST"]
+  },
+  {
+    "q": "fail early when required environment variables are missing",
+    "rel": ["lib/utils.ts#validateEnvironmentVariables"]
+  },
+  { "q": "build a link with query string parameters", "rel": ["lib/utils.ts#createUrl"] },
+  {
+    "q": "make sure a string begins with a given prefix",
+    "rel": ["lib/utils.ts#ensureStartsWith"]
+  },
+  {
+    "q": "check whether an error came back from Shopify",
+    "rel": ["lib/type-guards.ts#isShopifyError", "lib/type-guards.ts#findError"]
+  },
+  {
+    "q": "compute the total quantity and cost of everything in the cart",
+    "rel": ["components/cart/cart-context.tsx#updateCartTotals"]
+  },
+  {
+    "q": "optimistic cart updates on the client before the server answers",
+    "rel": [
+      "components/cart/cart-context.tsx#cartReducer",
+      "components/cart/cart-context.tsx#useCart"
+    ]
+  },
+  {
+    "q": "price of a line given its quantity and unit price",
+    "rel": ["components/cart/cart-context.tsx#calculateItemCost"]
+  },
+  {
+    "q": "display an amount of money with its currency code",
+    "rel": ["components/price.tsx#Price"]
+  },
+  { "q": "slide-out drawer that shows the cart", "rel": ["components/cart/modal.tsx#CartModal"] },
+  {
+    "q": "button that deletes an item from the cart",
+    "rel": ["components/cart/delete-item-button.tsx#DeleteItemButton"]
+  },
+  {
+    "q": "plus and minus buttons to change quantity",
+    "rel": ["components/cart/edit-item-quantity-button.tsx#EditItemQuantityButton"]
+  },
+  {
+    "q": "let the shopper pick size and colour options",
+    "rel": ["components/product/variant-selector.tsx#VariantSelector"]
+  },
+  {
+    "q": "product image gallery with thumbnails",
+    "rel": ["components/product/gallery.tsx#Gallery"]
+  },
+  {
+    "q": "block with the product title, price and description",
+    "rel": ["components/product/product-description.tsx#ProductDescription"]
+  },
+  {
+    "q": "top navigation bar with menu and search",
+    "rel": ["components/layout/navbar/index.tsx#Navbar"]
+  },
+  {
+    "q": "hamburger menu for small screens",
+    "rel": ["components/layout/navbar/mobile-menu.tsx#MobileMenu"]
+  },
+  {
+    "q": "site footer with links",
+    "rel": ["components/layout/footer.tsx#Footer", "components/layout/footer-menu.tsx#FooterMenu"]
+  },
+  { "q": "search box in the header", "rel": ["components/layout/navbar/search.tsx#Search"] },
+  {
+    "q": "sidebar listing every collection",
+    "rel": [
+      "components/layout/search/collections.tsx#Collections",
+      "components/layout/search/collections.tsx#CollectionList"
+    ]
+  },
+  {
+    "q": "sort and filter options for search results",
+    "rel": [
+      "components/layout/search/filter/index.tsx#FilterList",
+      "components/layout/search/filter/item.tsx#SortFilterItem",
+      "components/layout/search/filter/dropdown.tsx#FilterItemDropdown"
+    ]
+  },
+  {
+    "q": "three featured products on the home page",
+    "rel": ["components/grid/three-items.tsx#ThreeItemGrid"]
+  },
+  { "q": "auto-scrolling strip of products", "rel": ["components/carousel.tsx#Carousel"] },
+  {
+    "q": "generate the sitemap of pages, products and collections",
+    "rel": ["app/sitemap.ts#sitemap"]
+  },
+  { "q": "social share preview image", "rel": ["components/opengraph-image.tsx#OpengraphImage"] },
+  {
+    "q": "SEO title and description for a product page",
+    "rel": ["app/product/[handle]/page.tsx#generateMetadata"]
+  },
+  { "q": "render rich HTML content from the CMS", "rel": ["components/prose.tsx#Prose"] },
+  { "q": "load a navigation menu by its handle", "rel": ["lib/shopify/index.ts#getMenu"] },
+  {
+    "q": "convert the raw Shopify product response into the app's product shape",
+    "rel": ["lib/shopify/index.ts#reshapeProduct"]
+  },
+  { "q": "placeholder shown while search results load", "rel": ["app/search/loading.tsx#Loading"] },
+  { "q": "get the current shopper's cart", "rel": ["lib/shopify/index.ts#getCart"] },
+  { "q": "list all content pages", "rel": ["lib/shopify/index.ts#getPages"] },
+  {
+    "q": "search the product catalogue for a term",
+    "rel": ["lib/shopify/index.ts#getProducts", "app/search/page.tsx#SearchPage"]
+  }
+]

@@ -541,7 +541,12 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         }
       }
       const embedder = info
-        ? { id: info.id, dimensions: info.dimensions, maxTokens: info.maxTokens }
+        ? {
+            id: info.id,
+            dimensions: info.dimensions,
+            maxTokens: info.maxTokens,
+            ...(info.device ? { device: info.device } : {}),
+          }
         : null;
       // What the index holds now, per channel: the run's report only counts what it changed.
       const channels = (await retriever.channels())
