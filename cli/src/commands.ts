@@ -781,20 +781,17 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       const limit = integerOption('limit', ctx.parsed.values.limit);
       const targetPath = need(ctx, 0, 'path');
 
-      if (ctx.parsed.values.federated) {
+      // --repo names repositories of the federation, so it implies --federated, as on search.
+      if (ctx.parsed.values.federated || ctx.parsed.values.repo?.length) {
         const fed = new FederatedRetriever(retriever);
         try {
           const result = await fed.dependents(targetPath, {
             ...(depth === undefined ? {} : { depth }),
             ...(limit === undefined ? {} : { limit }),
             ...(ctx.parsed.values.types ? { includeTypeOnly: true } : {}),
+            ...(ctx.parsed.values.repo ? { repos: ctx.parsed.values.repo } : {}),
           });
-          emit(
-            ctx,
-            result,
-            () =>
-              `${result.dependents.map((d) => `[${d.repo}] ${d.path} (depth ${d.depth})`).join('\n')}${result.dependents.length ? '\n' : ''}${result.total} cross-repo dependent(s) found across federation\n`,
-          );
+          emit(ctx, result, () => show.renderFederatedDependents(result));
         } finally {
           await fed.close();
         }

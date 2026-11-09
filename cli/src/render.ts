@@ -4,6 +4,7 @@ import {
   type ChannelInfo,
   type Diagnosis,
   type Explanation,
+  type FederatedDependentsResult,
   type FederatedRepoStatus,
   type FragmentManifest,
   type FragmentStatus,
@@ -1049,19 +1050,20 @@ export function renderPatternResult(result: PatternRunResult): string {
   );
 }
 
+export function renderFederatedDependents(result: FederatedDependentsResult): string {
+  return lines(
+    ...result.dependents.map((d) => `[${d.repo}] ${d.path} (depth ${d.depth})`),
+    `${result.total} cross-repo dependent(s) found across federation`,
+    ...result.degraded.map((failure) => `not read: ${failure.repo} (${failure.error.message})`),
+  );
+}
+
 export function renderFederationStatus(statuses: readonly FederatedRepoStatus[]): string {
   if (statuses.length === 0) {
     return 'no federated repositories configured in .anvesa/workspace.json\n';
   }
   const rows = statuses.map((st) => {
-    const statusLabel =
-      st.status === 'ready'
-        ? '[ready]'
-        : st.status === 'unindexed'
-          ? '[unindexed]'
-          : st.status === 'missing'
-            ? '[missing]'
-            : '[error]';
+    const statusLabel = `[${st.status}]`;
     const err = st.error ? ` — ${st.error}` : '';
     return `  ${st.name.padEnd(20)} ${statusLabel.padEnd(12)} weight: ${st.weight}  path: ${st.path}${err}`;
   });

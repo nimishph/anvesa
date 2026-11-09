@@ -2475,6 +2475,11 @@ app.post('/api/checkout', (req, res) => res.json({ ok: true }));
       const deps = await cli(host, 'dependents', 'src/config.ts', '--federated');
       expect(deps.code).toBe(0);
       expect(deps.out).toContain('cross-repo dependent(s) found across federation');
+
+      // --repo implies --federated, and only the repositories named are read.
+      const one = await cli(host, 'dependents', 'src/config.ts', '--repo', 'child', '--json');
+      expect(one.code).toBe(0);
+      expect(Object.keys(JSON.parse(one.out).byRepo)).toEqual(['child']);
     });
   });
 });

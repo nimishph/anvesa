@@ -378,6 +378,17 @@ describe('configuration', () => {
       'federation.repositories[0].name',
     ],
     [
+      {
+        federation: {
+          repositories: [
+            { name: 'api', path: 'a' },
+            { name: ' api ', path: 'b' },
+          ],
+        },
+      },
+      'federation.repositories[1].name',
+    ],
+    [
       { federation: { repositories: [{ name: 'a', path: '' }] } },
       'federation.repositories[0].path',
     ],
