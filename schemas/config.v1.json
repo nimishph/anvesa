@@ -137,6 +137,25 @@
           "type": "boolean",
           "default": true,
           "description": "Collapse multiple search result chunks originating from the same symbol or card group."
+        },
+        "ranking": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Symbol search ranks in two stages: cosine less a hub penalty, then the top reordered by the learned ranker an anvesa-code model comes with. Only the second stage is shown; other encoders rank by the first alone.",
+          "properties": {
+            "hub": {
+              "type": "number",
+              "minimum": 0,
+              "default": 0.3,
+              "description": "Weight of each card's mean similarity to its 10 nearest cards."
+            },
+            "depth": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 30,
+              "description": "How many first-stage symbols the ranker reorders."
+            }
+          }
         }
       }
     },
@@ -201,6 +220,44 @@
           }
         }
       ]
+    },
+    "experimental": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Experiments that are not yet part of the product. Each is off when absent.",
+      "properties": {
+        "cardPath": {
+          "enum": ["wql", "words", "none"],
+          "description": "The form of a symbol card's W-expression path line, instead of the default WQL path the learned ranker was trained on."
+        },
+        "scip": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A SCIP index, relative to the root; its references replace the linker's call edges."
+        },
+        "propagate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["alpha"],
+          "description": "Mix each symbol vector with its graph neighbours': v + alpha * mean(neighbours).",
+          "properties": {
+            "alpha": {
+              "type": "number",
+              "minimum": 0
+            },
+            "edges": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "exactBatches": {
+          "type": "boolean",
+          "description": "Batch only texts of one length, so no text is padded."
+        }
+      }
     }
   }
 }

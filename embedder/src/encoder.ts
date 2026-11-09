@@ -2,7 +2,7 @@ import type { Deadline } from '@cntxt-labs/anvesa-core';
 import type { Embedder, EmbedderInfo } from '@cntxt-labs/anvesa-dense';
 import type { InferenceBackend, ModelOutput, TokenBatch } from './backend.ts';
 import { InferenceError, InputTooLongError, ModelShapeError } from './errors.ts';
-import type { Pooling } from './models.ts';
+import type { CardForm, Pooling } from './models.ts';
 import type { Tokenizer } from './tokenizer.ts';
 
 export interface EncoderOptions {
@@ -10,6 +10,10 @@ export interface EncoderOptions {
   readonly dimensions: number;
   readonly maxTokens: number;
   readonly pooling: Pooling;
+  /** How cards are reshaped before they are embedded (see `ModelSpec.cardForm`). */
+  readonly cardForm?: CardForm;
+  /** The learned ranker fit on this model's scores, when it has one (see `ModelSpec.ranker`). */
+  readonly ranker?: string;
   readonly tokenizer: Tokenizer;
   readonly backend: InferenceBackend;
   /**
@@ -17,6 +21,8 @@ export interface EncoderOptions {
    * of a batch: derive it from what the machine has (see `batchTokensFor`), do not guess.
    */
   readonly maxBatchTokens: number;
+  /** Experimental: batch only texts of one length, so nothing is padded (see `embed`). */
+  readonly exactBatches?: boolean;
 }
 
 /**
@@ -36,12 +42,21 @@ const BYTES_PER_FLOAT = 4;
 export const THROUGHPUT_BATCH_TOKENS = 256;
 
 /**
- * How many padded tokens a batch should hold: the throughput knee, or less if the memory the
- * encoder may spend on activations is smaller. A text longer than this still goes through, alone.
+ * Padded tokens per batch on a GPU, where a batch of 256 tokens leaves it mostly idle waiting on
+ * each launch. A starting point, not a measurement: 8192 tokens of a 1024-wide model take about
+ * 0.8 GB of activations by the estimate above, well inside a 16 GB card.
  */
-export function batchTokensFor(dimensions: number, budgetBytes: number): number {
+export const GPU_BATCH_TOKENS = 8192;
+
+/**
+ * How many padded tokens a batch should hold: the throughput knee for the device, or less if the
+ * memory the encoder may spend on activations is smaller. A text longer than this still goes
+ * through, alone.
+ */
+export function batchTokensFor(dimensions: number, budgetBytes: number, device = 'cpu'): number {
   const perToken = dimensions * LIVE_FLOATS_PER_HIDDEN_UNIT * BYTES_PER_FLOAT;
-  return Math.max(1, Math.min(THROUGHPUT_BATCH_TOKENS, Math.floor(budgetBytes / perToken)));
+  const knee = device === 'cpu' ? THROUGHPUT_BATCH_TOKENS : GPU_BATCH_TOKENS;
+  return Math.max(1, Math.min(knee, Math.floor(budgetBytes / perToken)));
 }
 
 /**
@@ -60,6 +75,9 @@ export class LocalEmbedder implements Embedder {
       dimensions: options.dimensions,
       maxTokens: options.maxTokens,
       specialTokens: options.tokenizer.specialTokens,
+      ...(options.backend.device ? { device: options.backend.device } : {}),
+      ...(options.cardForm ? { cardForm: options.cardForm } : {}),
+      ...(options.ranker ? { ranker: options.ranker } : {}),
     };
   }
 
@@ -88,7 +106,14 @@ export class LocalEmbedder implements Embedder {
     while (next < order.length) {
       options.deadline?.throwIfExpired(`embed with ${id}`);
       const length = encoded[order[next] as number]?.length as number;
-      const rows = Math.max(1, Math.min(order.length - next, Math.floor(maxBatchTokens / length)));
+      let rows = Math.max(1, Math.min(order.length - next, Math.floor(maxBatchTokens / length)));
+      if (this.#options.exactBatches) {
+        // Padding, even masked, moves a vector (by ~1% for MiniLM): only texts of one length share
+        // a batch, so a text's vector is the one it has alone, whatever it is embedded with.
+        let same = 1;
+        while (same < rows && encoded[order[next + same] as number]?.length === length) same += 1;
+        rows = same;
+      }
       const members = order.slice(next, next + rows);
       const output = await this.#options.backend.run(
         pad(

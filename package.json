@@ -14,12 +14,14 @@
     "cli",
     "embedder",
     "eval",
-    "tooling"
+    "tooling",
+    "ui"
   ],
   "engines": {
     "bun": ">=1.3.0"
   },
   "scripts": {
+    "ui": "bun run ui/src/bin.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",

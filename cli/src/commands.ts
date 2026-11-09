@@ -15,6 +15,7 @@ import {
   checkMapping,
   doctorModels,
   type Embedder,
+  FederatedRetriever,
   type IndexEvent,
   inputFile,
   installGrammarFor,
@@ -567,7 +568,12 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         }
       }
       const embedder = info
-        ? { id: info.id, dimensions: info.dimensions, maxTokens: info.maxTokens }
+        ? {
+            id: info.id,
+            dimensions: info.dimensions,
+            maxTokens: info.maxTokens,
+            ...(info.device ? { device: info.device } : {}),
+          }
         : null;
       // What the index holds now, per channel: the run's report only counts what it changed.
       const channels = (await retriever.channels())
@@ -667,6 +673,38 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
     });
   },
 
+  ui: async (ctx) => {
+    const port = integerOption('port', ctx.parsed.values.port);
+    const noOpen = ctx.parsed.values['no-open'] === true;
+    const search = ctx.parsed.values.search || rest(ctx, 0);
+    const mode = ctx.parsed.values.mode;
+    const wql = ctx.parsed.values.wql;
+    const scope = ctx.parsed.values.scope;
+    const symbol = ctx.parsed.values.symbol;
+    const view = ctx.parsed.values.view;
+    const repomap = ctx.parsed.values.repomap;
+    const routes = ctx.parsed.values.routes;
+
+    const queryParams: Record<string, string> = {
+      ...(search ? { q: search } : {}),
+      ...(mode ? { mode } : {}),
+      ...(wql ? { wql } : {}),
+      ...(scope ? { scope } : {}),
+      ...(symbol ? { symbol } : {}),
+      ...(view ? { view } : {}),
+      ...(repomap ? { repomap: 'true' } : {}),
+      ...(routes ? { routes: 'true' } : {}),
+    };
+
+    const { startUiServer } = await import('@cntxt-labs/anvesa-ui');
+    await startUiServer({
+      ...(port !== undefined ? { port } : {}),
+      root: root(ctx),
+      open: !noOpen,
+      queryParams,
+    });
+  },
+
   search: (ctx) =>
     withProject(ctx, { embed: true }, async ({ retriever }) => {
       const channels = ctx.parsed.values.channel;
@@ -674,6 +712,28 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       const weights = parseWeights(ctx.parsed.values.weight);
       const query = rest(ctx, 0) || need(ctx, 0, 'query');
       const startedAt = performance.now();
+      const isFederated =
+        ctx.parsed.values.federated === true || Boolean(ctx.parsed.values.repo?.length);
+      if (isFederated) {
+        const fed = new FederatedRetriever(retriever);
+        try {
+          const page = await fed.search(query, {
+            ...pageRequest(ctx),
+            ...(channels ? { channels } : {}),
+            ...(exclude ? { exclude } : {}),
+            ...(weights ? { weights } : {}),
+            ...(ctx.parsed.values.wql ? { wql: ctx.parsed.values.wql } : {}),
+            ...(ctx.parsed.values.repo ? { repos: ctx.parsed.values.repo } : {}),
+            ...scopeOption(ctx),
+          });
+          const facts = await searchFacts(ctx, retriever, query, startedAt);
+          emitResults(ctx, page, facts, (options) => show.renderSearch(page, options));
+        } finally {
+          await fed.close();
+        }
+        return;
+      }
+
       const page = await retriever.search(query, {
         ...pageRequest(ctx),
         ...(channels ? { channels } : {}),
@@ -788,7 +848,26 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
     withProject(ctx, { embed: false }, async ({ retriever }) => {
       const depth = integerOption('depth', ctx.parsed.values.depth);
       const limit = integerOption('limit', ctx.parsed.values.limit);
-      const result = await retriever.dependents(need(ctx, 0, 'path'), {
+      const targetPath = need(ctx, 0, 'path');
+
+      // --repo names repositories of the federation, so it implies --federated, as on search.
+      if (ctx.parsed.values.federated || ctx.parsed.values.repo?.length) {
+        const fed = new FederatedRetriever(retriever);
+        try {
+          const result = await fed.dependents(targetPath, {
+            ...(depth === undefined ? {} : { depth }),
+            ...(limit === undefined ? {} : { limit }),
+            ...(ctx.parsed.values.types ? { includeTypeOnly: true } : {}),
+            ...(ctx.parsed.values.repo ? { repos: ctx.parsed.values.repo } : {}),
+          });
+          emit(ctx, result, () => show.renderFederatedDependents(result));
+        } finally {
+          await fed.close();
+        }
+        return;
+      }
+
+      const result = await retriever.dependents(targetPath, {
         ...(depth === undefined ? {} : { depth }),
         ...(limit === undefined ? {} : { limit }),
         ...(ctx.parsed.values.types ? { includeTypeOnly: true } : {}),
@@ -1552,5 +1631,23 @@ export async function patternCommand(ctx: Context): Promise<void> {
       ...(ctx.parsed.values.cursor === undefined ? {} : { cursor: ctx.parsed.values.cursor }),
     });
     emit(ctx, result, () => show.renderPatternResult(result));
+  });
+}
+
+// --- federation -------------------------------------------------------------------------------
+
+export async function federationCommand(ctx: Context): Promise<void> {
+  const [sub] = ctx.parsed.positionals;
+  if (!sub || sub !== 'status') {
+    throw new InvalidArgumentError('federation', 'status', sub);
+  }
+  return withProject(ctx, { embed: false }, async ({ retriever }) => {
+    const fed = new FederatedRetriever(retriever);
+    try {
+      const statuses = await fed.status();
+      emit(ctx, statuses, () => show.renderFederationStatus(statuses));
+    } finally {
+      await fed.close();
+    }
   });
 }

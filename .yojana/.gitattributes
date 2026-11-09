@@ -1,0 +1,4 @@
+# Written by yojana. The log and the bases hold one fact per line, so git can merge two branches
+# by keeping both sides' lines; yojana reads the result and reports any requirement both edited.
+log.jsonl merge=union
+base/*.jsonl merge=union

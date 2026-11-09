@@ -1,6 +1,14 @@
 import { afterAll, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Deadline, OperationAbortedError } from '@cntxt-labs/anvesa-core';
@@ -11,7 +19,7 @@ import {
   ModelUnavailableError,
   NetworkForbiddenError,
 } from './errors.ts';
-import type { ModelSpec } from './models.ts';
+import type { ModelFileSpec, ModelSpec } from './models.ts';
 
 const dirs: string[] = [];
 const scratch = (): string => {
@@ -110,6 +118,21 @@ describe('installing from a local directory, with no network', () => {
       join(empty, 'onnx/model.onnx'),
       join(empty, 'model.onnx'),
     ]);
+  });
+
+  test('a model with external weights is installed from a folder with them, and pinned by them', async () => {
+    const data = new TextEncoder().encode('the weights'.repeat(40));
+    const big: ModelSpec = {
+      ...spec,
+      modelData: { path: 'model.onnx_data', bytes: data.length, sha256: sha(data) },
+    };
+    const cache = new ModelCache(scratch());
+    const folder = source('flat');
+    await expect(cache.installFromDirectory(big, folder)).rejects.toBeInstanceOf(ModelInstallError);
+    writeFileSync(join(folder, 'model.onnx_data'), data);
+    const installed = await cache.installFromDirectory(big, folder);
+    expect(existsSync(join(installed.directory, 'model.onnx_data'))).toBe(true);
+    await expect(cache.verify(big)).resolves.toBeDefined();
   });
 
   test('a failed reinstall leaves the working model in place', async () => {
@@ -218,6 +241,51 @@ describe('downloading', () => {
     ]);
     expect(progress.at(-1)).toBe(`model.onnx ${MODEL_BYTES.length}/${MODEL_BYTES.length}`);
     expect(await cache.find(spec)).toBeDefined();
+  });
+
+  test('a model with external weights downloads them too, under the name the model reads them by', async () => {
+    const data = new TextEncoder().encode('the weights'.repeat(50));
+    const big: ModelSpec = {
+      ...spec,
+      modelData: { path: 'onnx/model.onnx_data', bytes: data.length, sha256: sha(data) },
+    };
+    const requested: string[] = [];
+    const cache = new ModelCache(scratch());
+    const installed = await cache.download(big, {
+      allowNetwork: true,
+      fetch: serving({ ...upstream, 'onnx/model.onnx_data': data }, requested),
+    });
+    expect(requested.at(-1)).toBe(
+      'https://huggingface.co/acme/test-model/resolve/main/onnx/model.onnx_data',
+    );
+    expect(existsSync(join(installed.directory, 'model.onnx_data'))).toBe(true);
+    expect(await cache.find(big)).toBeDefined();
+    await expect(cache.verify(big)).resolves.toBeDefined();
+  });
+
+  test('a model with a ranker downloads it, pinned, and says where it is', async () => {
+    const ranker = new TextEncoder().encode('{"learner": {}}');
+    const ranked: ModelSpec = {
+      ...spec,
+      ranker: { path: 'ranker-noword.json', bytes: ranker.length, sha256: sha(ranker) },
+    };
+    const cache = new ModelCache(scratch());
+    const installed = await cache.download(ranked, {
+      allowNetwork: true,
+      fetch: serving({ ...upstream, 'ranker-noword.json': ranker }),
+    });
+    expect(installed.rankerPath).toBe(join(installed.directory, 'ranker.json'));
+    expect(readFileSync(installed.rankerPath as string, 'utf8')).toBe('{"learner": {}}');
+    expect((await cache.find(spec))?.rankerPath).toBeUndefined();
+
+    // A ranker that is not the pinned one is refused like any other file.
+    const tampered = new TextEncoder().encode('{"learner": 1}');
+    await expect(
+      new ModelCache(scratch()).download(
+        { ...ranked, ranker: { ...(ranked.ranker as ModelFileSpec), bytes: tampered.length } },
+        { allowNetwork: true, fetch: serving({ ...upstream, 'ranker-noword.json': tampered }) },
+      ),
+    ).rejects.toBeInstanceOf(ModelIntegrityError);
   });
 
   test('offline, a missing model is a typed error naming the URL, and the network is not touched', async () => {

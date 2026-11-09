@@ -49,6 +49,7 @@
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@cntxt-labs/anvesa-core": "workspace:*",
     "@cntxt-labs/anvesa-retriever": "workspace:*",
+    "@cntxt-labs/anvesa-ui": "workspace:*",
     "tree-sitter-c-sharp": "^0.23.5",
     "tree-sitter-go": "^0.25.0",
     "tree-sitter-javascript": "^0.25.0",

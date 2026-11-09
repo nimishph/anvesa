@@ -128,12 +128,14 @@ anvesa issue "Describe bug or request"                   # open pre-filled GitHu
 
 ### 8. Language Mappings (Bundled, Auditing & Refinement)
 
-Bundled mappings: TypeScript/JS/Vue, Python, PHP, Go, Rust, Java, Ruby, C, C++.
+Bundled mappings: TypeScript/JS/Vue, Python, PHP, Go, Rust, Java, Ruby, C, C++, C#.
 C and C++ are partial: structs, classes, namespaces, includes and calls are named, but functions
 come out unnamed, because their names sit in nested declarators that a mapping cannot follow
 (training cannot fix that either). `//function` finds them; `[@name="..."]` does not, so use text
-search to find a C/C++ function by name. C# has no bundled mapping; learn one with
-`anvesa mapping train csharp --samples <dir>`.
+search to find a C/C++ function by name. In C#, properties are tagged (`//property`) but, as in
+TypeScript and PHP, are not outline symbols; operators, indexers and conversion operators have no
+name a mapping can read and are not mapped. Teach a language with
+`anvesa mapping train <language> --samples <dir>`.
 
 ```bash
 anvesa mapping list                          # list active mappings and tiers (bundled, project, user)

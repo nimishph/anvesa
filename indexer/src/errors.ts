@@ -184,3 +184,12 @@ export class ShardError extends IndexerSubsystemError {
     });
   }
 }
+
+/** A SCIP index could not be decoded: it is truncated, or not a SCIP index. */
+export class ScipIndexError extends IndexerSubsystemError {
+  readonly code = 'INDEXER_SCIP_INDEX';
+
+  constructor(problem: string, init: ErrorInit = {}) {
+    super(`Cannot read SCIP index: ${problem}`, { ...init, context: { problem, ...init.context } });
+  }
+}
