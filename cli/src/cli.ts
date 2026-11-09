@@ -4,6 +4,7 @@ import {
   COMMANDS,
   type Context,
   channelCommand,
+  federationCommand,
   fragmentsCommand,
   grammarCommand,
   mappingCommand,
@@ -107,6 +108,7 @@ export async function runCli(argv: readonly string[], environment: Environment):
     else if (command === 'fragments') await fragmentsCommand(ctx);
     else if (command === 'redteam') await redteamCommand(ctx);
     else if (command === 'pattern') await patternCommand(ctx);
+    else if (command === 'federation') await federationCommand(ctx);
     else if (command === 'mcp') {
       const [sub, ...rest] = parsed.positionals;
       if (sub !== 'serve')

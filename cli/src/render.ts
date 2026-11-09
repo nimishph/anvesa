@@ -4,6 +4,8 @@ import {
   type ChannelInfo,
   type Diagnosis,
   type Explanation,
+  type FederatedDependentsResult,
+  type FederatedRepoStatus,
   type FragmentManifest,
   type FragmentStatus,
   fenceUntrusted,
@@ -129,15 +131,17 @@ function renderResult(result: SearchResult, index: number, options?: RenderOptio
   const found = result.foundBy.map((c) => `${c.lane}#${c.rank}`).join(' ');
   const signature = result.card?.attrs.signature ? `  ${result.card.attrs.signature}` : '';
 
+  const repoTag = result.repo ? `[${result.repo}] ` : '';
+
   if (mode === 'locations') {
     const kind = result.kind ? `${result.kind} ` : '';
-    return `${jumpLink(result)}: ${kind}${result.title} [${found}]`;
+    return `${repoTag}${jumpLink(result)}: ${kind}${result.title} [${found}]`;
   }
 
   if (mode === 'compact') {
     const scoreStr =
       result.bestScore !== undefined ? `  (score: ${result.bestScore.toFixed(3)})` : '';
-    const head = `${String(index + 1).padStart(2)}. ${result.title}${result.kind ? ` (${result.kind})` : ''}  ${place(result)}${signature}  [${found}]${scoreStr}`;
+    const head = `${String(index + 1).padStart(2)}. ${repoTag}${result.title}${result.kind ? ` (${result.kind})` : ''}  ${place(result)}${signature}  [${found}]${scoreStr}`;
     const docSummary = extractDocSummary(result.card?.text);
     const docLine = docSummary ? `\n      // ${docSummary}` : '';
     if (full && result.card) {
@@ -156,7 +160,7 @@ function renderResult(result: SearchResult, index: number, options?: RenderOptio
   const bar = result.bestScore !== undefined ? `  ${scoreBar(result.bestScore)}` : '';
   const loc = isTTY ? `\x1b[36m${jumpLink(result)}\x1b[0m` : place(result);
   const title = isTTY ? `\x1b[1m${result.title}\x1b[0m` : result.title;
-  const head = `${String(index + 1).padStart(2)}. ${title}${result.kind ? ` (${result.kind})` : ''}  ${loc}${signature}  [${found}]${best}${bar}`;
+  const head = `${String(index + 1).padStart(2)}. ${repoTag}${title}${result.kind ? ` (${result.kind})` : ''}  ${loc}${signature}  [${found}]${best}${bar}`;
   if (!result.card) return head;
   const fenced = fenceUntrusted(result.card.text, {
     source: result.card.source.path,
@@ -568,7 +572,7 @@ export function renderIndex(result: {
   report: IndexReport;
   synced: readonly { channel: string; reports: readonly unknown[]; removed: readonly string[] }[];
   /** The model the run embedded with; `null` when there was none. Absent: not known, not shown. */
-  embedder?: { id: string; dimensions: number; maxTokens: number } | null;
+  embedder?: { id: string; dimensions: number; maxTokens: number; device?: string } | null;
   /** Why there is no embedder, when there is none. */
   embedderReason?: string;
   /** What the index holds after the run, per channel. */
@@ -604,7 +608,7 @@ export function renderIndex(result: {
   return lines(
     `indexed in ${(report.elapsedMs / 1000).toFixed(2)} s${report.resumedAfterInterruption ? ' (after an interrupted run)' : ''}${report.reextracted ? ' (extraction changed: every file read again)' : ''}`,
     result.embedder
-      ? `model: ${result.embedder.id} (embedding size ${result.embedder.dimensions}, ${result.embedder.maxTokens} max tokens)`
+      ? `model: ${result.embedder.id} (embedding size ${result.embedder.dimensions}, ${result.embedder.maxTokens} max tokens${result.embedder.device && result.embedder.device !== 'cpu' ? `, on ${result.embedder.device}` : ''})`
       : result.embedder === null
         ? `model: none${result.embedderReason ? ` (${result.embedderReason})` : ''}; structure and graph only`
         : undefined,
@@ -799,10 +803,11 @@ export function renderModels(models: readonly ModelRow[]): string {
   return lines(
     ...table(MODEL_COLUMNS, models),
     '',
-    'Best for searching code first; the order is a judgement until the eval measures each model.',
+    'Best for searching code first, by MRR on 241 hand-written queries (anvesa-gen-lab).',
     'Window: input size in tokens. Memory: expected peak while embedding. A model you brought in has no rank.',
-    'Automatic choice takes all-MiniLM-L6-v2, bge-base-en-v1.5 or bge-large-en-v1.5, whichever the',
-    'machine can run (anvesa model doctor says which). Install: anvesa model install <model> --download',
+    'Automatic choice takes anvesa-code-150m, which runs well on a CPU (anvesa model doctor says',
+    'what this machine suits); name a bigger one with --model.',
+    'Install: anvesa model install <model> --download',
   );
 }
 
@@ -1086,5 +1091,28 @@ export function renderPatternResult(result: PatternRunResult): string {
     ...rows,
     `${count}${result.nextCursor ? ` (next cursor: ${result.nextCursor})` : ''}`,
     ...diagRows,
+  );
+}
+
+export function renderFederatedDependents(result: FederatedDependentsResult): string {
+  return lines(
+    ...result.dependents.map((d) => `[${d.repo}] ${d.path} (depth ${d.depth})`),
+    `${result.total} cross-repo dependent(s) found across federation`,
+    ...result.degraded.map((failure) => `not read: ${failure.repo} (${failure.error.message})`),
+  );
+}
+
+export function renderFederationStatus(statuses: readonly FederatedRepoStatus[]): string {
+  if (statuses.length === 0) {
+    return 'no federated repositories configured in .anvesa/workspace.json\n';
+  }
+  const rows = statuses.map((st) => {
+    const statusLabel = `[${st.status}]`;
+    const err = st.error ? ` — ${st.error}` : '';
+    return `  ${st.name.padEnd(20)} ${statusLabel.padEnd(12)} weight: ${st.weight}  path: ${st.path}${err}`;
+  });
+  return lines(
+    `${statuses.length} federated repositor${statuses.length === 1 ? 'y' : 'ies'}:`,
+    ...rows,
   );
 }

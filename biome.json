@@ -10,8 +10,11 @@
       "!crates",
       "!eval/golden/*/corpus",
       "!.beads",
+      "!**/.anvesa",
       "!site",
-      "!ui/public"
+      "!ui/public",
+      "!eval/fixtures",
+      "!retriever/src/__fixtures__/learned-ranker"
     ]
   },
   "formatter": {

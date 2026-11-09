@@ -47,8 +47,8 @@ Models and wasm grammars work offline once installed:
 
 ```sh
 anvesa init                               # scaffolds, then proposes an encoder and parsers to download
-anvesa model list                         # the built-in models, best first, and which are installed
-anvesa model install bge-base-en-v1.5 --from ./models/bge-base   # offline; or --download
+anvesa model list                         # the built-in models and which are installed
+anvesa model install anvesa-code-400m --download                # or --from <folder> offline
 anvesa grammar list
 anvesa grammar install python --from ./tree-sitter-python.wasm   # file, folder or npm tarball
 ```
@@ -69,23 +69,15 @@ file with `--agents-file <path>`, or pass `--no-agents-file`. The section sits b
 Re-run `anvesa init` after upgrading: files it already made are kept, and the section is replaced
 with the one the new version ships.
 
-Built-in encoders, best for searching code first. The order is a judgement (the model trained on
-code, then the general ones by their published retrieval scores) until the eval measures each one.
-`anvesa model list` shows the same table with what is installed.
-
-| # | Model | Good for | Dims | Window | Disk |
-|--:|---|---|--:|--:|--:|
-| 1 | `jina-embeddings-v2-base-code` | trained on code; whole functions | 768 | 1024 | 154 MB |
-| 2 | `bge-large-en-v1.5` | largest general; slowest | 1024 | 512 | 1275 MB |
-| 3 | `bge-base-en-v1.5` | strong general retriever | 768 | 512 | 416 MB |
-| 4 | `gte-base` | bge-base class, 1/4 download | 768 | 512 | 105 MB |
-| 5 | `bge-small-en-v1.5` | best small model; for laptops | 384 | 512 | 32 MB |
-| 6 | `gte-small` | small alternative to bge-small | 384 | 512 | 32 MB |
-| 7 | `all-MiniLM-L12-v2` | light and CPU-friendly | 384 | 256 | 32 MB |
-| 8 | `all-MiniLM-L6-v2` | lightest; runs anywhere | 384 | 256 | 22 MB |
-
-Automatic choice takes `all-MiniLM-L6-v2`, `bge-base-en-v1.5` or `bge-large-en-v1.5`, whichever the
-machine can run (`anvesa model doctor` says which); the others are yours to choose with `--model`.
+Built-in encoders: `anvesa-code-150m` (0.6 GB, the default), `anvesa-code-400m` (1.6 GB) and
+`anvesa-code-1b` (4 GB). They are Ettin fine-tuned for code search (MIT, `nimishph/anvesa-code-*` on
+Hugging Face); on 241 hand-written queries they score 0.626, 0.684 and 0.685 MRR, against 0.547 for MiniLM,
+the previous default. Each comes with a learned ranker: symbol search scores every symbol by cosine less a hub
+penalty, then reorders the top 30 with the encoder's ranker, and shows that second order (see
+`docs/learned-ranker.md`). The 150m is what automatic choice and `init` propose: it indexes on a CPU at about 40 ms
+a symbol card. Choose a bigger one with `--model` (best on a GPU).
+Models that used to be built in (MiniLM, BGE, GTE, jina) are refused by name with what replaced them; a
+project configured with one needs the replacement installed and an index run.
 
 Bring your own model: an ONNX file with its Hugging Face `tokenizer.json` (WordPiece, byte-level
 BPE or SentencePiece unigram, each verified against the reference tokenizers):
@@ -143,16 +135,17 @@ what is missing.
 
 A language becomes searchable by symbol once it has a *mapping*: which syntax nodes are declarations,
 imports, calls and control flow, and where each finds its name. TypeScript, JavaScript (and Vue,
-through the TypeScript mapping), Python, PHP, Go, Rust, Java and Ruby ship one (each was learned from
-real code with the trainer below, then checked). C and C++ ship a partial one: structs, classes,
+through the TypeScript mapping), Python, PHP, Go, Rust, Java, Ruby and C# ship one (each was learned
+from real code with the trainer below, then checked). C and C++ ship a partial one: structs, classes,
 namespaces, includes and calls are named, but a function's name sits inside a nested declarator that a
-mapping cannot follow, so functions are found by `//function` and never by `[@name="..."]`. C# ships
-none. For C# or any other language whose grammar is available (compiled in, or installed as wasm),
-learn one from code:
+mapping cannot follow, so functions are found by `//function` and never by `[@name="..."]`. In C#,
+properties are tagged but are not outline symbols (as in TypeScript and PHP), and operators and
+indexers, which have no name a mapping can read, are not mapped. For any other language whose grammar
+is available (compiled in, or installed as wasm), or to fit a mapping to your own code, learn one:
 
 ```sh
 anvesa mapping train csharp --samples ./src --samples ./tests   # learns, checks, keeps it in .anvesa/
-anvesa index --force                                          # C# files now have outlines and symbols
+anvesa index --force                                          # files now have outlines from it
 ```
 
 Training reads how the grammar builds real code (a node with a `name` field and a body declares

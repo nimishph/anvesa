@@ -14,6 +14,7 @@ import {
   type ProjectLanguage,
   probeHardware,
   projectLanguages,
+  weightBytes,
   writeProjectConfig,
 } from '@cntxt-labs/anvesa-retriever';
 import type { Environment } from './environment.ts';
@@ -227,7 +228,7 @@ async function chooseModel(
   }
 
   const free = await freeBytes(modelsDirectory(ctx.environment.env));
-  const needed = chosen.spec.model.bytes + chosen.spec.tokenizer.bytes;
+  const needed = weightBytes(chosen.spec) + chosen.spec.tokenizer.bytes;
   if (free !== undefined && free < needed * 1.5) {
     return {
       id,

@@ -5,7 +5,7 @@ import { Deadline, OperationAbortedError } from '@cntxt-labs/anvesa-core';
 import { budgetFor } from './budget.ts';
 import { type CardDraft, defineTransformer, inputFile, type Transformer } from './card.ts';
 import { ChannelRegistry } from './channel.ts';
-import { budgetSourceOf } from './embedder.ts';
+import { budgetSourceOf, cardTextFor } from './embedder.ts';
 import { TransformerFailedError } from './errors.ts';
 import { Ingester } from './pipeline.ts';
 import { previewCards } from './preview.ts';
@@ -108,6 +108,51 @@ describe('symbols transformer', () => {
     const long = `/** ${Array.from({ length: 60 }, (_, i) => `w${i}`).join(' ')} */\nexport function wide() {}`;
     const parts = (await draftsFor(long, 'src/w.ts', 24)).filter((d) => d.key === 'wide');
     for (const part of parts) expect(part.text.startsWith('function wide')).toBe(true);
+  });
+
+  describe('the W-expression path in the card', () => {
+    const nested = `export class ConfigLoader {
+  load(name: string) {
+    const parse = (text: string) => text.trim();
+    return parse(name);
+  }
+}
+`;
+    const cardsWith = async (path?: 'wql' | 'words' | 'none') =>
+      (await symbolsTransformer(path ? { path } : {}).transform(
+        inputFile('src/loader.ts', nested),
+        context(),
+      )) as CardDraft[];
+
+    test('a WQL path by default, the form the learned ranker was trained on', async () => {
+      const card = (await cardsWith()).find((d) => d.key === 'ConfigLoader.load') as CardDraft;
+      expect(card.text).toContain('/export/class[@name="ConfigLoader"]');
+      expect(symbolsTransformer().version).toBe('2+path-wql');
+    });
+
+    test('left out, the card and the transformer version are as they were before paths', async () => {
+      const card = (await cardsWith('none')).find(
+        (d) => d.key === 'ConfigLoader.load',
+      ) as CardDraft;
+      expect(card.text).not.toContain('/export');
+      expect(card.text).not.toContain('in export');
+      expect(symbolsTransformer({ path: 'none' }).version).toBe('2');
+    });
+
+    test('as words, the enclosing nodes outermost first, the symbol itself left out', async () => {
+      const drafts = await cardsWith('words');
+      const load = drafts.find((d) => d.key === 'ConfigLoader.load') as CardDraft;
+      expect(load.text).toContain('in export, class config loader');
+      expect(symbolsTransformer({ path: 'words' }).version).toBe('2+path-words');
+    });
+
+    test('as WQL, a path a query could follow, ending at the symbol', async () => {
+      const drafts = await cardsWith('wql');
+      const load = drafts.find((d) => d.key === 'ConfigLoader.load') as CardDraft;
+      expect(load.text).toContain(
+        '/export/class[@name="ConfigLoader"]/method[@name="ConfigLoader.load"]',
+      );
+    });
   });
 });
 
@@ -729,5 +774,47 @@ describe('keeping a channel equal to an outside source', () => {
     const p = pipeline();
     const wrong = { name: 'wrong', files: async () => ({ path: 'z.md' }) as never };
     await expect(p.ingester.syncChannel('docs', wrong)).rejects.toThrow(/async iterable/);
+  });
+});
+
+describe('a model that embeds cards in its own form', () => {
+  test('a nopath model embeds the card without its WQL path line, and the card keeps it', async () => {
+    const seen: string[] = [];
+    const nopath = {
+      ...embedder,
+      info: { ...embedder.info, cardForm: 'nopath' as const },
+      embed: async (texts: readonly string[]) => {
+        seen.push(...texts);
+        return embedder.embed(texts);
+      },
+    };
+    const store = new MemoryVectorStore();
+    const ingester = new Ingester({
+      registry: new ChannelRegistry([symbolsTransformer({ path: 'wql' })]),
+      embedder: nopath,
+      store,
+      services,
+    });
+    await ingester.ingest(inputFile('src/config.ts', codeSource));
+    const hits = await retrieve({
+      embedder: nopath,
+      store,
+      channel: 'symbols',
+      query: 'parse the configuration file',
+      limit: 50,
+    });
+    const card = hits.items.find((hit) => hit.card.attrs.symbol === 'parseConfig')?.card;
+    const [head, path, ...rest] = (card?.text ?? '').split('\n');
+    expect(path?.startsWith('/')).toBe(true);
+    expect(seen).toContain([head, ...rest].join('\n'));
+    expect(seen.some((text) => text.split('\n')[1]?.startsWith('/'))).toBe(false);
+  });
+
+  test('cardTextFor leaves a card with no path line, and any model without a form, alone', () => {
+    const card = 'function f — f — module a\n/function[@name="f"]\nDoes f.\nf(): void';
+    expect(cardTextFor(card, 'nopath')).toBe('function f — f — module a\nDoes f.\nf(): void');
+    expect(cardTextFor(card, undefined)).toBe(card);
+    expect(cardTextFor('function f — f\nDoes f.', 'nopath')).toBe('function f — f\nDoes f.');
+    expect(cardTextFor('one line', 'nopath')).toBe('one line');
   });
 });

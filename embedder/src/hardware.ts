@@ -3,11 +3,13 @@ import { readFileSync } from 'node:fs';
 import { arch, cpus, freemem, platform, totalmem } from 'node:os';
 import {
   BUILTIN_MODELS,
+  DEFAULT_TIER,
   estimatePeakRssMb,
   MODELS_BY_RANK,
   type ModelSpec,
   TIERS,
   type Tier,
+  weightBytes,
 } from './models.ts';
 
 export interface HardwareProbe {
@@ -109,22 +111,30 @@ export interface ChooseOptions {
   readonly memoryFraction?: number;
   /** Leave out models above this many million parameters, when the machine has few cores. */
   readonly maxParamsM?: number;
+  /**
+   * The largest tier to consider. Defaults to `DEFAULT_TIER` (anvesa-code-150m): bigger models are
+   * used when named, not chosen for a machine because it could hold them.
+   */
+  readonly maxTier?: Tier;
 }
 
 const DEFAULT_MEMORY_FRACTION = 0.5;
 
 /**
- * The most capable built-in model whose expected peak memory fits the share of available memory
- * it may take. The lowest tier is the floor: it is what runs where nothing else does, so it is
- * returned with `fits: false` and said so, rather than refusing to work.
+ * The most capable built-in model, up to `maxTier`, whose expected peak memory fits the share of
+ * available memory it may take. The lowest tier is the floor: it is what runs where nothing else
+ * does, so it is returned with `fits: false` and said so, rather than refusing to work.
  */
 export function chooseTier(probe: HardwareProbe, options: ChooseOptions = {}): TierChoice {
   const fraction = options.memoryFraction ?? DEFAULT_MEMORY_FRACTION;
   const budgetMb = probe.availableMemoryMb * fraction;
-  const candidates = [...TIERS].reverse().map((tier) => {
-    const spec = BUILTIN_MODELS[tier];
-    return { tier, spec, estimatedPeakMb: estimatePeakRssMb(spec.model.bytes) };
-  });
+  const top = TIERS.indexOf(options.maxTier ?? DEFAULT_TIER);
+  const candidates = TIERS.slice(0, top + 1)
+    .reverse()
+    .map((tier) => {
+      const spec = BUILTIN_MODELS[tier];
+      return { tier, spec, estimatedPeakMb: estimatePeakRssMb(weightBytes(spec)) };
+    });
   const cap = options.maxParamsM;
   const allowed =
     cap === undefined
@@ -163,16 +173,15 @@ export interface ModelAdvice {
 /** Few cores make embedding slow, so a big model is not proposed however much memory there is. */
 function paramsCapFor(cores: number): number | undefined {
   if (cores <= 2) return 40;
-  if (cores <= 4) return 120;
+  if (cores <= 4) return 160; // anvesa-code-150m, not the 400m
   return undefined;
 }
 
 /**
- * Every built-in model, best for code first, with how each fits this machine, and which one to
- * propose. The proposal is the most
- * capable of the three standard tiers that fits in memory and is not too heavy for the cores; the
- * other models are offered as alternatives with the same facts. Only measured things decide: memory
- * available and cores, never a guessed accelerator.
+ * Every built-in model ranked for this machine, and which one to propose. The proposal is the
+ * default tier (anvesa-code-150m) unless `maxTier` allows more: then the most capable that fits in
+ * memory and is not too heavy for the cores. The other models are offered as alternatives with the
+ * same facts. Only measured things decide: memory available and cores, never a guessed accelerator.
  */
 export function adviseModels(
   probe: HardwareProbe,
@@ -189,11 +198,11 @@ export function adviseModels(
   });
   const budgetMb = choice.budgetMb;
   const models = MODELS_BY_RANK.map((spec): ModelAdvice => {
-    const estimatedPeakMb = estimatePeakRssMb(spec.model.bytes);
+    const estimatedPeakMb = estimatePeakRssMb(weightBytes(spec));
     return {
       spec,
       estimatedPeakMb,
-      downloadMb: (spec.model.bytes + spec.tokenizer.bytes) / (1024 * 1024),
+      downloadMb: (weightBytes(spec) + spec.tokenizer.bytes) / (1024 * 1024),
       fits: estimatedPeakMb <= budgetMb,
       recommended: spec.id === choice.spec.id,
     };

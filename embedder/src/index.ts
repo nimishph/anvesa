@@ -15,21 +15,25 @@ export { batchTokensFor, LocalEmbedder, THROUGHPUT_BATCH_TOKENS } from './encode
 export * from './errors.ts';
 export type { ChooseOptions, HardwareProbe, ModelAdvice, TierChoice } from './hardware.ts';
 export { adviseModels, chooseTier, probeHardware } from './hardware.ts';
-export type { ModelFileSpec, ModelSpec, Pooling, Tier } from './models.ts';
+export type { CardForm, ModelFileSpec, ModelSpec, Pooling, Tier } from './models.ts';
 export {
   ADDITIONAL_MODELS,
+  ANVESA_CODE_MODELS,
   BUILTIN_MODELS,
   builtinModel,
+  DEFAULT_TIER,
   estimatePeakRssMb,
   MODEL_CATALOG,
   MODEL_RANKING,
   MODELS_BY_RANK,
   modelRank,
   PEAK_RSS_MEASUREMENTS,
+  RETIRED_MODELS,
   TIERS,
+  weightBytes,
 } from './models.ts';
 export type { OpenOptions, Resolution } from './open.ts';
-export { openLocalEmbedder, resolveModel } from './open.ts';
+export { openLocalEmbedder, resolveModel, retired } from './open.ts';
 export type { Tokenizer, WordPieceOptions } from './tokenizer.ts';
 export { tokenizerFromJson, tokenizerFromVocabulary, WordPieceTokenizer } from './tokenizer.ts';
 export { ByteLevelBpeTokenizer } from './tokenizer-bpe.ts';

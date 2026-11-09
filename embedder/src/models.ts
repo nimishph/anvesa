@@ -1,10 +1,14 @@
 /**
- * The encoders medha knows how to fetch and run, and how much machine each one needs.
+ * The encoders anvesa knows how to fetch and run, and how much machine each one needs.
  *
- * Tiers order by compute cost, not by retrieval quality: a bigger model is not automatically a
- * better one for code, and nothing here has been measured on code retrieval yet. That is what the
- * eval is for. Vectors are stored under the model's id, so two models can be held side by side.
+ * Tiers order by compute cost. Within the catalog that is also the order of measured code-search
+ * quality (anvesa-gen-lab). Vectors are stored under the model's id, so two models can be held side
+ * by side.
  */
+
+import type { CardForm } from '@cntxt-labs/anvesa-dense';
+
+export type { CardForm };
 
 export type Tier = 'low' | 'medium' | 'high';
 
@@ -31,12 +35,24 @@ export interface ModelSpec {
   /** Upstream repository the files come from. */
   readonly repo: string;
   readonly model: ModelFileSpec;
+  /**
+   * The weights of a model too large for one ONNX file (over 2 GB), kept beside it under the name
+   * the model refers to them by. Absent for a model that is one file.
+   */
+  readonly modelData?: ModelFileSpec;
   readonly tokenizer: ModelFileSpec;
+  /**
+   * The learned ranker fit on this encoder's scores (an XGBoost JSON model), which reorders the top
+   * of symbol search. Absent: symbols are ranked by the hub-penalised first stage alone.
+   */
+  readonly ranker?: ModelFileSpec;
   /** Declared output size. The loader reads the real one from the model and refuses a mismatch. */
   readonly dimensions: number;
   /** Input window, in tokens, special tokens included. */
   readonly maxTokens: number;
   readonly pooling: Pooling;
+  /** How cards are reshaped before this model embeds them. Absent: as indexed. */
+  readonly cardForm?: CardForm;
   /** Parameters, in millions: the honest proxy for compute cost. Unknown for a model brought in. */
   readonly paramsM: number | undefined;
   readonly license: string;
@@ -45,216 +61,180 @@ export interface ModelSpec {
   readonly summary?: string;
 }
 
-/** Same tokenizer file for the two BGE models: one SHA-256 pinned once. */
-const BGE_TOKENIZER: ModelFileSpec = {
+/** The tokenizer every Ettin size shares (anvesa-code-1b, -400m and -150m publish the same file). */
+const ETTIN_TOKENIZER: ModelFileSpec = {
   path: 'tokenizer.json',
-  bytes: 711396,
-  sha256: 'd241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66',
+  bytes: 3583387,
+  sha256: '657af518d877b6422fa44277c008870520894bffcaea6490504ee426c57aa548',
 };
-
-export const BUILTIN_MODELS: Readonly<Record<Tier, ModelSpec>> = {
-  low: {
-    id: 'all-MiniLM-L6-v2',
-    tier: 'low',
-    repo: 'Xenova/all-MiniLM-L6-v2',
-    model: {
-      path: 'onnx/model_quantized.onnx',
-      bytes: 22972370,
-      sha256: 'afdb6f1a0e45b715d0bb9b11772f032c399babd23bfc31fed1c170afc848bdb1',
-    },
-    tokenizer: {
-      path: 'tokenizer.json',
-      bytes: 711661,
-      sha256: 'da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0',
-    },
-    dimensions: 384,
-    maxTokens: 256,
-    pooling: 'mean',
-    paramsM: 22,
-    license: 'Apache-2.0',
-    notes:
-      'Runs anywhere, CPU only. An English sentence encoder whose vocabulary fragments ' +
-      'identifiers; its 256-token window fits symbol cards (signature, documentation, path) ' +
-      'but not raw function bodies.',
-    summary: 'lightest; runs anywhere',
-  },
-  medium: {
-    id: 'bge-base-en-v1.5',
-    tier: 'medium',
-    repo: 'Xenova/bge-base-en-v1.5',
-    model: {
-      path: 'onnx/model.onnx',
-      bytes: 435811539,
-      sha256: '9bc579acdba21c253c62a9bf866891355a63ffa3442b52c8a37d75b2ccb91848',
-    },
-    tokenizer: BGE_TOKENIZER,
-    dimensions: 768,
-    maxTokens: 512,
-    pooling: 'cls',
-    paramsM: 109,
-    license: 'MIT',
-    notes:
-      'A strong general retriever; the 512-token window takes nearly every symbol card whole. ' +
-      'English-centric: identifiers ride on word decomposition, not code training.',
-    summary: 'strong general retriever',
-  },
-  high: {
-    id: 'bge-large-en-v1.5',
-    tier: 'high',
-    repo: 'Xenova/bge-large-en-v1.5',
-    model: {
-      path: 'onnx/model.onnx',
-      bytes: 1336854281,
-      sha256: '69ed3f810d3b6d13f70dff9ca89966f39c0a0e877fb88211be7bcc070df2a2ce',
-    },
-    tokenizer: BGE_TOKENIZER,
-    dimensions: 1024,
-    maxTokens: 512,
-    pooling: 'cls',
-    paramsM: 335,
-    license: 'MIT',
-    notes:
-      'The largest and slowest built-in. The extra parameters buy finer separation on large ' +
-      'mixed corpora (code and prose); it is not a better code searcher by construction.',
-    summary: 'largest general; slowest',
-  },
-};
-
-const MINILM_TOKENIZER: ModelFileSpec = BUILTIN_MODELS.low.tokenizer;
 
 /**
- * Built-in models beyond the three that automatic choice picks from. They are offered by `init`
- * and by `--model <id>`, never chosen silently: which of them retrieves code best on a given
- * repository is for the eval to say. Files come from the same Hugging Face mirrors, pinned by size
- * and SHA-256 (the model hashes are the ones the hub publishes for each file).
+ * The anvesa-code encoders: Ettin-encoder (jhu-clsp, MIT) fine-tuned by anvesa-gen-lab on 105
+ * MIT-licensed repositories, the 400m and 150m also learning from the 1B as a teacher; exported to
+ * ONNX in fp32 with the weights in model.onnx_data. Mean pooling, 512 tokens, and symbol cards
+ * embedded without their WQL path line. Numbers are anvesa-gen-lab's (2026-10-29): first stage with
+ * the hub penalty and no ranker, on the corpus test set (1,710 generated queries, 57 repos, 13
+ * languages) and the 241 hand-written bench queries; CPU time is one card on 12 threads. Each comes
+ * with the learned ranker fit on its scores (ranker-noword.json, 20 features, no word overlap).
  */
-export const ADDITIONAL_MODELS: readonly ModelSpec[] = [
-  {
-    id: 'all-MiniLM-L12-v2',
-    tier: undefined,
-    repo: 'Xenova/all-MiniLM-L12-v2',
-    model: {
-      path: 'onnx/model_quantized.onnx',
-      bytes: 34014366,
-      sha256: 'f51725bc66b2bf5335cacb5c005763b57bcd741172372795819741cd945a9dd9',
-    },
-    tokenizer: MINILM_TOKENIZER,
-    dimensions: 384,
-    maxTokens: 256,
-    pooling: 'mean',
-    paramsM: 33,
-    license: 'Apache-2.0',
-    notes:
-      'MiniLM with twice the layers of the low tier, quantised, still CPU-friendly. A modest step up ' +
-      'in accuracy for about 10 MB more memory than all-MiniLM-L6-v2.',
-    summary: 'light and CPU-friendly',
+const CODE_400M: ModelSpec = {
+  id: 'anvesa-code-400m',
+  tier: 'medium',
+  repo: 'nimishph/anvesa-code-400m',
+  model: {
+    path: 'model.onnx',
+    bytes: 798633,
+    sha256: '018041c99d6572575a88330289dbab26d95b9514bb59625c731e6bf134e93310',
   },
-  {
-    id: 'bge-small-en-v1.5',
-    tier: undefined,
-    repo: 'Xenova/bge-small-en-v1.5',
-    model: {
-      path: 'onnx/model_quantized.onnx',
-      bytes: 34014426,
-      sha256: '6c9c6101a956d62dfb5e7190c538226c0c5bb9cb27b651234b6df063ee7dbfe4',
-    },
-    tokenizer: BGE_TOKENIZER,
-    dimensions: 384,
-    maxTokens: 512,
-    pooling: 'cls',
-    paramsM: 33,
-    license: 'MIT',
-    notes:
-      'The small BGE retriever, quantised: a 512-token window (whole symbol cards) at low-tier cost. ' +
-      'The best default for a laptop that cannot spare the base model.',
-    summary: 'best small model; for laptops',
+  modelData: {
+    path: 'model.onnx_data',
+    bytes: 1579126784,
+    sha256: 'd4155cb27211ff1c90d3dc1c2bcb13887ddc8a1bc78f4c93fea258161a25c75e',
   },
-  {
-    id: 'gte-small',
-    tier: undefined,
-    repo: 'Xenova/gte-small',
-    model: {
-      path: 'onnx/model_quantized.onnx',
-      bytes: 34014426,
-      sha256: '18dec105109b6004369799ca4761fb8fb413c64172c02147bcfac186b5c5f6cb',
-    },
-    tokenizer: MINILM_TOKENIZER,
-    dimensions: 384,
-    maxTokens: 512,
-    pooling: 'mean',
-    paramsM: 33,
-    license: 'MIT',
-    notes: 'General text embeddings from Alibaba DAMO, small and quantised; a 512-token window.',
-    summary: 'small alternative to bge-small',
+  tokenizer: ETTIN_TOKENIZER,
+  ranker: {
+    path: 'ranker-noword.json',
+    bytes: 243592,
+    sha256: 'e81c135ca4ff4decf37c1348b37f01feafb9203aabcc88fd180a2ee0d3d30670',
   },
-  {
-    id: 'gte-base',
-    tier: undefined,
-    repo: 'Xenova/gte-base',
-    model: {
-      path: 'onnx/model_quantized.onnx',
-      bytes: 110083337,
-      sha256: '699c5233f2ed9e7230af2d0cb7a50d364fa40d0f72f8312cad74d86a38676637',
-    },
-    tokenizer: MINILM_TOKENIZER,
-    dimensions: 768,
-    maxTokens: 512,
-    pooling: 'mean',
-    paramsM: 109,
-    license: 'MIT',
-    notes:
-      'Base-size GTE, quantised: a quarter of the download of bge-base-en-v1.5 for a similar class ' +
-      'of retrieval.',
-    summary: 'bge-base class, 1/4 download',
+  dimensions: 1024,
+  maxTokens: 512,
+  pooling: 'mean',
+  cardForm: 'nopath',
+  paramsM: 400,
+  license: 'MIT',
+  notes:
+    'The recommended code model: 0.349 MRR on the corpus test set and 0.684 on the bench, level ' +
+    'with the 1B (paired differences -0.003 and -0.001, both intervals around 0) at a quarter of ' +
+    'its CPU time (98 ms a card) and about 1.6 GB. MiniLM scores 0.293 and 0.547.',
+  summary: 'as good as the 1B at a quarter of its time',
+};
+
+const CODE_150M: ModelSpec = {
+  id: 'anvesa-code-150m',
+  tier: 'low',
+  repo: 'nimishph/anvesa-code-150m',
+  model: {
+    path: 'model.onnx',
+    bytes: 584370,
+    sha256: '4e14bfb7b993bebe817e354559afe5d6971c4dbb4974f1168d847145b1c29de3',
   },
-  {
-    id: 'jina-embeddings-v2-base-code',
-    tier: undefined,
-    repo: 'jinaai/jina-embeddings-v2-base-code',
-    model: {
-      path: 'onnx/model_quantized.onnx',
-      bytes: 161895621,
-      sha256: 'ed45870251c9f0cf656e78aab0d37a23489066df8a222bb1c8caf8a45f2cb16d',
-    },
-    tokenizer: {
-      path: 'tokenizer.json',
-      bytes: 2561316,
-      sha256: 'b01c78a902aa4facb2f47f95449f48e2f7bbfea5d2472ee2f6ce92323c6f86e5',
-    },
-    dimensions: 768,
-    maxTokens: 1024,
-    pooling: 'mean',
-    paramsM: 161,
-    license: 'Apache-2.0',
-    notes:
-      'Trained on code and docstrings in thirty programming languages, so identifiers are not ' +
-      'fragmented the way an English sentence encoder does. Its window is 8192 tokens; 1024 is ' +
-      'used here, which holds whole functions.',
-    summary: 'trained on code; whole functions',
+  modelData: {
+    path: 'model.onnx_data',
+    bytes: 596057088,
+    sha256: '78c8202253b8d54565987e93a499e6c065be6d49018e0de2379876be6e975600',
   },
-];
+  tokenizer: ETTIN_TOKENIZER,
+  ranker: {
+    path: 'ranker-noword.json',
+    bytes: 244225,
+    sha256: '400012bb93db7c4a021e4a2ebd736d9a119532aa7b9a37126e09789063981e6e',
+  },
+  dimensions: 768,
+  maxTokens: 512,
+  pooling: 'mean',
+  cardForm: 'nopath',
+  paramsM: 150,
+  license: 'MIT',
+  notes:
+    'For machines without a GPU: 40 ms a card on a CPU, about 0.6 GB. 0.301 MRR on the corpus ' +
+    'test set and 0.626 on the bench: below the 400m (about -0.05 on both) but well above MiniLM ' +
+    'on hand-written queries (0.547).',
+  summary: 'the default; runs well on a CPU',
+};
+
+const CODE_1B: ModelSpec = {
+  id: 'anvesa-code-1b',
+  tier: 'high',
+  repo: 'nimishph/anvesa-code-1b',
+  model: {
+    path: 'model.onnx',
+    bytes: 1034044,
+    sha256: 'df33320b7ea9a50823b04f5b189fa4077f72fa530274a36e9634d1e4e1cdeae1',
+  },
+  modelData: {
+    path: 'model.onnx_data',
+    bytes: 4112202752,
+    sha256: '2bf8038ac17358a505091b27816beac37a32e64cf3d928212b36a634ef775805',
+  },
+  tokenizer: ETTIN_TOKENIZER,
+  ranker: {
+    path: 'ranker-noword.json',
+    bytes: 244475,
+    sha256: '7d49fa95580cb568be0bb1eb6105da9557bf91e3e4436dfbbc640d3efc2304ca',
+  },
+  dimensions: 1792,
+  maxTokens: 512,
+  pooling: 'mean',
+  cardForm: 'nopath',
+  paramsM: 1000,
+  license: 'MIT',
+  notes:
+    '0.352 MRR on the corpus test set and 0.685 on the bench: no measurable gain over the 400m ' +
+    'for four times its CPU time (373 ms a card) and about 4 GB. Index on a GPU ' +
+    '(ANVESA_DEVICE=gpu) where there is one.',
+  summary: 'best measured; needs a GPU',
+};
+
+/**
+ * The built-in models by cost. Automatic choice is the low tier, anvesa-code-150m: it runs well on a
+ * CPU and scores 0.626 MRR on anvesa-gen-lab's hand-written queries (MiniLM, the old default: 0.547).
+ * The 400m (0.684) and the 1B (0.685) are used when named, or when they are all that is installed.
+ */
+export const BUILTIN_MODELS: Readonly<Record<Tier, ModelSpec>> = {
+  low: CODE_150M,
+  medium: CODE_400M,
+  high: CODE_1B,
+};
+
+/** The tier automatic choice uses. */
+export const DEFAULT_TIER: Tier = 'low';
+
+/** Built in beyond the tiers. None at present. */
+export const ADDITIONAL_MODELS: readonly ModelSpec[] = [];
+
+export const ANVESA_CODE_MODELS: readonly ModelSpec[] = [CODE_400M, CODE_150M, CODE_1B];
+
+/**
+ * Models that were built in and are not any more, and what to use instead. On anvesa-gen-lab's 241
+ * hand-written queries they scored at or below MiniLM (jina 0.533, gte-large 0.550, bge-m3 0.518,
+ * MiniLM 0.547), against 0.626 for anvesa-code-150m and 0.684 for the 400m.
+ */
+export const RETIRED_MODELS: Readonly<Record<string, string>> = {
+  'all-MiniLM-L6-v2': 'anvesa-code-150m',
+  'all-MiniLM-L12-v2': 'anvesa-code-150m',
+  'bge-small-en-v1.5': 'anvesa-code-150m',
+  'gte-small': 'anvesa-code-150m',
+  'gte-base': 'anvesa-code-150m',
+  'jina-embeddings-v2-base-code': 'anvesa-code-150m',
+  'bge-base-en-v1.5': 'anvesa-code-150m',
+  'bge-large-en-v1.5': 'anvesa-code-400m',
+};
 
 /** Every built-in model, smallest download first. */
 export const MODEL_CATALOG: readonly ModelSpec[] = [
   ...TIERS.map((tier) => BUILTIN_MODELS[tier]),
   ...ADDITIONAL_MODELS,
-].sort((a, b) => a.model.bytes - b.model.bytes);
+].sort((a, b) => weightBytes(a) - weightBytes(b));
+
+/** The bytes of a model's weights: its ONNX file and, for a model over 2 GB, the external weights beside it. */
+export function weightBytes(spec: ModelSpec): number {
+  return spec.model.bytes + (spec.modelData?.bytes ?? 0);
+}
+
+export function builtinModel(id: string): ModelSpec | undefined {
+  return MODEL_CATALOG.find((spec) => spec.id === id);
+}
 
 /**
- * The built-in models, best for searching code first. Until the eval has measured each model on
- * code retrieval, the order is a judgement: the model trained on code first, then the general
- * encoders by their published MTEB retrieval averages (larger before smaller within a family).
- * A measured order replaces this one; nothing chooses a model by it, it only orders what is shown.
+ * The built-in models, best for searching code first, by anvesa-gen-lab's measurements
+ * (2026-10-29, MRR on 241 hand-written queries): anvesa-code-1b 0.685, -400m 0.684, -150m 0.626.
+ * Nothing chooses a model by it; it only orders what is shown. Automatic choice stays the 150m.
  */
 export const MODEL_RANKING: readonly string[] = [
-  'jina-embeddings-v2-base-code',
-  'bge-large-en-v1.5',
-  'bge-base-en-v1.5',
-  'gte-base',
-  'bge-small-en-v1.5',
-  'gte-small',
-  'all-MiniLM-L12-v2',
-  'all-MiniLM-L6-v2',
+  'anvesa-code-1b',
+  'anvesa-code-400m',
+  'anvesa-code-150m',
 ];
 
 /** A model's place in `MODEL_RANKING`, from 1. Undefined for a model the user brought in. */
@@ -267,10 +247,6 @@ export function modelRank(id: string): number | undefined {
 export const MODELS_BY_RANK: readonly ModelSpec[] = MODEL_RANKING.flatMap((id) =>
   MODEL_CATALOG.filter((spec) => spec.id === id),
 );
-
-export function builtinModel(id: string): ModelSpec | undefined {
-  return MODEL_CATALOG.find((spec) => spec.id === id);
-}
 
 /**
  * Resident memory of this package running a model, after embedding a hundred lines of code, on
