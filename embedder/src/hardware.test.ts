@@ -160,6 +160,16 @@ describe('the built-in catalog and what init proposes', () => {
     expect(ids).toContain('anvesa-code-1b');
   });
 
+  test('every built-in model says in a few words what it is good for', () => {
+    for (const spec of MODEL_CATALOG) expect(spec.summary?.length).toBeGreaterThan(0);
+  });
+
+  test('models are offered in catalog order, the default first', () => {
+    const offered = adviseModels(probeOf(8, 16_000)).models.map((model) => model.spec.id);
+    expect(offered).toEqual(MODEL_CATALOG.map((spec) => spec.id));
+    expect(offered[0]).toBe('anvesa-code-150m');
+  });
+
   test('the catalog is ordered smallest download first', () => {
     const sizes = MODEL_CATALOG.map(weightBytes);
     expect(sizes).toEqual([...sizes].sort((a, b) => a - b));

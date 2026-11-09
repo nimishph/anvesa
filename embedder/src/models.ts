@@ -57,6 +57,8 @@ export interface ModelSpec {
   readonly paramsM: number | undefined;
   readonly license: string;
   readonly notes: string;
+  /** What the model is good for, in a few words, for a table row. Built-in models have one. */
+  readonly summary?: string;
 }
 
 /** The tokenizer every Ettin size shares (anvesa-code-1b, -400m and -150m publish the same file). */
@@ -105,6 +107,7 @@ const CODE_400M: ModelSpec = {
     'The recommended code model: 0.349 MRR on the corpus test set and 0.684 on the bench, level ' +
     'with the 1B (paired differences -0.003 and -0.001, both intervals around 0) at a quarter of ' +
     'its CPU time (98 ms a card) and about 1.6 GB. MiniLM scores 0.293 and 0.547.',
+  summary: 'as good as the 1B at a quarter of its time',
 };
 
 const CODE_150M: ModelSpec = {
@@ -137,6 +140,7 @@ const CODE_150M: ModelSpec = {
     'For machines without a GPU: 40 ms a card on a CPU, about 0.6 GB. 0.301 MRR on the corpus ' +
     'test set and 0.626 on the bench: below the 400m (about -0.05 on both) but well above MiniLM ' +
     'on hand-written queries (0.547).',
+  summary: 'the default; runs well on a CPU',
 };
 
 const CODE_1B: ModelSpec = {
@@ -169,6 +173,7 @@ const CODE_1B: ModelSpec = {
     '0.352 MRR on the corpus test set and 0.685 on the bench: no measurable gain over the 400m ' +
     'for four times its CPU time (373 ms a card) and about 4 GB. Index on a GPU ' +
     '(ANVESA_DEVICE=gpu) where there is one.',
+  summary: 'level with the 400m at 4x its CPU time; for a GPU',
 };
 
 /**

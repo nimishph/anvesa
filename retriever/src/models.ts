@@ -35,6 +35,8 @@ export interface ModelRow {
   readonly estimatedMemoryMb: number;
   readonly license: string;
   readonly notes: string;
+  /** What the model is good for, in a few words. */
+  readonly summary: string;
 }
 
 const rowOf = async (cache: ModelCache, spec: ModelSpec): Promise<ModelRow> => ({
@@ -48,9 +50,13 @@ const rowOf = async (cache: ModelCache, spec: ModelSpec): Promise<ModelRow> => (
   estimatedMemoryMb: Math.round(estimatePeakRssMb(weightBytes(spec))),
   license: spec.license,
   notes: spec.notes,
+  summary: spec.summary ?? (builtinModel(spec.id) ? '' : 'custom model, brought in by you'),
 });
 
-/** The built-in models, and the ones the user brought in, with which are installed in this cache. */
+/**
+ * The built-in models (smallest first, so the default leads), then the ones the user brought in,
+ * with which are installed in this cache.
+ */
 export async function listModels(cache: ModelCache): Promise<readonly ModelRow[]> {
   const rows: ModelRow[] = [];
   for (const spec of MODEL_CATALOG) rows.push(await rowOf(cache, spec));
