@@ -33,6 +33,7 @@ export {
 export * from './config.ts';
 export * from './conjunction.ts';
 export * from './errors.ts';
+export * from './federation.ts';
 export type { Contribution, Fused, Lane } from './fuse.ts';
 export { DEFAULT_RRF_K, fuse } from './fuse.ts';
 export * from './grammars.ts';
