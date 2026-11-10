@@ -234,7 +234,7 @@
               "type": "boolean",
               "description": "false: off. true: on. Absent: the default, which is on once the notice has been shown."
             },
-            "noticeShown": {
+            "notice_shown": {
               "type": "boolean",
               "description": "Whether the telemetry notice has been shown, so the default may send."
             }

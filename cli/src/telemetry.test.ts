@@ -83,7 +83,7 @@ describe('when telemetry sends', () => {
 
   it('sends once the notice was shown, or the person turned it on', () => {
     const shown = sending();
-    writeTelemetryChoice(shown, { noticeShown: true });
+    writeTelemetryChoice(shown, { notice_shown: true });
     expect(telemetryStatus({ env: shown })).toMatchObject({
       active: true,
       endpoint: 'https://collector.test/v1',
@@ -117,15 +117,15 @@ describe('when telemetry sends', () => {
     ];
     for (const [extra, reason] of offs) {
       const env = sending(extra);
-      writeTelemetryChoice(env, { enabled: true, noticeShown: true });
+      writeTelemetryChoice(env, { enabled: true, notice_shown: true });
       expect(telemetryStatus({ env })).toMatchObject({ active: false, reason });
     }
     const env = sending();
-    writeTelemetryChoice(env, { enabled: true, noticeShown: true });
+    writeTelemetryChoice(env, { enabled: true, notice_shown: true });
     expect(telemetryStatus({ env, noNetwork: true }).reason).toBe('--no-network is set');
     expect(telemetryStatus({ env, config: projectConfig(false) }).active).toBe(false);
     expect(telemetryStatus({ env, config: projectConfig({ enabled: false }) }).active).toBe(false);
-    writeTelemetryChoice(env, { enabled: false, noticeShown: true });
+    writeTelemetryChoice(env, { enabled: false, notice_shown: true });
     expect(telemetryStatus({ env }).reason).toBe('turned off with `anvesa telemetry off`');
   });
 
@@ -135,7 +135,7 @@ describe('when telemetry sends', () => {
     const first = createTelemetryCollector({ env, notice: (text) => printed.push(text) });
     expect(first.enabled).toBe(false);
     expect(printed).toEqual([TELEMETRY_NOTICE]);
-    expect(readTelemetryChoice(env)).toEqual({ noticeShown: true });
+    expect(readTelemetryChoice(env)).toEqual({ notice_shown: true });
 
     const second = createTelemetryCollector({ env, notice: (text) => printed.push(text) });
     expect(second.enabled).toBe(true);
@@ -156,12 +156,12 @@ describe('when telemetry sends', () => {
       file,
       JSON.stringify({ model: 'anvesa-code-400m', preferences: { theme: 'dark' } }),
     );
-    expect(writeTelemetryChoice(env, { enabled: false, noticeShown: true })).toBe(true);
+    expect(writeTelemetryChoice(env, { enabled: false, notice_shown: true })).toBe(true);
     expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({
       model: 'anvesa-code-400m',
-      preferences: { theme: 'dark', telemetry: { enabled: false, noticeShown: true } },
+      preferences: { theme: 'dark', telemetry: { enabled: false, notice_shown: true } },
     });
-    expect(readTelemetryChoice(env)).toEqual({ enabled: false, noticeShown: true });
+    expect(readTelemetryChoice(env)).toEqual({ enabled: false, notice_shown: true });
   });
 
   it('never writes over a user config that is not JSON', () => {
@@ -338,7 +338,7 @@ describe('anvesa telemetry', () => {
     const off = await cli(env, 'off');
     expect(off.code).toBe(0);
     expect(off.stdout).toContain('telemetry: off (turned off with `anvesa telemetry off`)');
-    expect(readTelemetryChoice(env)).toEqual({ enabled: false, noticeShown: true });
+    expect(readTelemetryChoice(env)).toEqual({ enabled: false, notice_shown: true });
     expect(off.stdout).toContain('config.json (preferences.telemetry)');
 
     const on = await cli(env, 'on', '--json');

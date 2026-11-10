@@ -57,7 +57,7 @@ export interface TelemetryChoice {
   /** `false`: off. `true`: on, said in so many words. Absent: the default, which is on. */
   readonly enabled?: boolean;
   /** Whether `TELEMETRY_NOTICE` has been shown, so the default may send. */
-  readonly noticeShown?: boolean;
+  readonly notice_shown?: boolean;
 }
 
 /**
@@ -97,10 +97,10 @@ export function readTelemetryChoice(env: Env): TelemetryChoice {
   const preferences = config?.preferences;
   const telemetry = isObject(preferences) ? preferences.telemetry : undefined;
   if (!isObject(telemetry)) return {};
-  const { enabled, noticeShown } = telemetry;
+  const { enabled, notice_shown } = telemetry;
   return {
     ...(typeof enabled === 'boolean' ? { enabled } : {}),
-    ...(noticeShown === true ? { noticeShown } : {}),
+    ...(notice_shown === true ? { notice_shown } : {}),
   };
 }
 
@@ -176,7 +176,7 @@ export function telemetryStatus(options: TelemetryClientOptions = {}): Telemetry
   const where = { ...(endpoint ? { endpoint } : {}), ...(logFile ? { logFile } : {}) };
 
   // Written only to a local file, nothing leaves the machine: no notice is owed.
-  const consented = choice.enabled === true || choice.noticeShown === true || isOn(variable);
+  const consented = choice.enabled === true || choice.notice_shown === true || isOn(variable);
   if (endpoint && !consented) {
     if (!userConfigFile(env)) return off('no home directory to remember the notice in');
     return { active: false, reason: 'the notice has not been shown yet', needsNotice: true };
@@ -320,7 +320,7 @@ export function createTelemetryCollector(options: TelemetryClientOptions = {}): 
   const status = telemetryStatus(options);
   if (status.needsNotice && options.notice) {
     const env = options.env ?? process.env;
-    if (writeTelemetryChoice(env, { ...readTelemetryChoice(env), noticeShown: true })) {
+    if (writeTelemetryChoice(env, { ...readTelemetryChoice(env), notice_shown: true })) {
       options.notice(TELEMETRY_NOTICE);
     }
   }

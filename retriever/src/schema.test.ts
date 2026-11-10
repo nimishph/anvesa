@@ -45,7 +45,7 @@ describe('config.v1.json Schema & IDE Autocomplete', () => {
   it('accepts a preferences block and ignores it in a project', () => {
     const parsed = validateProjectConfig({
       model: 'test-model',
-      preferences: { telemetry: { enabled: true, noticeShown: true } },
+      preferences: { telemetry: { enabled: true, notice_shown: true } },
     });
     expect(parsed.model).toBe('test-model');
     expect('preferences' in parsed).toBe(false);
