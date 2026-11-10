@@ -51,6 +51,7 @@ import { renderIndexBar } from './progress.ts';
 import { findProjectRoot, isProjectRoot } from './project-root.ts';
 import * as show from './render.ts';
 import {
+  clearGlobalTelemetry,
   createTelemetryCollector,
   getGlobalTelemetry,
   readTelemetryChoice,
@@ -150,6 +151,8 @@ export async function openSession(
       embedderReason,
       close: async () => {
         await telemetry.close();
+        // Later records must not go to a collector nobody will flush.
+        clearGlobalTelemetry(telemetry);
         await retriever.close();
         await embedder?.dispose();
       },
@@ -579,7 +582,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         durationMsBucket: durationBucket(elapsed),
         ...modelField(retriever),
         hasScope: Boolean(ctx.parsed.values.scope),
-        nodeCountBucket: countBucket(embeddedCount),
+        changedCountBucket: countBucket(embeddedCount),
       });
       const info = retriever.embedder?.info;
       // The model the index was embedded with is recorded, so every later run, on any machine,
@@ -744,6 +747,24 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       const startedAt = performance.now();
       const isFederated =
         ctx.parsed.values.federated === true || Boolean(ctx.parsed.values.repo?.length);
+      // Structural when the question is WQL alone, semantic when the structure lane is excluded.
+      const searchMode: 'fused' | 'semantic' | 'structural' = exclude?.includes('structural')
+        ? 'semantic'
+        : splitConjunction(query, ctx.parsed.values.wql).semantic === undefined
+          ? 'structural'
+          : 'fused';
+      const recordSearch = (name: string, results: number): void =>
+        getGlobalTelemetry().record({
+          type: 'search',
+          name,
+          searchMode,
+          durationMsBucket: durationBucket(performance.now() - startedAt),
+          resultCountBucket: countBucket(results),
+          ...modelField(retriever),
+          hasWqlFilter: Boolean(ctx.parsed.values.wql),
+          hasScope: Boolean(ctx.parsed.values.scope),
+          channelCount: Object.keys(retriever.config.channels).length,
+        });
       if (isFederated) {
         const fed = new FederatedRetriever(retriever);
         try {
@@ -756,6 +777,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
             ...(ctx.parsed.values.repo ? { repos: ctx.parsed.values.repo } : {}),
             ...scopeOption(ctx),
           });
+          recordSearch('search_federated', page.items.length);
           const facts = await searchFacts(ctx, retriever, query, startedAt);
           emitResults(ctx, page, facts, (options) => show.renderSearch(page, options));
         } finally {
@@ -772,23 +794,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         ...(ctx.parsed.values.wql ? { wql: ctx.parsed.values.wql } : {}),
         ...scopeOption(ctx),
       });
-      const elapsed = performance.now() - startedAt;
-      const searchMode: 'fused' | 'semantic' | 'structural' = exclude?.includes('structural')
-        ? 'semantic'
-        : ctx.parsed.values.wql && !query
-          ? 'structural'
-          : 'fused';
-      getGlobalTelemetry().record({
-        type: 'search',
-        name: 'search',
-        searchMode,
-        durationMsBucket: durationBucket(elapsed),
-        resultCountBucket: countBucket(page.items.length),
-        ...modelField(retriever),
-        hasWqlFilter: Boolean(ctx.parsed.values.wql),
-        hasScope: Boolean(ctx.parsed.values.scope),
-        channelCount: Object.keys(retriever.config.channels).length,
-      });
+      recordSearch('search', page.items.length);
       const facts = await searchFacts(ctx, retriever, query, startedAt);
       emitResults(ctx, page, facts, (options) => show.renderSearch(page, options));
     }),
@@ -1044,14 +1050,8 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
     const sub = ctx.parsed.positionals[0] ?? 'status';
     if (sub === 'on' || sub === 'off') {
       // Either answer is the person's own, so the notice is owed no more.
-      const kept = writeTelemetryChoice(env, { enabled: sub === 'on', notice_shown: true });
-      if (!kept) {
-        throw new InvalidArgumentError(
-          'ANVESA_HOME or HOME',
-          'a directory to keep the choice in',
-          'not set or not writable',
-        );
-      }
+      const problem = writeTelemetryChoice(env, { enabled: sub === 'on', notice_shown: true });
+      if (problem !== undefined) throw new CommandFailedError(`telemetry ${sub}`, problem);
     } else if (sub !== 'status') {
       throw new InvalidArgumentError('telemetry', 'status, on or off', sub);
     }
@@ -1081,7 +1081,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
     };
     emit(ctx, value, () =>
       [
-        `telemetry: ${status.active ? 'on' : status.needsNotice ? 'on, from the next run' : 'off'}${status.active || status.needsNotice ? '' : ` (${status.reason})`}`,
+        `telemetry: ${status.active ? 'on' : status.needsNotice ? 'on, once the notice has been shown in a terminal' : 'off'}${status.active || status.needsNotice ? '' : ` (${status.reason})`}`,
         ...(status.endpoint ? [`sends to:  ${status.endpoint}`] : []),
         ...(status.logFile ? [`writes to: ${status.logFile}`] : []),
         ...(file ? [`kept in:   ${file} (preferences.telemetry)`] : []),

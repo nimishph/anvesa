@@ -9,8 +9,8 @@ import { createHash, randomBytes } from 'node:crypto';
  *    Custom channels and models are reported as `custom`, never by name.
  * 3. No identity: a batch carries a random id made per process and never written down. The only
  *    thing stored between runs is the user's choice (on, off, notice shown), never an id.
- * 4. No disruption: recording never throws, delivery is in the background with a short timeout,
- *    and a failure is dropped.
+ * 4. No disruption: recording never throws, delivery has a short timeout (shorter still for the
+ *    last batch, which a finished command waits for), and a failure is dropped.
  */
 
 export type DurationBucket =
@@ -64,6 +64,8 @@ export interface TelemetryEvent {
   readonly modelId?: string;
   readonly language?: string;
   readonly nodeCountBucket?: CountBucket;
+  /** Index (`index` events): cards embedded this run, or files added and changed without a model. */
+  readonly changedCountBucket?: CountBucket;
   readonly mappedRatioBucket?: RatioBucket;
   readonly errorCode?: string;
   /** Ranking (`rank` events): candidates the first stage handed the ranker, at most its depth. */

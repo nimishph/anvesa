@@ -1,5 +1,13 @@
 import { afterAll, describe, expect, it } from 'bun:test';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TelemetryCollector, TelemetryEvent, TelemetryPayload } from '@cntxt-labs/anvesa-core';
@@ -156,7 +164,7 @@ describe('when telemetry sends', () => {
       file,
       JSON.stringify({ model: 'anvesa-code-400m', preferences: { theme: 'dark' } }),
     );
-    expect(writeTelemetryChoice(env, { enabled: false, notice_shown: true })).toBe(true);
+    expect(writeTelemetryChoice(env, { enabled: false, notice_shown: true })).toBeUndefined();
     expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({
       model: 'anvesa-code-400m',
       preferences: { theme: 'dark', telemetry: { enabled: false, notice_shown: true } },
@@ -168,9 +176,18 @@ describe('when telemetry sends', () => {
     const env = sending();
     const file = join(env.ANVESA_HOME ?? '', 'config.json');
     writeFileSync(file, '{ "model": ');
-    expect(writeTelemetryChoice(env, { enabled: false })).toBe(false);
+    expect(writeTelemetryChoice(env, { enabled: false })).toContain('is not valid JSON');
     expect(readFileSync(file, 'utf8')).toBe('{ "model": ');
     expect(readTelemetryChoice(env)).toEqual({});
+  });
+
+  it('never writes over a user config it cannot read', () => {
+    const env = sending();
+    // A directory where the file should be: it exists, and reading it fails (EISDIR).
+    const file = join(env.ANVESA_HOME ?? '', 'config.json');
+    mkdirSync(file);
+    expect(writeTelemetryChoice(env, { enabled: false })).toContain('could not be read');
+    expect(statSync(file).isDirectory()).toBe(true);
   });
 });
 
@@ -333,7 +350,9 @@ describe('anvesa telemetry', () => {
 
   it('says what it would do, and keeps on and off', async () => {
     const env = sending();
-    expect((await cli(env)).stdout).toContain('telemetry: on, from the next run');
+    expect((await cli(env)).stdout).toContain(
+      'telemetry: on, once the notice has been shown in a terminal',
+    );
 
     const off = await cli(env, 'off');
     expect(off.code).toBe(0);

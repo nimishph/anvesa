@@ -126,6 +126,20 @@ describe('the worker', () => {
       handle(new Request('https://collector.test/v1', { method: 'POST', body }), env, context);
     expect((await handle(new Request('https://collector.test/v1'), env, context)).status).toBe(405);
     expect((await post('x'.repeat(70 * 1024))).status).toBe(413);
+    // No Content-Length (a streamed post): still cut off at the limit, counted in bytes.
+    const streamed = (body: string) =>
+      handle(
+        new Request('https://collector.test/v1', {
+          method: 'POST',
+          body: new Blob([body]).stream(),
+          duplex: 'half',
+        } as RequestInit),
+        env,
+        context,
+      );
+    expect((await streamed('x'.repeat(70 * 1024))).status).toBe(413);
+    expect((await streamed('é'.repeat(40 * 1024))).status).toBe(413);
+    expect((await streamed('{')).status).toBe(400);
     expect((await post('{')).status).toBe(400);
     expect((await post('{"schemaVersion":"1.0.0"}')).status).toBe(400);
   });

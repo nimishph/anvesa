@@ -1,4 +1,13 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import {
+  closeSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 
 /**
@@ -213,7 +222,12 @@ export function recordUse(
 ): boolean {
   const path = usageFile(env);
   if (!path || !known.has(command)) return false;
+  let unlock: (() => void) | undefined;
   try {
+    mkdirSync(dirname(path), { recursive: true });
+    // Agents run commands side by side: without the lock, each would write over the others' runs.
+    unlock = lock(`${path}.lock`);
+    if (!unlock) return false;
     const usage = read(path, now);
     const commands: Record<string, CommandUsage> = {};
     for (const [name, use] of Object.entries(usage.commands)) {
@@ -221,13 +235,44 @@ export function recordUse(
     }
     commands[command] = withRun(commands[command], outcome, now);
     const next: UsageFile = { ...usage, format: FORMAT, half_life_days: HALF_LIFE_DAYS, commands };
-    mkdirSync(dirname(path), { recursive: true });
     const temporary = `${path}.${process.pid}.tmp`;
     writeFileSync(temporary, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
     renameSync(temporary, path);
     return true;
   } catch {
     return false;
+  } finally {
+    unlock?.();
+  }
+}
+
+/** How long a run waits for another to finish writing, and when a lock left behind is stale. */
+const LOCK_WAIT_MS = 250;
+const LOCK_STALE_MS = 5_000;
+
+/**
+ * Take the lock file `path` (created exclusively), waiting up to `LOCK_WAIT_MS`; a lock older than
+ * `LOCK_STALE_MS` was left by a run that died and is taken over. Returns its release, or
+ * `undefined` if another run still holds it: that run is then not counted.
+ */
+function lock(path: string): (() => void) | undefined {
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  const pause = new Int32Array(new SharedArrayBuffer(4));
+  for (;;) {
+    try {
+      closeSync(openSync(path, 'wx'));
+      return () => rmSync(path, { force: true });
+    } catch (failure) {
+      if ((failure as { readonly code?: unknown }).code !== 'EEXIST') throw failure;
+    }
+    try {
+      if (Date.now() - statSync(path).mtimeMs > LOCK_STALE_MS) rmSync(path, { force: true });
+    } catch {
+      // Released between the two calls: try again at once.
+      continue;
+    }
+    if (Date.now() >= deadline) return undefined;
+    Atomics.wait(pause, 0, 0, 5);
   }
 }
 

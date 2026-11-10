@@ -41,6 +41,11 @@ export const DEFAULT_TELEMETRY_ENDPOINT: string | undefined = undefined;
 const MAX_BUFFER_EVENTS = 50;
 const FLUSH_INTERVAL_MS = 30_000;
 const FLUSH_TIMEOUT_MS = 600;
+/**
+ * At close a command is done and the person is waiting for the prompt: the last batch gets this
+ * long, and is dropped if the collector is slower.
+ */
+const CLOSE_TIMEOUT_MS = 150;
 const USER_CONFIG_FILE = 'config.json';
 
 export const TELEMETRY_NOTICE = `anvesa collects anonymous usage telemetry: which command or tool ran, how long it took and how many
@@ -73,28 +78,39 @@ export function userConfigFile(env: Env): string | undefined {
 const isObject = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
-/** The user config as it is on disk: `{}` when missing, `undefined` when it is not JSON. */
-function readUserConfig(path: string): Record<string, unknown> | undefined {
+type UserConfig = { readonly config: Record<string, unknown> } | { readonly problem: string };
+
+const errorCode = (failure: unknown): string => {
+  const code = (failure as { readonly code?: unknown } | null)?.code;
+  return typeof code === 'string' ? code : 'error';
+};
+
+/**
+ * The user config as it is on disk: `{}` when it does not exist. Anything else that stops it being
+ * read (not JSON, locked, unreadable) is a problem: nothing is read from it, and nothing may be
+ * written over it, or the rest of the file would be lost.
+ */
+function readUserConfig(path: string): UserConfig {
   let text: string;
   try {
     text = readFileSync(path, 'utf8');
-  } catch {
-    // Missing or unreadable: nothing has been chosen. Never fail a command over it.
-    return {};
+  } catch (failure) {
+    if (errorCode(failure) === 'ENOENT') return { config: {} };
+    return { problem: `${path} could not be read (${errorCode(failure)})` };
   }
   try {
     const raw: unknown = JSON.parse(text);
-    return isObject(raw) ? raw : undefined;
+    return isObject(raw) ? { config: raw } : { problem: `${path} is not a JSON object` };
   } catch {
-    // Not JSON: someone is editing it. Read nothing from it, and never write over it.
-    return undefined;
+    // Someone may be editing it. Read nothing from it, and never write over it.
+    return { problem: `${path} is not valid JSON` };
   }
 }
 
 export function readTelemetryChoice(env: Env): TelemetryChoice {
   const path = userConfigFile(env);
-  const config = path ? readUserConfig(path) : undefined;
-  const preferences = config?.preferences;
+  const read = path ? readUserConfig(path) : undefined;
+  const preferences = read && 'config' in read ? read.config.preferences : undefined;
   const telemetry = isObject(preferences) ? preferences.telemetry : undefined;
   if (!isObject(telemetry)) return {};
   const { enabled, notice_shown } = telemetry;
@@ -106,22 +122,24 @@ export function readTelemetryChoice(env: Env): TelemetryChoice {
 
 /**
  * Keep the choice in the user config's `preferences.telemetry`, leaving everything else in the file
- * as it was. Returns whether it was kept: a run with no home, or a file that is not JSON, cannot.
+ * as it was. Returns `undefined` when it was kept, else why not: no home, a file that exists but
+ * cannot be read as JSON (it is never written over), or a failed write.
  */
-export function writeTelemetryChoice(env: Env, choice: TelemetryChoice): boolean {
+export function writeTelemetryChoice(env: Env, choice: TelemetryChoice): string | undefined {
   const path = userConfigFile(env);
-  const config = path ? readUserConfig(path) : undefined;
-  if (!path || !config) return false;
-  const preferences = isObject(config.preferences) ? config.preferences : {};
-  const next = { ...config, preferences: { ...preferences, telemetry: choice } };
+  if (!path) return 'neither ANVESA_HOME nor HOME (or USERPROFILE) is set';
+  const read = readUserConfig(path);
+  if ('problem' in read) return read.problem;
+  const preferences = isObject(read.config.preferences) ? read.config.preferences : {};
+  const next = { ...read.config, preferences: { ...preferences, telemetry: choice } };
   try {
     mkdirSync(dirname(path), { recursive: true });
     const temporary = `${path}.${process.pid}.tmp`;
     writeFileSync(temporary, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
     renameSync(temporary, path);
-    return true;
-  } catch {
-    return false;
+    return undefined;
+  } catch (failure) {
+    return `${path} could not be written (${errorCode(failure)})`;
   }
 }
 
@@ -253,6 +271,8 @@ export class ActiveTelemetryCollector implements TelemetryCollector {
     }
   }
 
+  private closing = false;
+
   private async deliver(batch: TelemetryEvent[]): Promise<void> {
     const payload: TelemetryPayload = {
       schemaVersion: '1.0.0',
@@ -284,7 +304,7 @@ export class ActiveTelemetryCollector implements TelemetryCollector {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body,
-          signal: AbortSignal.timeout(FLUSH_TIMEOUT_MS),
+          signal: AbortSignal.timeout(this.closing ? CLOSE_TIMEOUT_MS : FLUSH_TIMEOUT_MS),
         }),
       );
     }
@@ -295,6 +315,7 @@ export class ActiveTelemetryCollector implements TelemetryCollector {
       clearInterval(this.flushTimer);
       this.flushTimer = undefined;
     }
+    this.closing = true;
     await this.flush();
   }
 }
@@ -312,6 +333,11 @@ export function setGlobalTelemetry(collector: TelemetryCollector): void {
   globalTelemetry = collector;
 }
 
+/** Put the no-op collector back, if `collector` (now closed) is still the global one. */
+export function clearGlobalTelemetry(collector: TelemetryCollector): void {
+  if (globalTelemetry === collector) globalTelemetry = undefined;
+}
+
 /**
  * The collector for this run. When the notice is owed and there is someone to show it to, it is
  * shown and remembered, and this run still sends nothing: the person can turn it off first.
@@ -320,7 +346,8 @@ export function createTelemetryCollector(options: TelemetryClientOptions = {}): 
   const status = telemetryStatus(options);
   if (status.needsNotice && options.notice) {
     const env = options.env ?? process.env;
-    if (writeTelemetryChoice(env, { ...readTelemetryChoice(env), notice_shown: true })) {
+    const problem = writeTelemetryChoice(env, { ...readTelemetryChoice(env), notice_shown: true });
+    if (problem === undefined) {
       options.notice(TELEMETRY_NOTICE);
     }
   }

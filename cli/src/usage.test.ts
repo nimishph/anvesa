@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readUsage, recentCommands, recordUse, usageFile } from './usage.ts';
@@ -116,6 +116,22 @@ describe('usage', () => {
     expect(stored.commands.query).toMatchObject({ last_used: then, score: 10, runs: 0 });
     expect(stored.commands.query.first_used).toBeUndefined();
     expect(stored.commands.search).toMatchObject({ first_used: now, runs: 1, succeeded: 1 });
+  });
+
+  test('a run waits for another writing it, and takes over a lock left behind', () => {
+    const env = { ANVESA_HOME: home() };
+    const path = usageFile(env) as string;
+    const held = `${path}.lock`;
+    writeFileSync(held, '');
+    // Another run holds it: this one is not counted, rather than writing over that one's count.
+    expect(recordUse(env, 'search', known)).toBe(false);
+    expect(readUsage(env)?.commands.search).toBeUndefined();
+    // A lock from a run that died long ago is stale.
+    const old = new Date(Date.now() - 60_000);
+    utimesSync(held, old, old);
+    expect(recordUse(env, 'search', known)).toBe(true);
+    expect(recordUse(env, 'search', known)).toBe(true);
+    expect(readUsage(env)?.commands.search?.runs).toBe(2);
   });
 
   test('a bad value loses only itself', () => {
