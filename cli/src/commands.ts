@@ -1,7 +1,13 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
-import { InvalidArgumentError, type PageRequest } from '@cntxt-labs/anvesa-core';
+import {
+  countBucket,
+  durationBucket,
+  InvalidArgumentError,
+  type PageRequest,
+  toCodeLensError,
+} from '@cntxt-labs/anvesa-core';
 import {
   type Assistant,
   auditMapping,
@@ -24,6 +30,7 @@ import {
   modelsDirectory,
   openProjectEmbedder,
   PROJECT_CONFIG_PATH,
+  type ProjectConfig,
   pathScope,
   pinChannelModule,
   Retriever,
@@ -43,11 +50,25 @@ import { getPrimer, renderPrimer } from './primer.ts';
 import { renderIndexBar } from './progress.ts';
 import { findProjectRoot, isProjectRoot } from './project-root.ts';
 import * as show from './render.ts';
+import {
+  clearGlobalTelemetry,
+  createTelemetryCollector,
+  getGlobalTelemetry,
+  readTelemetryChoice,
+  recordRanking,
+  setGlobalTelemetry,
+  telemetryModelId,
+  telemetryStatus,
+  userConfigFile,
+  writeTelemetryChoice,
+} from './telemetry.ts';
 import { VERSION } from './version.ts';
 
 export interface Context {
   readonly environment: Environment;
   readonly parsed: Parsed;
+  /** Told how many results a command returned, for the local usage record (see usage.ts). */
+  readonly onResults?: ((count: number) => void) | undefined;
 }
 
 interface Session {
@@ -77,7 +98,12 @@ export function modelCache(ctx: Context): ModelCache {
 /** Open the project, with an embedder if a model is installed and one is wanted. */
 export async function openSession(
   ctx: Context,
-  options: { readonly embed: boolean; readonly monolith?: boolean },
+  options: {
+    readonly embed: boolean;
+    readonly monolith?: boolean;
+    /** False where nobody reads stderr (the MCP server): the telemetry notice waits for a terminal. */
+    readonly telemetryNotice?: boolean;
+  },
 ): Promise<Session> {
   const projectRoot = root(ctx);
   const loaded = await loadProjectConfig(projectRoot);
@@ -101,6 +127,7 @@ export async function openSession(
       ...(embedder ? { embedder } : {}),
       ...(ctx.environment.runtime ? { runtime: ctx.environment.runtime } : {}),
       ...(ctx.environment.grammars ? { grammars: ctx.environment.grammars } : {}),
+      onRanking: recordRanking,
     });
     // An upgrade is worth a line of its own: it says the index changed under the user's feet, and
     // it names the copy of the old one, which is the way back if this version turns out to be wrong.
@@ -109,10 +136,23 @@ export async function openSession(
         `note: ${backup.path} upgraded from schema ${backup.from} to ${backup.to}; the index as it was is at ${backup.backupPath}\n`,
       );
     }
+    const telemetry = createTelemetryCollector({
+      config,
+      noNetwork: ctx.parsed.values['no-network'] === true,
+      env: ctx.environment.env,
+      ...(options.telemetryNotice === false
+        ? {}
+        : { notice: (text: string) => ctx.environment.stderr(text) }),
+    });
+    setGlobalTelemetry(telemetry);
+
     return {
       retriever,
       embedderReason,
       close: async () => {
+        await telemetry.close();
+        // Later records must not go to a collector nobody will flush.
+        clearGlobalTelemetry(telemetry);
         await retriever.close();
         await embedder?.dispose();
       },
@@ -125,6 +165,12 @@ export async function openSession(
 
 function emit(ctx: Context, value: unknown, text: () => string): void {
   ctx.environment.stdout(ctx.parsed.values.json ? show.toJson(value) : text());
+}
+
+/** The model a telemetry event may name: built in by id, brought in by the person as `custom`. */
+function modelField(retriever: Retriever): { readonly modelId?: string } {
+  const model = telemetryModelId(retriever.embedder?.info.id);
+  return model ? { modelId: model } : {};
 }
 
 function need(ctx: Context, index: number, what: string): string {
@@ -194,6 +240,8 @@ function emitResults(
   facts: show.SearchHeader | undefined,
   render: (options: show.RenderOptions) => string,
 ): void {
+  const items = (page as { readonly items?: unknown }).items;
+  if (Array.isArray(items)) ctx.onResults?.(items.length);
   const format = resolveFormat(ctx);
   if (format === 'json') {
     const value = facts ? { ...page, _meta: show.metaOf(facts) } : page;
@@ -515,6 +563,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
           `note: no embedder (${embedderReason}); indexing facts and graph only\n`,
         );
       const inScope = pathScope(ctx.parsed.values.scope, '--scope');
+      const startedAt = performance.now();
       const progress = indexProgress(ctx);
       const result = await retriever
         .index({
@@ -524,6 +573,17 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
           ...(inScope ? { scope: inScope } : {}),
         })
         .finally(progress.stop);
+      const elapsed = performance.now() - startedAt;
+      const embeddedCount =
+        result.report.dense?.ingested ?? result.report.files.added + result.report.files.modified;
+      getGlobalTelemetry().record({
+        type: 'index',
+        name: 'index',
+        durationMsBucket: durationBucket(elapsed),
+        ...modelField(retriever),
+        hasScope: Boolean(ctx.parsed.values.scope),
+        changedCountBucket: countBucket(embeddedCount),
+      });
       const info = retriever.embedder?.info;
       // The model the index was embedded with is recorded, so every later run, on any machine,
       // searches with it instead of whatever that machine would pick.
@@ -687,6 +747,24 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       const startedAt = performance.now();
       const isFederated =
         ctx.parsed.values.federated === true || Boolean(ctx.parsed.values.repo?.length);
+      // Structural when the question is WQL alone, semantic when the structure lane is excluded.
+      const searchMode: 'fused' | 'semantic' | 'structural' = exclude?.includes('structural')
+        ? 'semantic'
+        : splitConjunction(query, ctx.parsed.values.wql).semantic === undefined
+          ? 'structural'
+          : 'fused';
+      const recordSearch = (name: string, results: number): void =>
+        getGlobalTelemetry().record({
+          type: 'search',
+          name,
+          searchMode,
+          durationMsBucket: durationBucket(performance.now() - startedAt),
+          resultCountBucket: countBucket(results),
+          ...modelField(retriever),
+          hasWqlFilter: Boolean(ctx.parsed.values.wql),
+          hasScope: Boolean(ctx.parsed.values.scope),
+          channelCount: Object.keys(retriever.config.channels).length,
+        });
       if (isFederated) {
         const fed = new FederatedRetriever(retriever);
         try {
@@ -699,6 +777,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
             ...(ctx.parsed.values.repo ? { repos: ctx.parsed.values.repo } : {}),
             ...scopeOption(ctx),
           });
+          recordSearch('search_federated', page.items.length);
           const facts = await searchFacts(ctx, retriever, query, startedAt);
           emitResults(ctx, page, facts, (options) => show.renderSearch(page, options));
         } finally {
@@ -715,6 +794,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         ...(ctx.parsed.values.wql ? { wql: ctx.parsed.values.wql } : {}),
         ...scopeOption(ctx),
       });
+      recordSearch('search', page.items.length);
       const facts = await searchFacts(ctx, retriever, query, startedAt);
       emitResults(ctx, page, facts, (options) => show.renderSearch(page, options));
     }),
@@ -727,6 +807,16 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       const page = await retriever.retrieve(channel, query, {
         ...pageRequest(ctx),
         ...scopeOption(ctx),
+      });
+      const elapsed = performance.now() - startedAt;
+      getGlobalTelemetry().record({
+        type: 'search',
+        name: 'retrieve',
+        searchMode: 'semantic',
+        durationMsBucket: durationBucket(elapsed),
+        resultCountBucket: countBucket(page.items.length),
+        ...modelField(retriever),
+        hasScope: Boolean(ctx.parsed.values.scope),
       });
       const facts = await searchFacts(ctx, retriever, query, startedAt);
       emitResults(ctx, page, facts, (options) => show.renderRetrieved(page, options));
@@ -744,6 +834,16 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         ...(semantic ? { semantic } : {}),
         ...scopeOption(ctx),
       });
+      const elapsed = performance.now() - startedAt;
+      getGlobalTelemetry().record({
+        type: 'search',
+        name: 'query',
+        searchMode: semantic ? 'fused' : 'structural',
+        durationMsBucket: durationBucket(elapsed),
+        resultCountBucket: countBucket(page.items.length),
+        hasWqlFilter: true,
+        hasScope: Boolean(ctx.parsed.values.scope),
+      });
       const facts = await searchFacts(
         ctx,
         retriever,
@@ -760,18 +860,21 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         ...pageRequest(ctx),
         ...(ctx.parsed.values['resolved-only'] ? { resolvedOnly: true } : {}),
       });
+      ctx.onResults?.(result.callers.items.length);
       emit(ctx, result, () => show.renderCallers(result.symbol, result.callers));
     }),
 
   callees: (ctx) =>
     withProject(ctx, { embed: false }, async ({ retriever }) => {
       const result = await retriever.callees(need(ctx, 0, 'symbol'), pageRequest(ctx));
+      ctx.onResults?.(result.callees.items.length);
       emit(ctx, result, () => show.renderCallees(result.symbol, result.callees));
     }),
 
   neighbors: (ctx) =>
     withProject(ctx, { embed: false }, async ({ retriever }) => {
       const result = await retriever.neighbors(need(ctx, 0, 'symbol'), pageRequest(ctx));
+      ctx.onResults?.(result.callers.items.length + result.callees.items.length);
       emit(
         ctx,
         result,
@@ -939,6 +1042,52 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       ctx,
       { title, url: fullUrl, body, openedBrowser },
       () => `Issue URL: ${fullUrl}\n${openedBrowser ? '(Opened in your default browser)\n' : ''}`,
+    );
+  },
+
+  telemetry: async (ctx) => {
+    const env = ctx.environment.env;
+    const sub = ctx.parsed.positionals[0] ?? 'status';
+    if (sub === 'on' || sub === 'off') {
+      // Either answer is the person's own, so the notice is owed no more.
+      const problem = writeTelemetryChoice(env, { enabled: sub === 'on', notice_shown: true });
+      if (problem !== undefined) throw new CommandFailedError(`telemetry ${sub}`, problem);
+    } else if (sub !== 'status') {
+      throw new InvalidArgumentError('telemetry', 'status, on or off', sub);
+    }
+    let config: ProjectConfig | undefined;
+    try {
+      config = await loadProjectConfig(root(ctx));
+    } catch (failure) {
+      // A project whose config does not load can still be asked about telemetry; say why its
+      // own setting is not counted.
+      ctx.environment.stderr(
+        `note: ${toCodeLensError(failure, 'read .anvesa/config.json').message}; its telemetry setting is not counted\n`,
+      );
+    }
+    const status = telemetryStatus({
+      ...(config ? { config } : {}),
+      noNetwork: ctx.parsed.values['no-network'] === true,
+      env,
+    });
+    const file = userConfigFile(env);
+    const value = {
+      active: status.active,
+      reason: status.reason,
+      choice: readTelemetryChoice(env),
+      ...(status.endpoint ? { endpoint: status.endpoint } : {}),
+      ...(status.logFile ? { logFile: status.logFile } : {}),
+      ...(file ? { configFile: file } : {}),
+    };
+    emit(ctx, value, () =>
+      [
+        `telemetry: ${status.active ? 'on' : status.needsNotice ? 'on, once the notice has been shown in a terminal' : 'off'}${status.active || status.needsNotice ? '' : ` (${status.reason})`}`,
+        ...(status.endpoint ? [`sends to:  ${status.endpoint}`] : []),
+        ...(status.logFile ? [`writes to: ${status.logFile}`] : []),
+        ...(file ? [`kept in:   ${file} (preferences.telemetry)`] : []),
+        'what is sent: README.md#telemetry; turn off: anvesa telemetry off, or DO_NOT_TRACK=1',
+        '',
+      ].join('\n'),
     );
   },
 

@@ -210,6 +210,7 @@ export async function openProjectEmbedder(
 
 export {
   adviseModels,
+  builtinModel,
   type ModelAdvice,
   ModelCache,
   modelsDirectory,

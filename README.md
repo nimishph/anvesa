@@ -317,6 +317,63 @@ naming the destination, even if it caught the error itself. `--download` cannot 
 Loopback and local sockets are allowed. The guard covers this process; it does not police programs the
 CLI starts (a browser for `issue`, `git`).
 
+### Telemetry
+
+anvesa sends anonymous usage telemetry so that releases can be compared on speed and result
+quality, and so that ranking can be tuned on real use rather than only on benchmarks. It is on by
+default, but nothing is sent until you have been told. The first run that would send prints a
+notice, records that it did, and sends nothing. Later runs send. The MCP server and CI runs never
+show the notice, so they send nothing until a terminal run has shown it, and CI never sends.
+
+```bash
+anvesa telemetry status
+```
+
+```bash
+anvesa telemetry off
+```
+
+`status` says whether this run would send, why, and where. `on` and `off` are kept in
+the `preferences.telemetry` block of your user config, `~/.anvesa/config.json` (`$ANVESA_HOME` if
+set), with whether the notice was shown; never an id. A project's `.anvesa/config.json` ignores
+`preferences`, so a repository cannot turn telemetry on.
+
+**What is sent.** Each event records:
+- which command or MCP tool ran (custom channels as `retrieve_custom`, never by name)
+- its duration and result count as ranges (`10-50` ms, `6-20` results)
+- the model (built-in id, or `custom`)
+- whether a WQL filter or scope was used, and how many channels are configured
+- an error code
+
+For a symbol search it also records how the ranker changed the order:
+- how many candidates it saw
+- whether the first result changed
+- where the shown first result stood before (a position, 0 to 30)
+- the overlap of the top 10 before and after, in tenths
+- each stage's time as a range
+
+For an index run it records the time of the ranking update as a range and the card count as a
+range.
+
+A batch adds the anvesa version, OS, CPU architecture and core count, a memory range, the runtime,
+and a random id that lives only as long as the process. Queries, code, paths, file and symbol
+names, user and machine names, and your IP are never sent.
+
+**Where it goes.** Batches go to a collector anvesa runs (`telemetry/`). It reads no IP or header
+of the request, drops any field not on its allowlist, and forwards anonymous events to PostHog's
+EU cloud. `ANVESA_TELEMETRY_ENDPOINT` sends them somewhere else instead.
+`ANVESA_TELEMETRY_LOG_FILE` also writes each batch to a local file, one JSON line per batch, so you
+can read exactly what is sent. A project's `.anvesa/config.json` can set neither of these. It can
+only turn telemetry off.
+
+**Turning it off.** Any of these works:
+- `anvesa telemetry off`
+- `DO_NOT_TRACK=1`, `ANVESA_NO_TELEMETRY=1` or `ANVESA_TELEMETRY=0`
+- `--no-network` (or `ANVESA_NO_NETWORK=1`)
+- `"telemetry": false` in `.anvesa/config.json`
+
+A set `CI` variable also turns it off.
+
 ### MCP
 
 ```json

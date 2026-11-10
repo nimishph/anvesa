@@ -151,7 +151,7 @@ describe('command line', () => {
     expect((await cli(root)).code).toBe(2);
   });
 
-  test('help puts the commands this user ran lately first; failures, --help and an opt-out count for nothing', async () => {
+  test('help puts the commands this user ran lately first; failures do not rank, --help and an opt-out are not counted', async () => {
     const root = makeProject();
     const state = join(root, 'state');
     const env = { env: { ANVESA_HOME: state } };
@@ -171,9 +171,12 @@ describe('command line', () => {
     expect(recent.indexOf('  status')).toBeLessThan(recent.indexOf('  index'));
     expect(recent).not.toContain('search');
     expect(recent).not.toContain('query');
-    expect(Object.keys(JSON.parse(readFileSync(join(state, 'usage.json'), 'utf8'))).sort()).toEqual(
-      ['index', 'status'],
-    );
+    const commands = JSON.parse(readFileSync(join(state, 'usage.json'), 'utf8')).commands;
+    // A wrong command line and a server that failed to start are counted, as such; --help is not.
+    expect(Object.keys(commands).sort()).toEqual(['index', 'mcp', 'search', 'status']);
+    expect(commands.status).toMatchObject({ runs: 2, succeeded: 2 });
+    expect(commands.search).toMatchObject({ runs: 1, misused: 1, score: 0 });
+    expect(commands.mcp).toMatchObject({ runs: 1, failed: 1, score: 0 });
 
     const off = { env: { ANVESA_HOME: join(root, 'off'), ANVESA_NO_USAGE: '1' } };
     expect((await cliWith(off, root, 'status')).code).toBe(0);

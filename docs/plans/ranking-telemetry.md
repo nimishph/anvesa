@@ -67,8 +67,8 @@ expression: summarizeStages in cli/src/**/*.ts
 
 For each `index` event, telemetry records the symbol card count (`countBucket`, with buckets that go
 past 100,000 cards) and the hub step's time (`durationBucket`, with buckets that go past a minute).
-Today's buckets stop at `100+` cards and `1000+` ms, which cannot show where the quadratic step starts
-to hurt; this requirement widens them.
+The buckets reach `100000+` cards and `120000+` ms (#35), far enough to show where the quadratic step
+starts to hurt.
 
 ```yojana:claim
 kind: text

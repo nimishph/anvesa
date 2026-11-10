@@ -1,0 +1,18 @@
+# anvesa's telemetry collector. Deploy from this directory:
+#   bunx wrangler@4 secret put POSTHOG_KEY     (the PostHog project API key, phc_...)
+#   bunx wrangler@4 deploy
+# then set DEFAULT_TELEMETRY_ENDPOINT in cli/src/telemetry.ts to the URL it prints (or the route below).
+name = "anvesa-telemetry"
+main = "src/worker.ts"
+compatibility_date = "2026-01-01"
+workers_dev = true
+
+# No request logs: the collector keeps nothing of a request, its address included.
+[observability]
+enabled = false
+
+[vars]
+POSTHOG_HOST = "https://eu.i.posthog.com"
+
+# On a domain of your own, instead of workers.dev:
+# routes = [{ pattern = "telemetry.example.com", custom_domain = true }]

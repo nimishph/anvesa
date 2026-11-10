@@ -42,6 +42,15 @@ describe('config.v1.json Schema & IDE Autocomplete', () => {
     expect(parsed.model).toBe('test-model');
   });
 
+  it('accepts a preferences block and ignores it in a project', () => {
+    const parsed = validateProjectConfig({
+      model: 'test-model',
+      preferences: { telemetry: { enabled: true, notice_shown: true } },
+    });
+    expect(parsed.model).toBe('test-model');
+    expect('preferences' in parsed).toBe(false);
+  });
+
   it('validates search tuning block', () => {
     const parsed = validateProjectConfig({
       search: {
@@ -129,6 +138,33 @@ describe('config.v1.json Schema & IDE Autocomplete', () => {
       ProjectConfigError,
     );
     expect(() => validateProjectConfig({ redteam: { quarantineOnSuspect: 'strict' } })).toThrow(
+      ProjectConfigError,
+    );
+  });
+
+  it('validates telemetry settings and opt-out flags', () => {
+    const disabled = validateProjectConfig({ telemetry: false });
+    expect(disabled.telemetry).toBe(false);
+
+    const configured = validateProjectConfig({
+      telemetry: {
+        enabled: true,
+      },
+    });
+    expect(configured.telemetry).toEqual({
+      enabled: true,
+    });
+
+    // Endpoint and logFile are forbidden in committed project config (security boundary)
+    expect(() =>
+      validateProjectConfig({ telemetry: { endpoint: 'https://telemetry.example.com/events' } }),
+    ).toThrow(ProjectConfigError);
+    expect(() => validateProjectConfig({ telemetry: { logFile: '.anvesa/audit.log' } })).toThrow(
+      ProjectConfigError,
+    );
+
+    expect(() => validateProjectConfig({ telemetry: 'off' })).toThrow(ProjectConfigError);
+    expect(() => validateProjectConfig({ telemetry: { enabled: 'no' } })).toThrow(
       ProjectConfigError,
     );
   });
