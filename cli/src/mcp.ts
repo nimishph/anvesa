@@ -527,7 +527,7 @@ export async function serveMcp(
   transport: Transport = new StdioServerTransport(),
   onServing?: () => void,
 ): Promise<void> {
-  const session = await openSession(ctx, { embed: true });
+  const session = await openSession(ctx, { embed: true, telemetryNotice: false });
   const server = createMcpServer(session.retriever);
   const closed = new Promise<void>((resolve) => {
     server.server.onclose = () => resolve();

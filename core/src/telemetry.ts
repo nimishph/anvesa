@@ -1,17 +1,36 @@
 import { createHash, randomBytes } from 'node:crypto';
 
 /**
- * Anvesa Anonymous & Non-IP Telemetry Contracts
+ * What anvesa's anonymous telemetry may carry, and how numbers are made coarse before they leave.
  *
- * Guarantees:
- * 1. Zero-IP: Edge proxies discard client IP addresses.
- * 2. Zero-PII: No file paths, code snippets, query strings, git commits, or usernames.
- * 3. Ephemeral Session ID: Process-scoped in-memory random UUID. Zero disk persistence, zero machine fingerprinting.
- * 4. Zero Disruption: Non-blocking, fails silently, never throws or degrades performance.
+ * 1. No IP: the collector (telemetry/src/worker.ts) reads no client address and forwards none, so
+ *    the analytics store only ever sees the collector's.
+ * 2. No content: no paths, file names, code, queries, symbol names, commits, user or machine names.
+ *    Custom channels and models are reported as `custom`, never by name.
+ * 3. No identity: a batch carries a random id made per process and never written down. The only
+ *    thing stored between runs is the user's choice (on, off, notice shown), never an id.
+ * 4. No disruption: recording never throws, delivery is in the background with a short timeout,
+ *    and a failure is dropped.
  */
 
-export type DurationBucket = '<10' | '10-50' | '50-200' | '200-1000' | '1000+';
-export type CountBucket = '0' | '1-5' | '6-20' | '21-100' | '100+';
+export type DurationBucket =
+  | '<10'
+  | '10-50'
+  | '50-200'
+  | '200-1000'
+  | '1000-5000'
+  | '5000-30000'
+  | '30000-120000'
+  | '120000+';
+export type CountBucket =
+  | '0'
+  | '1-5'
+  | '6-20'
+  | '21-100'
+  | '101-1000'
+  | '1001-10000'
+  | '10001-100000'
+  | '100000+';
 export type RatioBucket = '<0.25' | '0.25-0.5' | '0.5-0.75' | '0.75-1.0';
 export type MemoryBucket = '<4' | '4-8' | '8-16' | '16-32' | '32+';
 
@@ -30,6 +49,7 @@ export type TelemetryEventType =
   | 'index'
   | 'grammar_extract'
   | 'mcp_tool_call'
+  | 'rank'
   | 'error';
 
 export interface TelemetryEvent {
@@ -46,6 +66,20 @@ export interface TelemetryEvent {
   readonly nodeCountBucket?: CountBucket;
   readonly mappedRatioBucket?: RatioBucket;
   readonly errorCode?: string;
+  /** Ranking (`rank` events): candidates the first stage handed the ranker, at most its depth. */
+  readonly candidateCount?: number;
+  /** Ranking: whether the learned ranker ran on this search. */
+  readonly reranked?: boolean;
+  /** Ranking: whether the result shown first differs from the first stage's first. */
+  readonly topChanged?: boolean;
+  /** Ranking: where the result shown first stood in the first stage (0 is first). */
+  readonly topFirstRank?: number;
+  /** Ranking: share of the first stage's top 10 still in the top 10 shown, in tenths. */
+  readonly overlapAt10?: number;
+  /** Ranking: time of the second stage alone. */
+  readonly rankMsBucket?: DurationBucket;
+  /** Index (`hub` events): time of the whole ranking update, of which `durationMsBucket` is the hub step. */
+  readonly totalMsBucket?: DurationBucket;
 }
 
 export interface TelemetryPayload {
@@ -69,7 +103,10 @@ export function durationBucket(ms: number): DurationBucket {
   if (ms < 50) return '10-50';
   if (ms < 200) return '50-200';
   if (ms < 1000) return '200-1000';
-  return '1000+';
+  if (ms < 5000) return '1000-5000';
+  if (ms < 30000) return '5000-30000';
+  if (ms < 120000) return '30000-120000';
+  return '120000+';
 }
 
 export function countBucket(count: number): CountBucket {
@@ -77,7 +114,10 @@ export function countBucket(count: number): CountBucket {
   if (count <= 5) return '1-5';
   if (count <= 20) return '6-20';
   if (count <= 100) return '21-100';
-  return '100+';
+  if (count <= 1000) return '101-1000';
+  if (count <= 10000) return '1001-10000';
+  if (count <= 100000) return '10001-100000';
+  return '100000+';
 }
 
 export function ratioBucket(ratio: number): RatioBucket {
@@ -97,8 +137,8 @@ export function memoryBucket(bytes: number): MemoryBucket {
 }
 
 /**
- * Generates an ephemeral session UUID.
- * Never persists hardware identifiers, MAC addresses, or disk state.
+ * The id a process's batches share: a hash of the date and a salt drawn once per process, laid out
+ * as a UUID. It is never written down, and it reads nothing about the machine.
  */
 let dailyEphemeralSalt: string | undefined;
 

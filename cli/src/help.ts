@@ -208,6 +208,14 @@ export const COMMAND_HELP: readonly CommandHelp[] = [
   },
   {
     section: 'Agents and help',
+    keys: ['telemetry'],
+    name: 'telemetry [status|on|off]',
+    summary: 'anonymous usage telemetry: what it is doing, and turning it on or off',
+    details:
+      '  telemetry [status|on|off]  anonymous usage telemetry (see README.md#telemetry): status says whether\n                             this run would send and why; on and off are kept in ~/.anvesa/telemetry.json',
+  },
+  {
+    section: 'Agents and help',
     keys: ['issue'],
     name: 'issue [title]',
     summary: 'raise an issue on GitHub with sanitized diagnostics',

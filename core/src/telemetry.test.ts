@@ -17,7 +17,10 @@ describe('core telemetry module (anonymous & non-IP)', () => {
     expect(durationBucket(45)).toBe('10-50');
     expect(durationBucket(120)).toBe('50-200');
     expect(durationBucket(500)).toBe('200-1000');
-    expect(durationBucket(2500)).toBe('1000+');
+    expect(durationBucket(2500)).toBe('1000-5000');
+    expect(durationBucket(12_000)).toBe('5000-30000');
+    expect(durationBucket(90_000)).toBe('30000-120000');
+    expect(durationBucket(600_000)).toBe('120000+');
   });
 
   it('categorizes result and node counts into privacy-preserving buckets', () => {
@@ -26,7 +29,10 @@ describe('core telemetry module (anonymous & non-IP)', () => {
     expect(countBucket(5)).toBe('1-5');
     expect(countBucket(12)).toBe('6-20');
     expect(countBucket(50)).toBe('21-100');
-    expect(countBucket(1500)).toBe('100+');
+    expect(countBucket(101)).toBe('101-1000');
+    expect(countBucket(1500)).toBe('1001-10000');
+    expect(countBucket(50_000)).toBe('10001-100000');
+    expect(countBucket(250_000)).toBe('100000+');
   });
 
   it('categorizes ratio numbers into quartile buckets', () => {

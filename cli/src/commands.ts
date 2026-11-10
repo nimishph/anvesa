@@ -6,6 +6,7 @@ import {
   durationBucket,
   InvalidArgumentError,
   type PageRequest,
+  toCodeLensError,
 } from '@cntxt-labs/anvesa-core';
 import {
   type Assistant,
@@ -29,6 +30,7 @@ import {
   modelsDirectory,
   openProjectEmbedder,
   PROJECT_CONFIG_PATH,
+  type ProjectConfig,
   pathScope,
   pinChannelModule,
   Retriever,
@@ -48,7 +50,17 @@ import { getPrimer, renderPrimer } from './primer.ts';
 import { renderIndexBar } from './progress.ts';
 import { findProjectRoot, isProjectRoot } from './project-root.ts';
 import * as show from './render.ts';
-import { createTelemetryCollector, getGlobalTelemetry, setGlobalTelemetry } from './telemetry.ts';
+import {
+  createTelemetryCollector,
+  getGlobalTelemetry,
+  readTelemetryChoice,
+  recordRanking,
+  setGlobalTelemetry,
+  telemetryChoiceFile,
+  telemetryModelId,
+  telemetryStatus,
+  writeTelemetryChoice,
+} from './telemetry.ts';
 import { VERSION } from './version.ts';
 
 export interface Context {
@@ -83,7 +95,12 @@ export function modelCache(ctx: Context): ModelCache {
 /** Open the project, with an embedder if a model is installed and one is wanted. */
 export async function openSession(
   ctx: Context,
-  options: { readonly embed: boolean; readonly monolith?: boolean },
+  options: {
+    readonly embed: boolean;
+    readonly monolith?: boolean;
+    /** False where nobody reads stderr (the MCP server): the telemetry notice waits for a terminal. */
+    readonly telemetryNotice?: boolean;
+  },
 ): Promise<Session> {
   const projectRoot = root(ctx);
   const loaded = await loadProjectConfig(projectRoot);
@@ -107,6 +124,7 @@ export async function openSession(
       ...(embedder ? { embedder } : {}),
       ...(ctx.environment.runtime ? { runtime: ctx.environment.runtime } : {}),
       ...(ctx.environment.grammars ? { grammars: ctx.environment.grammars } : {}),
+      onRanking: recordRanking,
     });
     // An upgrade is worth a line of its own: it says the index changed under the user's feet, and
     // it names the copy of the old one, which is the way back if this version turns out to be wrong.
@@ -116,10 +134,12 @@ export async function openSession(
       );
     }
     const telemetry = createTelemetryCollector({
-      root: projectRoot,
       config,
       noNetwork: ctx.parsed.values['no-network'] === true,
       env: ctx.environment.env,
+      ...(options.telemetryNotice === false
+        ? {}
+        : { notice: (text: string) => ctx.environment.stderr(text) }),
     });
     setGlobalTelemetry(telemetry);
 
@@ -140,6 +160,12 @@ export async function openSession(
 
 function emit(ctx: Context, value: unknown, text: () => string): void {
   ctx.environment.stdout(ctx.parsed.values.json ? show.toJson(value) : text());
+}
+
+/** The model a telemetry event may name: built in by id, brought in by the person as `custom`. */
+function modelField(retriever: Retriever): { readonly modelId?: string } {
+  const model = telemetryModelId(retriever.embedder?.info.id);
+  return model ? { modelId: model } : {};
 }
 
 function need(ctx: Context, index: number, what: string): string {
@@ -547,7 +573,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         type: 'index',
         name: 'index',
         durationMsBucket: durationBucket(elapsed),
-        ...(retriever.embedder?.info.id ? { modelId: retriever.embedder.info.id } : {}),
+        ...modelField(retriever),
         hasScope: Boolean(ctx.parsed.values.scope),
         nodeCountBucket: countBucket(embeddedCount),
       });
@@ -754,7 +780,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         searchMode,
         durationMsBucket: durationBucket(elapsed),
         resultCountBucket: countBucket(page.items.length),
-        ...(retriever.embedder?.info.id ? { modelId: retriever.embedder.info.id } : {}),
+        ...modelField(retriever),
         hasWqlFilter: Boolean(ctx.parsed.values.wql),
         hasScope: Boolean(ctx.parsed.values.scope),
         channelCount: Object.keys(retriever.config.channels).length,
@@ -779,7 +805,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         searchMode: 'semantic',
         durationMsBucket: durationBucket(elapsed),
         resultCountBucket: countBucket(page.items.length),
-        ...(retriever.embedder?.info.id ? { modelId: retriever.embedder.info.id } : {}),
+        ...modelField(retriever),
         hasScope: Boolean(ctx.parsed.values.scope),
       });
       const facts = await searchFacts(ctx, retriever, query, startedAt);
@@ -1003,6 +1029,58 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       ctx,
       { title, url: fullUrl, body, openedBrowser },
       () => `Issue URL: ${fullUrl}\n${openedBrowser ? '(Opened in your default browser)\n' : ''}`,
+    );
+  },
+
+  telemetry: async (ctx) => {
+    const env = ctx.environment.env;
+    const sub = ctx.parsed.positionals[0] ?? 'status';
+    if (sub === 'on' || sub === 'off') {
+      // Either answer is the person's own, so the notice is owed no more.
+      const kept = writeTelemetryChoice(env, { enabled: sub === 'on', noticeShown: true });
+      if (!kept) {
+        throw new InvalidArgumentError(
+          'ANVESA_HOME or HOME',
+          'a directory to keep the choice in',
+          'not set or not writable',
+        );
+      }
+    } else if (sub !== 'status') {
+      throw new InvalidArgumentError('telemetry', 'status, on or off', sub);
+    }
+    let config: ProjectConfig | undefined;
+    try {
+      config = await loadProjectConfig(root(ctx));
+    } catch (failure) {
+      // A project whose config does not load can still be asked about telemetry; say why its
+      // own setting is not counted.
+      ctx.environment.stderr(
+        `note: ${toCodeLensError(failure, 'read .anvesa/config.json').message}; its telemetry setting is not counted\n`,
+      );
+    }
+    const status = telemetryStatus({
+      ...(config ? { config } : {}),
+      noNetwork: ctx.parsed.values['no-network'] === true,
+      env,
+    });
+    const file = telemetryChoiceFile(env);
+    const value = {
+      active: status.active,
+      reason: status.reason,
+      choice: readTelemetryChoice(env),
+      ...(status.endpoint ? { endpoint: status.endpoint } : {}),
+      ...(status.logFile ? { logFile: status.logFile } : {}),
+      ...(file ? { choiceFile: file } : {}),
+    };
+    emit(ctx, value, () =>
+      [
+        `telemetry: ${status.active ? 'on' : status.needsNotice ? 'on, from the next run' : 'off'}${status.active || status.needsNotice ? '' : ` (${status.reason})`}`,
+        ...(status.endpoint ? [`sends to:  ${status.endpoint}`] : []),
+        ...(status.logFile ? [`writes to: ${status.logFile}`] : []),
+        ...(file ? [`choice:    ${file}`] : []),
+        'what is sent: README.md#telemetry; turn off: anvesa telemetry off, or DO_NOT_TRACK=1',
+        '',
+      ].join('\n'),
     );
   },
 

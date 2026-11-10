@@ -179,7 +179,8 @@ For large codebases where a single \`index.db\` exceeds 500MB:
 - \`channel add|list|show|test|index|pin|remove\` — Custom dense documentation and domain channels.
 - \`pattern list|run <name>\` — Run parameterized declarative AST patterns.
 - \`diagnose <query> --expect <path>\` — Explain why a target file was missed.
-- \`issue [title]\` — Export sanitized diagnostics bundle for bug reporting.`,
+- \`issue [title]\` — Export sanitized diagnostics bundle for bug reporting.
+- \`telemetry [status|on|off]\` — Anonymous usage telemetry: whether this run sends and why; turn it on or off.`,
   },
 };
 
