@@ -66,6 +66,8 @@ import { VERSION } from './version.ts';
 export interface Context {
   readonly environment: Environment;
   readonly parsed: Parsed;
+  /** Told how many results a command returned, for the local usage record (see usage.ts). */
+  readonly onResults?: ((count: number) => void) | undefined;
 }
 
 interface Session {
@@ -235,6 +237,8 @@ function emitResults(
   facts: show.SearchHeader | undefined,
   render: (options: show.RenderOptions) => string,
 ): void {
+  const items = (page as { readonly items?: unknown }).items;
+  if (Array.isArray(items)) ctx.onResults?.(items.length);
   const format = resolveFormat(ctx);
   if (format === 'json') {
     const value = facts ? { ...page, _meta: show.metaOf(facts) } : page;
@@ -850,18 +854,21 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
         ...pageRequest(ctx),
         ...(ctx.parsed.values['resolved-only'] ? { resolvedOnly: true } : {}),
       });
+      ctx.onResults?.(result.callers.items.length);
       emit(ctx, result, () => show.renderCallers(result.symbol, result.callers));
     }),
 
   callees: (ctx) =>
     withProject(ctx, { embed: false }, async ({ retriever }) => {
       const result = await retriever.callees(need(ctx, 0, 'symbol'), pageRequest(ctx));
+      ctx.onResults?.(result.callees.items.length);
       emit(ctx, result, () => show.renderCallees(result.symbol, result.callees));
     }),
 
   neighbors: (ctx) =>
     withProject(ctx, { embed: false }, async ({ retriever }) => {
       const result = await retriever.neighbors(need(ctx, 0, 'symbol'), pageRequest(ctx));
+      ctx.onResults?.(result.callers.items.length + result.callees.items.length);
       emit(
         ctx,
         result,
@@ -1037,7 +1044,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
     const sub = ctx.parsed.positionals[0] ?? 'status';
     if (sub === 'on' || sub === 'off') {
       // Either answer is the person's own, so the notice is owed no more.
-      const kept = writeTelemetryChoice(env, { enabled: sub === 'on', noticeShown: true });
+      const kept = writeTelemetryChoice(env, { enabled: sub === 'on', notice_shown: true });
       if (!kept) {
         throw new InvalidArgumentError(
           'ANVESA_HOME or HOME',

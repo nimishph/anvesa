@@ -29,10 +29,26 @@ full. The sections always come in the same order; above them, a **Recently used*
 have run most lately.
 
 To do that, anvesa keeps a small record on this machine, in `~/.anvesa/usage.json` (or `$ANVESA_HOME/usage.json`).
-It holds a known command's name, a score and when it was last run, and nothing else: no arguments, queries, paths
-or project names. It is never sent anywhere. Each successful run adds 1 to the command's score and scores halve
-every two weeks, so the block follows what you use now. `--help` and failed runs are not counted, and
-`mcp serve` counts once when it starts. Set `ANVESA_NO_USAGE=1` to turn it off, or delete the file to forget it.
+It is never sent anywhere, telemetry included. It holds known command names and, for each, numbers about its runs,
+one fact per field, and nothing else: no arguments, queries, paths or project names.
+
+| Field | What it holds |
+| --- | --- |
+| `first_used`, `last_used` | when the command first and last ran (ms since the epoch; `first_used` is absent for a command carried over from the old format) |
+| `last_failed` | when it last failed (exit 1), if it ever has |
+| `runs` | every run, whatever the outcome |
+| `succeeded`, `failed`, `misused` | runs that finished, whose operation failed (exit 1), or whose command line was wrong (exit 2) |
+| `found`, `empty` | successful runs of a command that returns results (search, retrieve, query, callers, callees, neighbors) that found something, or nothing |
+| `repeated` | runs started within two minutes of the same command's previous run: often a retry or a rewording |
+| `score` | successful runs, each worth 1 and halving every two weeks, as of `last_used`: what the help ranks by |
+| `active_days` | distinct calendar days it ran on |
+| `total_ms`, `last_ms` | wall time of all its timed runs, and of the last one |
+| `last_version` | the anvesa version that last ran it |
+
+At the top, `format` (2), `half_life_days` (14) and `counting_since` (when the counts began) describe the file.
+`--help` is not counted, and `mcp serve` counts once when it starts and is not timed. A command that has not
+succeeded lately has no score and stays out of the block. Set `ANVESA_NO_USAGE=1` to turn it off, or delete the
+file to forget it.
 
 ---
 

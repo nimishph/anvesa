@@ -85,6 +85,20 @@ export async function runCli(argv: readonly string[], environment: Environment):
 
   let json = false;
   let guard: NetworkGuard | undefined;
+  const startedAt = performance.now();
+  let results: number | undefined;
+  // Each run is counted once, even a server that started and then failed.
+  let counted = false;
+  const run = (exit: 0 | 1 | 2, timed = true): void => {
+    if (counted) return;
+    counted = true;
+    recordUse(environment.env, command, KNOWN, {
+      exit,
+      ...(timed ? { ms: performance.now() - startedAt } : {}),
+      ...(results === undefined ? {} : { results }),
+      version: VERSION,
+    });
+  };
   try {
     const parsed = parseOptions(args);
     json = parsed.values.json === true;
@@ -99,7 +113,13 @@ export async function runCli(argv: readonly string[], environment: Environment):
     // Checked before anything is opened, so a scope that can never match fails at once, by name.
     pathScope(parsed.values.scope, '--scope');
     if (audit) guard = blockNetwork();
-    const ctx: Context = { environment, parsed };
+    const ctx: Context = {
+      environment,
+      parsed,
+      onResults: (count) => {
+        results = (results ?? 0) + count;
+      },
+    };
 
     if (command === 'channel') await channelCommand(ctx);
     else if (command === 'model') await modelCommand(ctx);
@@ -114,10 +134,10 @@ export async function runCli(argv: readonly string[], environment: Environment):
       if (sub !== 'serve')
         return usage(environment, `unknown mcp command "${sub ?? ''}"; use: mcp serve`);
       const { serveMcp } = await import('./mcp.ts');
-      // A server runs for as long as its client: counted once, when it is serving. One that fails
-      // to start is a failed run and is not counted.
+      // A server runs for as long as its client: counted once, when it is serving, and not timed.
+      // One that fails to start is counted as a failed run.
       await serveMcp({ ...ctx, parsed: { ...parsed, positionals: rest } }, undefined, () =>
-        recordUse(environment.env, command, KNOWN),
+        run(0, false),
       );
     } else {
       const handler = COMMANDS[command];
@@ -129,7 +149,7 @@ export async function runCli(argv: readonly string[], environment: Environment):
       if (guard.attempts.length > 0) throw new NetworkBlockedError(guard.attempts);
       if (!json) environment.stderr('network audit: no outbound connection was attempted\n');
     }
-    if (command !== 'mcp') recordUse(environment.env, command, KNOWN);
+    if (command !== 'mcp') run(0);
     return 0;
   } catch (failure) {
     const error = toCodeLensError(failure, `run ${command}`);
@@ -139,7 +159,9 @@ export async function runCli(argv: readonly string[], environment: Environment):
       if (error.hint) environment.stderr(`hint: ${error.hint}\n`);
       environment.stderr(`(${error.code})\n`);
     }
-    return error.code === 'CORE_INVALID_ARGUMENT' ? 2 : 1;
+    const exit = error.code === 'CORE_INVALID_ARGUMENT' ? 2 : 1;
+    run(exit);
+    return exit;
   } finally {
     guard?.release();
   }
