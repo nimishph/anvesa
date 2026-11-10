@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from 'bun:test';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TelemetryCollector, TelemetryEvent, TelemetryPayload } from '@cntxt-labs/anvesa-core';
@@ -146,6 +146,30 @@ describe('when telemetry sends', () => {
   it('never shows the notice, nor sends, where nobody reads it', () => {
     const env = sending();
     expect(createTelemetryCollector({ env }).enabled).toBe(false);
+    expect(readTelemetryChoice(env)).toEqual({});
+  });
+
+  it('keeps the choice in the user config, under preferences, beside what is there', () => {
+    const env = sending();
+    const file = join(env.ANVESA_HOME ?? '', 'config.json');
+    writeFileSync(
+      file,
+      JSON.stringify({ model: 'anvesa-code-400m', preferences: { theme: 'dark' } }),
+    );
+    expect(writeTelemetryChoice(env, { enabled: false, noticeShown: true })).toBe(true);
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({
+      model: 'anvesa-code-400m',
+      preferences: { theme: 'dark', telemetry: { enabled: false, noticeShown: true } },
+    });
+    expect(readTelemetryChoice(env)).toEqual({ enabled: false, noticeShown: true });
+  });
+
+  it('never writes over a user config that is not JSON', () => {
+    const env = sending();
+    const file = join(env.ANVESA_HOME ?? '', 'config.json');
+    writeFileSync(file, '{ "model": ');
+    expect(writeTelemetryChoice(env, { enabled: false })).toBe(false);
+    expect(readFileSync(file, 'utf8')).toBe('{ "model": ');
     expect(readTelemetryChoice(env)).toEqual({});
   });
 });
@@ -315,6 +339,7 @@ describe('anvesa telemetry', () => {
     expect(off.code).toBe(0);
     expect(off.stdout).toContain('telemetry: off (turned off with `anvesa telemetry off`)');
     expect(readTelemetryChoice(env)).toEqual({ enabled: false, noticeShown: true });
+    expect(off.stdout).toContain('config.json (preferences.telemetry)');
 
     const on = await cli(env, 'on', '--json');
     expect(JSON.parse(on.stdout)).toMatchObject({

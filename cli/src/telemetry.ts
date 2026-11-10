@@ -28,8 +28,8 @@ import { VERSION } from './version.ts';
  * It is on unless turned off, and nothing is sent before the person has been told: the first run
  * that would send prints `TELEMETRY_NOTICE` instead, remembers that it did, and sends nothing. A
  * process nobody watches (the MCP server, CI) never shows the notice, so it sends nothing until a
- * run in a terminal has. The only thing kept between runs is that choice, in `telemetry.json` in
- * the per-user `.anvesa` directory.
+ * run in a terminal has. The only thing kept between runs is that choice, in the `preferences`
+ * block of the per-user config (`~/.anvesa/config.json`).
  */
 
 /**
@@ -41,7 +41,7 @@ export const DEFAULT_TELEMETRY_ENDPOINT: string | undefined = undefined;
 const MAX_BUFFER_EVENTS = 50;
 const FLUSH_INTERVAL_MS = 30_000;
 const FLUSH_TIMEOUT_MS = 600;
-const CHOICE_FILE = 'telemetry.json';
+const USER_CONFIG_FILE = 'config.json';
 
 export const TELEMETRY_NOTICE = `anvesa collects anonymous usage telemetry: which command or tool ran, how long it took and how many
 results it gave (in ranges), the built-in model, and how search ranking reordered results. Never
@@ -60,39 +60,64 @@ export interface TelemetryChoice {
   readonly noticeShown?: boolean;
 }
 
-/** Where the choice is kept, or `undefined` when there is no home to keep it in. */
-export function telemetryChoiceFile(env: Env): string | undefined {
-  if (env.ANVESA_HOME) return join(env.ANVESA_HOME, CHOICE_FILE);
+/**
+ * The per-user anvesa config, `config.json` in `ANVESA_HOME` (else `~/.anvesa`), or `undefined`
+ * when there is no home to keep it in. The choice is its `preferences.telemetry` block.
+ */
+export function userConfigFile(env: Env): string | undefined {
+  if (env.ANVESA_HOME) return join(env.ANVESA_HOME, USER_CONFIG_FILE);
   const home = env.HOME ?? env.USERPROFILE;
-  return home ? join(home, '.anvesa', CHOICE_FILE) : undefined;
+  return home ? join(home, '.anvesa', USER_CONFIG_FILE) : undefined;
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+/** The user config as it is on disk: `{}` when missing, `undefined` when it is not JSON. */
+function readUserConfig(path: string): Record<string, unknown> | undefined {
+  let text: string;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch {
+    // Missing or unreadable: nothing has been chosen. Never fail a command over it.
+    return {};
+  }
+  try {
+    const raw: unknown = JSON.parse(text);
+    return isObject(raw) ? raw : undefined;
+  } catch {
+    // Not JSON: someone is editing it. Read nothing from it, and never write over it.
+    return undefined;
+  }
 }
 
 export function readTelemetryChoice(env: Env): TelemetryChoice {
-  const path = telemetryChoiceFile(env);
-  if (!path) return {};
-  let raw: unknown;
-  try {
-    raw = JSON.parse(readFileSync(path, 'utf8'));
-  } catch {
-    // Missing or unreadable: as if nothing had been chosen. Never fail a command over it.
-    return {};
-  }
-  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return {};
-  const { enabled, noticeShown } = raw as Record<string, unknown>;
+  const path = userConfigFile(env);
+  const config = path ? readUserConfig(path) : undefined;
+  const preferences = config?.preferences;
+  const telemetry = isObject(preferences) ? preferences.telemetry : undefined;
+  if (!isObject(telemetry)) return {};
+  const { enabled, noticeShown } = telemetry;
   return {
     ...(typeof enabled === 'boolean' ? { enabled } : {}),
     ...(noticeShown === true ? { noticeShown } : {}),
   };
 }
 
-/** Keep the choice. Returns whether it was kept: a run with no home cannot. */
+/**
+ * Keep the choice in the user config's `preferences.telemetry`, leaving everything else in the file
+ * as it was. Returns whether it was kept: a run with no home, or a file that is not JSON, cannot.
+ */
 export function writeTelemetryChoice(env: Env, choice: TelemetryChoice): boolean {
-  const path = telemetryChoiceFile(env);
-  if (!path) return false;
+  const path = userConfigFile(env);
+  const config = path ? readUserConfig(path) : undefined;
+  if (!path || !config) return false;
+  const preferences = isObject(config.preferences) ? config.preferences : {};
+  const next = { ...config, preferences: { ...preferences, telemetry: choice } };
   try {
     mkdirSync(dirname(path), { recursive: true });
     const temporary = `${path}.${process.pid}.tmp`;
-    writeFileSync(temporary, `${JSON.stringify(choice)}\n`, 'utf8');
+    writeFileSync(temporary, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
     renameSync(temporary, path);
     return true;
   } catch {
@@ -153,7 +178,7 @@ export function telemetryStatus(options: TelemetryClientOptions = {}): Telemetry
   // Written only to a local file, nothing leaves the machine: no notice is owed.
   const consented = choice.enabled === true || choice.noticeShown === true || isOn(variable);
   if (endpoint && !consented) {
-    if (!telemetryChoiceFile(env)) return off('no home directory to remember the notice in');
+    if (!userConfigFile(env)) return off('no home directory to remember the notice in');
     return { active: false, reason: 'the notice has not been shown yet', needsNotice: true };
   }
   return { active: true, reason: 'on', needsNotice: false, ...where };

@@ -56,9 +56,9 @@ import {
   readTelemetryChoice,
   recordRanking,
   setGlobalTelemetry,
-  telemetryChoiceFile,
   telemetryModelId,
   telemetryStatus,
+  userConfigFile,
   writeTelemetryChoice,
 } from './telemetry.ts';
 import { VERSION } from './version.ts';
@@ -1063,21 +1063,21 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       noNetwork: ctx.parsed.values['no-network'] === true,
       env,
     });
-    const file = telemetryChoiceFile(env);
+    const file = userConfigFile(env);
     const value = {
       active: status.active,
       reason: status.reason,
       choice: readTelemetryChoice(env),
       ...(status.endpoint ? { endpoint: status.endpoint } : {}),
       ...(status.logFile ? { logFile: status.logFile } : {}),
-      ...(file ? { choiceFile: file } : {}),
+      ...(file ? { configFile: file } : {}),
     };
     emit(ctx, value, () =>
       [
         `telemetry: ${status.active ? 'on' : status.needsNotice ? 'on, from the next run' : 'off'}${status.active || status.needsNotice ? '' : ` (${status.reason})`}`,
         ...(status.endpoint ? [`sends to:  ${status.endpoint}`] : []),
         ...(status.logFile ? [`writes to: ${status.logFile}`] : []),
-        ...(file ? [`choice:    ${file}`] : []),
+        ...(file ? [`kept in:   ${file} (preferences.telemetry)`] : []),
         'what is sent: README.md#telemetry; turn off: anvesa telemetry off, or DO_NOT_TRACK=1',
         '',
       ].join('\n'),

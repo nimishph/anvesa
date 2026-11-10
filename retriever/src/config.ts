@@ -162,6 +162,9 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
         'syntax',
         'redteam',
         'telemetry',
+        // Per-user (~/.anvesa/config.json), read by the CLI. In a project it is ignored, so a
+        // repository cannot turn telemetry on or mark its notice as shown.
+        'preferences',
         'experimental',
       ].includes(key)
     )

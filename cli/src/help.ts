@@ -212,7 +212,7 @@ export const COMMAND_HELP: readonly CommandHelp[] = [
     name: 'telemetry [status|on|off]',
     summary: 'anonymous usage telemetry: what it is doing, and turning it on or off',
     details:
-      '  telemetry [status|on|off]  anonymous usage telemetry (see README.md#telemetry): status says whether\n                             this run would send and why; on and off are kept in ~/.anvesa/telemetry.json',
+      '  telemetry [status|on|off]  anonymous usage telemetry (see README.md#telemetry): status says whether\n                             this run would send and why; on and off are kept in ~/.anvesa/config.json',
   },
   {
     section: 'Agents and help',

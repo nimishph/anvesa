@@ -221,6 +221,27 @@
         }
       ]
     },
+    "preferences": {
+      "type": "object",
+      "description": "Per-user preferences, read only from ~/.anvesa/config.json (or $ANVESA_HOME/config.json); ignored in a project's .anvesa/config.json.",
+      "properties": {
+        "telemetry": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Kept by `anvesa telemetry on|off` and the first-run notice.",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "false: off. true: on. Absent: the default, which is on once the notice has been shown."
+            },
+            "noticeShown": {
+              "type": "boolean",
+              "description": "Whether the telemetry notice has been shown, so the default may send."
+            }
+          }
+        }
+      }
+    },
     "experimental": {
       "type": "object",
       "additionalProperties": false,

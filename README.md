@@ -334,8 +334,9 @@ anvesa telemetry off
 ```
 
 `status` says whether this run would send, why, and where. `on` and `off` are kept in
-`~/.anvesa/telemetry.json` (`$ANVESA_HOME` if set). That file holds only this choice and whether
-the notice was shown, never an id.
+the `preferences.telemetry` block of your user config, `~/.anvesa/config.json` (`$ANVESA_HOME` if
+set), with whether the notice was shown; never an id. A project's `.anvesa/config.json` ignores
+`preferences`, so a repository cannot turn telemetry on.
 
 **What is sent.** Each event records:
 - which command or MCP tool ran (custom channels as `retrieve_custom`, never by name)
