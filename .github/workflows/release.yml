@@ -211,8 +211,11 @@ jobs:
       # A version that is already on the registry is skipped (so a re-run is safe); any other
       # failure stops the release. `npm stage publish` (npm 11+, hence node-version 24 above) defers
       # 2FA to the approval step you run yourself, so CI needs only an ordinary automation token
-      # here, not a bypass-2FA one. Staged with dist-tag latest: approving a package makes it live.
-      # The Promote workflow can still move latest by hand (to roll back, for one).
+      # here, not a bypass-2FA one. A stable version is staged with dist-tag latest: approving a
+      # package makes it live. A prerelease (v0.8.0-alpha.0) is staged under its own tag (alpha),
+      # so `npm install @cntxt-labs/anvesa` keeps getting the last stable version and the
+      # prerelease is installed only by name (`@alpha`). The Promote workflow can still move latest
+      # by hand (to roll back, for one).
       - name: Stage on npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -221,6 +224,16 @@ jobs:
             echo "NPM_TOKEN is not set: refusing to release without staging on npm" >&2
             exit 1
           fi
+          release="${GITHUB_REF_NAME#v}"
+          case "${release}" in
+            *-*) prerelease="${release#*-}"; tag="${prerelease%%.*}" ;;
+            *) tag=latest ;;
+          esac
+          if ! printf '%s' "${tag}" | grep -Eq '^[a-z][a-z0-9-]*$' || { [ "${tag}" != latest ] && [ "${tag}" = "${release}" ]; }; then
+            echo "cannot derive an npm dist-tag from ${GITHUB_REF_NAME}" >&2
+            exit 1
+          fi
+          echo "staging ${release} under dist-tag ${tag}"
           stage() {
             # npm treats a bare "owner/repo"-shaped path as GitHub shorthand, not a local folder,
             # unless it starts with "./", so this normalizes to that regardless of what $1 arrives as.
@@ -230,7 +243,7 @@ jobs:
             if npm view "${name}@${version}" version >/dev/null 2>&1; then
               echo "${name}@${version} is already published, skipping"
             else
-              npm stage publish "${dir}" --access public --provenance --tag latest
+              npm stage publish "${dir}" --access public --provenance --tag "${tag}"
             fi
           }
           for folder in staged/*/; do stage "${folder%/}"; done
@@ -255,6 +268,9 @@ jobs:
           name: anvesa ${{ github.ref_name }}
           body_path: RELEASE_CHANGELOG.md
           generate_release_notes: true
+          # v0.8.0-alpha.0 and the like: marked as a prerelease, and never the "latest" release.
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          make_latest: ${{ !contains(github.ref_name, '-') }}
           files: |
             archives/*.zip
             archives/*.tar.gz
