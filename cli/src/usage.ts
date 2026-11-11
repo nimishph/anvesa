@@ -1,14 +1,6 @@
-import {
-  closeSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { lockFile } from './file-lock.ts';
 
 /**
  * How this user runs each command, kept on this machine only and never sent anywhere (telemetry
@@ -226,7 +218,8 @@ export function recordUse(
   try {
     mkdirSync(dirname(path), { recursive: true });
     // Agents run commands side by side: without the lock, each would write over the others' runs.
-    unlock = lock(`${path}.lock`);
+    // If another run still holds it, this run is not counted.
+    unlock = lockFile(`${path}.lock`);
     if (!unlock) return false;
     const usage = read(path, now);
     const commands: Record<string, CommandUsage> = {};
@@ -243,36 +236,6 @@ export function recordUse(
     return false;
   } finally {
     unlock?.();
-  }
-}
-
-/** How long a run waits for another to finish writing, and when a lock left behind is stale. */
-const LOCK_WAIT_MS = 250;
-const LOCK_STALE_MS = 5_000;
-
-/**
- * Take the lock file `path` (created exclusively), waiting up to `LOCK_WAIT_MS`; a lock older than
- * `LOCK_STALE_MS` was left by a run that died and is taken over. Returns its release, or
- * `undefined` if another run still holds it: that run is then not counted.
- */
-function lock(path: string): (() => void) | undefined {
-  const deadline = Date.now() + LOCK_WAIT_MS;
-  const pause = new Int32Array(new SharedArrayBuffer(4));
-  for (;;) {
-    try {
-      closeSync(openSync(path, 'wx'));
-      return () => rmSync(path, { force: true });
-    } catch (failure) {
-      if ((failure as { readonly code?: unknown }).code !== 'EEXIST') throw failure;
-    }
-    try {
-      if (Date.now() - statSync(path).mtimeMs > LOCK_STALE_MS) rmSync(path, { force: true });
-    } catch {
-      // Released between the two calls: try again at once.
-      continue;
-    }
-    if (Date.now() >= deadline) return undefined;
-    Atomics.wait(pause, 0, 0, 5);
   }
 }
 

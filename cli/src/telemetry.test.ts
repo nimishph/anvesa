@@ -23,11 +23,14 @@ import { createMcpServer } from './mcp.ts';
 import {
   ActiveTelemetryCollector,
   createTelemetryCollector,
+  DEFAULT_TELEMETRY_ENDPOINT,
   getPlatformInfo,
   readTelemetryChoice,
   recordRanking,
   setGlobalTelemetry,
   TELEMETRY_NOTICE,
+  TELEMETRY_USER_AGENT,
+  telemetryQueueFile,
   telemetryStatus,
   writeTelemetryChoice,
 } from './telemetry.ts';
@@ -102,15 +105,19 @@ describe('when telemetry sends', () => {
     expect(telemetryStatus({ env: sending({ ANVESA_TELEMETRY: '1' }) }).active).toBe(true);
   });
 
-  it('sends nothing with no collector, and owes no notice for a local log', () => {
-    expect(telemetryStatus({ env: {} })).toMatchObject({
+  it('sends to the built-in collector, but only once the notice has been shown', () => {
+    const home = { ANVESA_HOME: scratch() };
+    expect(telemetryStatus({ env: home })).toMatchObject({
       active: false,
-      needsNotice: false,
-      reason: 'this build has no collector to send to',
+      needsNotice: true,
+      reason: 'the notice has not been shown yet',
     });
-    const local = telemetryStatus({ env: { ANVESA_TELEMETRY_LOG_FILE: '/tmp/t.log' } });
-    expect(local).toMatchObject({ active: true, logFile: '/tmp/t.log' });
-    expect(local.endpoint).toBeUndefined();
+    writeTelemetryChoice(home, { notice_shown: true });
+    expect(telemetryStatus({ env: home })).toMatchObject({
+      active: true,
+      endpoint: DEFAULT_TELEMETRY_ENDPOINT,
+    });
+    expect(DEFAULT_TELEMETRY_ENDPOINT).toBe('https://anvesa-telemetry.cntxt-labs.workers.dev');
   });
 
   it('is off for every way of turning it off, even after consent', () => {
@@ -233,11 +240,15 @@ describe('the collector', () => {
   });
 
   it('posts the batch to the endpoint, and a failure is dropped', async () => {
-    const posted: { url: string; body: TelemetryPayload }[] = [];
+    const posted: { url: string; body: TelemetryPayload; userAgent: string | null }[] = [];
     const originalFetch = globalThis.fetch;
     try {
       globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
-        posted.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+        posted.push({
+          url: String(url),
+          body: JSON.parse(String(init?.body)),
+          userAgent: new Headers(init?.headers).get('user-agent'),
+        });
         if (posted.length > 1) throw new InvalidArgumentError('network', 'reachable', 'offline');
         return new Response(null, { status: 204 });
       }) as typeof fetch;
@@ -253,10 +264,92 @@ describe('the collector', () => {
         'https://collector.test/v1',
       ]);
       expect(posted[0]?.body.events[0]?.name).toBe('callers');
+      expect(posted[0]?.userAgent).toBe(TELEMETRY_USER_AGENT);
+      expect(TELEMETRY_USER_AGENT).toMatch(
+        /^anvesa\/\S+ \(\+https:\/\/github\.com\/nimishph\/anvesa\)$/,
+      );
       expect(collector.lastDeliveryError).toContain('offline');
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  it('sends at most one batch a day per person, across runs', async () => {
+    const home = sending();
+    const queueFile = telemetryQueueFile(home);
+    expect(telemetryStatus({ env: { ...home, ANVESA_TELEMETRY: '1' } }).queueFile).toBe(queueFile);
+    if (!queueFile) throw new InvalidArgumentError('queueFile', 'a path', 'undefined');
+
+    const posted: string[][] = [];
+    let answer: number | 'offline' = 204;
+    const originalFetch = globalThis.fetch;
+    let clock = 1_800_000_000_000;
+    const hours = (n: number): number => n * 60 * 60 * 1000;
+    // One command run: record, then exit.
+    const run = async (...names: string[]): Promise<void> => {
+      const collector = new ActiveTelemetryCollector({
+        endpoint: 'https://collector.test/v1',
+        queueFile,
+        now: () => clock,
+      });
+      for (const name of names) collector.record({ type: 'cli_command', name });
+      await collector.close();
+    };
+    try {
+      globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+        posted.push(
+          (JSON.parse(String(init?.body)) as TelemetryPayload).events.map((event) => event.name),
+        );
+        if (answer === 'offline') throw new InvalidArgumentError('network', 'reachable', 'offline');
+        return new Response(null, { status: answer });
+      }) as typeof fetch;
+
+      await run('search'); // the first batch goes at once
+      await run('index');
+      clock += hours(5);
+      await run('query'); // same day: kept
+      expect(posted).toEqual([['search']]);
+
+      clock += hours(20); // 25 hours after the first batch
+      await run('callers');
+      expect(posted).toEqual([['search'], ['index', 'query', 'callers']]);
+
+      // An outage spends the day's request; the events wait for the next day.
+      clock += hours(24);
+      answer = 'offline';
+      await run('status');
+      await run('mapping');
+      expect(posted).toHaveLength(3);
+      clock += hours(24);
+      answer = 503;
+      await run('grammar');
+      expect(posted[3]).toEqual(['status', 'mapping', 'grammar']);
+
+      // A collector not deployed yet (404) keeps them too.
+      clock += hours(24);
+      answer = 404;
+      await run('primer');
+      expect(posted[4]).toEqual(['status', 'mapping', 'grammar', 'primer']);
+
+      // A refusal of the batch itself (400) would be refused again: those events are not kept.
+      clock += hours(24);
+      answer = 400;
+      await run('fragments');
+      expect(posted[5]).toEqual(['status', 'mapping', 'grammar', 'primer', 'fragments']);
+      clock += hours(24);
+      answer = 204;
+      await run('model');
+      expect(posted[6]).toEqual(['model']);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('needs a home to keep the daily batch in', () => {
+    expect(telemetryStatus({ env: { ANVESA_TELEMETRY: '1' } })).toMatchObject({
+      active: false,
+      reason: 'no home directory to keep the daily batch in',
+    });
   });
 });
 
