@@ -58,6 +58,7 @@ import {
   recordRanking,
   setGlobalTelemetry,
   telemetryModelId,
+  telemetryQueueState,
   telemetryStatus,
   userConfigFile,
   writeTelemetryChoice,
@@ -1071,6 +1072,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       env,
     });
     const file = userConfigFile(env);
+    const queue = status.queueFile ? telemetryQueueState(status.queueFile) : undefined;
     const value = {
       active: status.active,
       reason: status.reason,
@@ -1078,11 +1080,28 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       ...(status.endpoint ? { endpoint: status.endpoint } : {}),
       ...(status.logFile ? { logFile: status.logFile } : {}),
       ...(file ? { configFile: file } : {}),
+      ...(status.queueFile && queue
+        ? {
+            queueFile: status.queueFile,
+            waiting: queue.waiting,
+            nextSendAt: new Date(queue.nextSendAt).toISOString(),
+          }
+        : {}),
     };
     emit(ctx, value, () =>
       [
         `telemetry: ${status.active ? 'on' : status.needsNotice ? 'on, once the notice has been shown in a terminal' : 'off'}${status.active || status.needsNotice ? '' : ` (${status.reason})`}`,
-        ...(status.endpoint ? [`sends to:  ${status.endpoint}`] : []),
+        ...(status.endpoint ? [`sends to:  ${status.endpoint} (at most one batch a day)`] : []),
+        ...(status.queueFile && queue
+          ? [
+              `waiting:   ${queue.waiting} event(s) in ${status.queueFile}`,
+              `next send: ${
+                queue.nextSendAt <= Date.now()
+                  ? `with the next run${queue.waiting === 0 ? ' that records events' : ''}`
+                  : `not before ${new Date(queue.nextSendAt).toLocaleString()}`
+              }`,
+            ]
+          : []),
         ...(status.logFile ? [`writes to: ${status.logFile}`] : []),
         ...(file ? [`kept in:   ${file} (preferences.telemetry)`] : []),
         'what is sent: README.md#telemetry; turn off: anvesa telemetry off, or DO_NOT_TRACK=1',

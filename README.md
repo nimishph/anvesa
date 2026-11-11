@@ -322,8 +322,15 @@ CLI starts (a browser for `issue`, `git`).
 anvesa sends anonymous usage telemetry so that releases can be compared on speed and result
 quality, and so that ranking can be tuned on real use rather than only on benchmarks. It is on by
 default, but nothing is sent until you have been told. The first run that would send prints a
-notice, records that it did, and sends nothing. Later runs send. The MCP server and CI runs never
-show the notice, so they send nothing until a terminal run has shown it, and CI never sends.
+notice, records that it did, and sends nothing. Later runs record. The MCP server and CI runs never
+show the notice, so they record nothing until a terminal run has shown it, and CI never sends.
+
+**At most one request a day.** Runs do not send as they go. Each adds its events to
+`~/.anvesa/telemetry-queue.json`, beside your user config. The first run more than 24 hours after
+the last batch sends everything gathered since, in one request. A busy day sends an even sample of
+at most 150 events. If the collector cannot be reached or does not accept the batch, that day's
+request is still spent, and the events wait for the next day's batch. They are dropped only when
+the collector rejects the batch itself (400 or 413). Deleting the file forgets them.
 
 ```bash
 anvesa telemetry status
@@ -333,7 +340,8 @@ anvesa telemetry status
 anvesa telemetry off
 ```
 
-`status` says whether this run would send, why, and where. `on` and `off` are kept in
+`status` says whether telemetry is on, why, where batches go, how many events are waiting, and
+when the next batch may go. `on` and `off` are kept in
 the `preferences.telemetry` block of your user config, `~/.anvesa/config.json` (`$ANVESA_HOME` if
 set), with whether the notice was shown; never an id. A project's `.anvesa/config.json` ignores
 `preferences`, so a repository cannot turn telemetry on.
@@ -356,14 +364,15 @@ For an index run it records the time of the ranking update as a range and the ca
 range.
 
 A batch adds the anvesa version, OS, CPU architecture and core count, a memory range, the runtime,
-and a random id that lives only as long as the process. Queries, code, paths, file and symbol
+and a random id made for that batch alone. The batch carries the version and platform of the run that
+sends it, and one time, when it was sent. Queries, code, paths, file and symbol
 names, user and machine names, and your IP are never sent.
 
 **Where it goes.** Batches go to a collector anvesa runs (`telemetry/`). It reads no IP or header
 of the request, drops any field not on its allowlist, and forwards anonymous events to PostHog's
 EU cloud. `ANVESA_TELEMETRY_ENDPOINT` sends them somewhere else instead.
-`ANVESA_TELEMETRY_LOG_FILE` also writes each batch to a local file, one JSON line per batch, so you
-can read exactly what is sent. A project's `.anvesa/config.json` can set neither of these. It can
+`ANVESA_TELEMETRY_LOG_FILE` also writes each daily batch to a local file, one JSON line per batch,
+so you can read exactly what is sent. A project's `.anvesa/config.json` can set neither of these. It can
 only turn telemetry off.
 
 **Turning it off.** Any of these works:

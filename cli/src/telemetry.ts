@@ -19,6 +19,7 @@ import {
   type RankingEvent,
   summarizeStages,
 } from '@cntxt-labs/anvesa-retriever';
+import { enqueue, queueState, takeDue } from './telemetry-queue.ts';
 import { VERSION } from './version.ts';
 
 /**
@@ -28,15 +29,28 @@ import { VERSION } from './version.ts';
  * It is on unless turned off, and nothing is sent before the person has been told: the first run
  * that would send prints `TELEMETRY_NOTICE` instead, remembers that it did, and sends nothing. A
  * process nobody watches (the MCP server, CI) never shows the notice, so it sends nothing until a
- * run in a terminal has. The only thing kept between runs is that choice, in the `preferences`
- * block of the per-user config (`~/.anvesa/config.json`).
+ * run in a terminal has. That choice is kept in the `preferences` block of the per-user config
+ * (`~/.anvesa/config.json`).
+ *
+ * Each person sends at most one batch a day: a run adds its events to a queue beside that config
+ * (`telemetry-queue.json`, see telemetry-queue.ts), and the first run more than 24 hours after the
+ * last batch sends what has gathered, wherever it is (a command, or the MCP server's periodic
+ * flush). Without a home directory to keep the queue in, nothing is sent.
  */
 
 /**
- * Where batches go when `ANVESA_TELEMETRY_ENDPOINT` does not say: the collector in telemetry/, once
- * it is deployed. Undefined until then, and with no endpoint nothing leaves the machine.
+ * Who is sending, on every batch. A workers.dev host runs Cloudflare's Browser Integrity Check,
+ * which can refuse a default library User-Agent (error 1010) before the collector runs; naming
+ * the client avoids that and says which version sent a batch. Nothing about the user is in it.
  */
-export const DEFAULT_TELEMETRY_ENDPOINT: string | undefined = undefined;
+export const TELEMETRY_USER_AGENT = `anvesa/${VERSION} (+https://github.com/nimishph/anvesa)`;
+
+/**
+ * Where batches go when `ANVESA_TELEMETRY_ENDPOINT` does not say: the collector in telemetry/,
+ * deployed as the `anvesa-telemetry` worker on the cntxt-labs workers.dev subdomain.
+ */
+export const DEFAULT_TELEMETRY_ENDPOINT: string | undefined =
+  'https://anvesa-telemetry.cntxt-labs.workers.dev';
 
 const MAX_BUFFER_EVENTS = 50;
 const FLUSH_INTERVAL_MS = 30_000;
@@ -46,7 +60,15 @@ const FLUSH_TIMEOUT_MS = 600;
  * long, and is dropped if the collector is slower.
  */
 const CLOSE_TIMEOUT_MS = 150;
+/**
+ * The day's batch gets longer than a per-run one: it is one request a day, and a slow collector
+ * would otherwise cost a whole day of events.
+ */
+const DAILY_SEND_TIMEOUT_MS = 1_000;
+/** The collector refuses a body over 64 KiB; the day's batch stays under it. */
+const MAX_BATCH_BYTES = 60_000;
 const USER_CONFIG_FILE = 'config.json';
+const QUEUE_FILE = 'telemetry-queue.json';
 
 export const TELEMETRY_NOTICE = `anvesa collects anonymous usage telemetry: which command or tool ran, how long it took and how many
 results it gave (in ranges), the built-in model, and how search ranking reordered results. Never
@@ -73,6 +95,12 @@ export function userConfigFile(env: Env): string | undefined {
   if (env.ANVESA_HOME) return join(env.ANVESA_HOME, USER_CONFIG_FILE);
   const home = env.HOME ?? env.USERPROFILE;
   return home ? join(home, '.anvesa', USER_CONFIG_FILE) : undefined;
+}
+
+/** The queue of events waiting for the day's batch, beside the user config. */
+export function telemetryQueueFile(env: Env): string | undefined {
+  const config = userConfigFile(env);
+  return config ? join(dirname(config), QUEUE_FILE) : undefined;
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -161,6 +189,8 @@ export interface TelemetryStatus {
   readonly needsNotice: boolean;
   readonly endpoint?: string;
   readonly logFile?: string;
+  /** Where the events wait for the day's batch, when sending to an endpoint. */
+  readonly queueFile?: string;
 }
 
 const isSet = (value: string | undefined): boolean =>
@@ -195,11 +225,20 @@ export function telemetryStatus(options: TelemetryClientOptions = {}): Telemetry
 
   // Written only to a local file, nothing leaves the machine: no notice is owed.
   const consented = choice.enabled === true || choice.notice_shown === true || isOn(variable);
+  const queueFile = telemetryQueueFile(env);
   if (endpoint && !consented) {
-    if (!userConfigFile(env)) return off('no home directory to remember the notice in');
+    if (!queueFile) return off('no home directory to remember the notice in');
     return { active: false, reason: 'the notice has not been shown yet', needsNotice: true };
   }
-  return { active: true, reason: 'on', needsNotice: false, ...where };
+  // One batch a day per person needs somewhere to keep the day's events and when the last went.
+  if (endpoint && !queueFile) return off('no home directory to keep the daily batch in');
+  return {
+    active: true,
+    reason: 'on',
+    needsNotice: false,
+    ...where,
+    ...(endpoint && queueFile ? { queueFile } : {}),
+  };
 }
 
 export function getPlatformInfo(): TelemetryPlatform {
@@ -228,6 +267,13 @@ export interface CollectorTargets {
   readonly endpoint?: string;
   readonly logFile?: string;
   readonly onPayload?: (payload: TelemetryPayload) => Promise<void> | void;
+  /**
+   * Keep events here and deliver at most one batch a day (to every target). Without it each flush
+   * delivers at once, which only a library caller or a test uses.
+   */
+  readonly queueFile?: string;
+  /** The clock, for tests. */
+  readonly now?: () => number;
 }
 
 export class ActiveTelemetryCollector implements TelemetryCollector {
@@ -258,13 +304,19 @@ export class ActiveTelemetryCollector implements TelemetryCollector {
     while (this.activeFlushPromise) {
       await this.activeFlushPromise;
     }
-    if (this.events.length === 0) return;
+    const { queueFile } = this.targets;
+    // Daily: even with nothing new, a batch gathered by earlier runs may be due.
+    if (this.events.length === 0 && !queueFile) return;
 
-    this.activeFlushPromise = this.deliver(this.events.splice(0, this.events.length)).finally(
-      () => {
+    const batch = this.events.splice(0, this.events.length);
+    const work: Promise<unknown> = queueFile
+      ? this.flushDaily(queueFile, batch)
+      : this.deliver(batch);
+    this.activeFlushPromise = work
+      .then(() => undefined)
+      .finally(() => {
         this.activeFlushPromise = null;
-      },
-    );
+      });
     await this.activeFlushPromise;
     if (this.events.length >= MAX_BUFFER_EVENTS) {
       await this.flush();
@@ -273,7 +325,20 @@ export class ActiveTelemetryCollector implements TelemetryCollector {
 
   private closing = false;
 
-  private async deliver(batch: TelemetryEvent[]): Promise<void> {
+  /** Add this run's events to the queue, then send the day's batch if one is due. */
+  private async flushDaily(queueFile: string, batch: TelemetryEvent[]): Promise<void> {
+    if (!enqueue(queueFile, batch)) {
+      this.lastDeliveryError = `${queueFile} was busy; ${batch.length} event(s) dropped`;
+    }
+    const due = takeDue(queueFile, (this.targets.now ?? Date.now)());
+    if (!due) return;
+    const retry = await this.deliver([...due]);
+    // Offline or the collector failed: tomorrow's batch carries them. Today's request is spent.
+    if (retry) enqueue(queueFile, due);
+  }
+
+  /** Deliver one batch to every target. Says whether the endpoint should be tried again later. */
+  private async deliver(batch: TelemetryEvent[]): Promise<boolean> {
     const payload: TelemetryPayload = {
       schemaVersion: '1.0.0',
       sessionId: generateEphemeralSessionId(),
@@ -282,7 +347,13 @@ export class ActiveTelemetryCollector implements TelemetryCollector {
       platform: this.platform,
       events: batch,
     };
-    const body = JSON.stringify(payload);
+    let body = JSON.stringify(payload);
+    // Keep under the collector's body limit; the queue's sample is even, so dropping from the end
+    // loses no particular part of the day.
+    while (body.length > MAX_BATCH_BYTES && batch.length > 1) {
+      batch.pop();
+      body = JSON.stringify({ ...payload, events: batch });
+    }
     const attempt = async (send: () => Promise<unknown>): Promise<void> => {
       try {
         await send();
@@ -298,16 +369,34 @@ export class ActiveTelemetryCollector implements TelemetryCollector {
         await appendFile(logFile, `${body}\n`, 'utf8');
       });
     }
-    if (endpoint) {
-      await attempt(() =>
-        fetch(endpoint, {
+    if (!endpoint) return false;
+    const timeout = this.targets.queueFile
+      ? DAILY_SEND_TIMEOUT_MS
+      : this.closing
+        ? CLOSE_TIMEOUT_MS
+        : FLUSH_TIMEOUT_MS;
+    let retry = false;
+    await attempt(async () => {
+      try {
+        const response = await fetch(endpoint, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'User-Agent': TELEMETRY_USER_AGENT },
           body,
-          signal: AbortSignal.timeout(this.closing ? CLOSE_TIMEOUT_MS : FLUSH_TIMEOUT_MS),
-        }),
-      );
-    }
+          signal: AbortSignal.timeout(timeout),
+        });
+        // 400 and 413 refuse this batch itself: it would be refused again tomorrow, so it goes.
+        // Any other failure (an outage, rate limiting, a collector not deployed yet) keeps it.
+        if (!response.ok) {
+          retry = response.status !== 400 && response.status !== 413;
+          this.lastDeliveryError = `collector answered ${response.status}`;
+        }
+        await response.body?.cancel();
+      } catch (failure) {
+        retry = true;
+        throw failure;
+      }
+    });
+    return retry;
   }
 
   async close(): Promise<void> {
@@ -355,8 +444,17 @@ export function createTelemetryCollector(options: TelemetryClientOptions = {}): 
   return new ActiveTelemetryCollector({
     ...(status.endpoint ? { endpoint: status.endpoint } : {}),
     ...(status.logFile ? { logFile: status.logFile } : {}),
+    ...(status.queueFile ? { queueFile: status.queueFile } : {}),
     ...(options.onPayload ? { onPayload: options.onPayload } : {}),
   });
+}
+
+/** How many events wait for the day's batch, and when it may go (`telemetry status`). */
+export function telemetryQueueState(
+  queueFile: string,
+  now = Date.now(),
+): { readonly waiting: number; readonly nextSendAt: number } {
+  return queueState(queueFile, now);
 }
 
 /** A model as telemetry may name it: a built-in id, or `custom` for one the person brought. */
