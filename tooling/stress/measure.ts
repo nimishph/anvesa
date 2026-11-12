@@ -301,6 +301,17 @@ async function measureRepo(entry: Entry, options: RunOptions): Promise<RepoResul
 
     if (options.dense) {
       const dense = json((await run('dense', ['index', '--json', ...scope])).stdout, 'dense');
+      // Asked to measure embeddings and none were made: there is no model here, and a run that
+      // went on would record search numbers for a search that never used one.
+      if ((dense.report as Json).dense === undefined) {
+        throw new StepFailed({
+          step: 'dense',
+          message:
+            'indexed without an embedder: install a model first (anvesa model install anvesa-code-150m --download), or run with --no-dense',
+          exitCode: steps.dense?.exitCode ?? null,
+          timedOut: false,
+        });
+      }
       metrics['dense.ms'] = steps.dense?.wallMs ?? Number.NaN;
       metrics['dense.rssMb'] = steps.dense?.maxRssMb ?? Number.NaN;
       metrics['dense.cards'] = (dense.report as Json).dense?.cards ?? 0;

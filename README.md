@@ -502,16 +502,18 @@ assistant's mark and any agent files (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`..
 A run indexes each repository from nothing (structure only, then embeddings unless the stress tool is given `--no-dense`),
 indexes again, and asks about a seeded sample of its own symbols (exact name, in words, and callers).
 It records time, CPU, peak memory, database size, files, symbols, link rates and query latency and
-hit rates. `compare` sets the latest execution against the window before it (three by default), only
-over runs of the same commit of a repository: a time or size worse than the *worst* of the window by
-more than `--tolerance` (25%, and by more than a floor that ignores tiny differences) is a regression,
-a count that moved is reported, a failure is called out. `--fail-on-regression` (on `run` and
-`compare`) exits 1 on a regression or a failed run.
+hit rates. `compare` sets each number of the latest execution against the average of up to three
+earlier ones (`--window`), only over runs of the same commit of a repository. The report is neutral:
+a time, size or rate further from that average than `--tolerance` (25%, and more than a floor that
+ignores tiny differences) is shown as higher or lower, with its percentage; a count that moved is
+shown as changed; it names each run's processor, since timings follow the machine. A repository whose
+run did not finish is FATAL. `--fail-on-fatal` (on `run` and `compare`) exits 1 only then.
 
 Every release runs this on its own build, over the repositories in `tooling/stress/release-repos.txt`,
-after the golden suites with `--require-all`, and compares with the previous release's numbers,
-which travel with each release as `stress-history.tar.gz`. A regression stops the release from being
-published; the first release records the baseline.
+after the golden suites with `--require-all`, with embeddings on (the default model, anvesa-code-150m),
+and compares with the previous releases' numbers, which travel with each release as
+`stress-history.tar.gz`. The report goes in the run's summary and the release's assets; only a
+repository whose run did not finish stops the release. The first release records the baseline.
 
 ### Engineering standards
 

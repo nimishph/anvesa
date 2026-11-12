@@ -8,8 +8,8 @@
  *   bun run stress discover --language go ...          find candidates by parameters
  *   bun run stress setup                               install the grammars the manifest needs
  *   bun run stress run [filters] [--no-dense ...]      clone, index, ask, record, compare
- *   bun run stress compare [--window 3]                the latest execution against those before it
- *                                                      (--fail-on-regression: exit 1 on a regression or a failed run;
+ *   bun run stress compare [--window 3]                the latest execution against the average of those before it
+ *                                                      (a neutral report; --fail-on-fatal: exit 1 only when a repository's run did not finish;
  *                                                       also accepted by `run`; `add --if-missing` keeps an existing pin)
  *   bun run stress runs                                what has been recorded
  *
@@ -19,7 +19,7 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { blocksRelease, compare, DEFAULT_TOLERANCES, renderComparison } from './compare.ts';
+import { compare, DEFAULT_TOLERANCES, isFatal, renderComparison } from './compare.ts';
 import { ghApi, spawnText } from './git.ts';
 import { readManifest, readRuns, stressHome, writeManifest, writeRun } from './home.ts';
 import {
@@ -56,7 +56,7 @@ const OPTIONS = {
   ref: { type: 'string' },
   'no-pin': { type: 'boolean' },
   'if-missing': { type: 'boolean' },
-  'fail-on-regression': { type: 'boolean' },
+  'fail-on-fatal': { type: 'boolean' },
   repin: { type: 'boolean' },
   prune: { type: 'boolean' },
   stars: { type: 'string' },
@@ -387,7 +387,7 @@ async function main(): Promise<void> {
       const runs = readRuns(home);
       const comparisons = compare(runs, { window, ids: entries.map((e) => e.id) });
       process.stdout.write(renderComparison(comparisons, runs, window));
-      if (values['fail-on-regression'] && blocksRelease(comparisons)) process.exitCode = 1;
+      if (values['fail-on-fatal'] && isFatal(comparisons)) process.exitCode = 1;
       return;
     }
     case 'compare': {
@@ -407,7 +407,7 @@ async function main(): Promise<void> {
           ? `${JSON.stringify(comparisons, null, 2)}\n`
           : renderComparison(comparisons, runs, window),
       );
-      if (values['fail-on-regression'] && blocksRelease(comparisons)) process.exitCode = 1;
+      if (values['fail-on-fatal'] && isFatal(comparisons)) process.exitCode = 1;
       return;
     }
     case 'runs': {
