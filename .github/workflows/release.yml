@@ -212,7 +212,7 @@ jobs:
       # failure stops the release. `npm stage publish` (npm 11+, hence node-version 24 above) defers
       # 2FA to the approval step you run yourself, so CI needs only an ordinary automation token
       # here, not a bypass-2FA one. A stable version is staged with dist-tag latest: approving a
-      # package makes it live. A prerelease (v0.8.0-alpha.0) is staged under its own tag (alpha),
+      # package makes it live. A prerelease (v0.8.0-alpha.1) is staged under its own tag (alpha),
       # so `npm install @cntxt-labs/anvesa` keeps getting the last stable version and the
       # prerelease is installed only by name (`@alpha`). The Promote workflow can still move latest
       # by hand (to roll back, for one).
@@ -268,7 +268,7 @@ jobs:
           name: anvesa ${{ github.ref_name }}
           body_path: RELEASE_CHANGELOG.md
           generate_release_notes: true
-          # v0.8.0-alpha.0 and the like: marked as a prerelease, and never the "latest" release.
+          # v0.8.0-alpha.1 and the like: marked as a prerelease, and never the "latest" release.
           prerelease: ${{ contains(github.ref_name, '-') }}
           make_latest: ${{ !contains(github.ref_name, '-') }}
           files: |
