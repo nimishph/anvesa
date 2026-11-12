@@ -18,9 +18,18 @@ export function isProjectRoot(
   const state = join(resolve(directory), '.anvesa');
   return (
     state !== userStateDirectory(env) &&
-    state !== resolve(homedir(), '.anvesa') &&
+    state !== resolve(realHome(), '.anvesa') &&
     PROJECT_MARKERS.some((marker) => existsSync(join(state, marker)))
   );
+}
+
+/**
+ * The home directory of the user running this process. Read from the process environment first:
+ * Bun's `homedir()` on Linux and macOS does not see a change to `HOME` made after start-up.
+ */
+function realHome(): string {
+  const fromEnv = process.platform === 'win32' ? process.env.USERPROFILE : process.env.HOME;
+  return fromEnv || homedir();
 }
 
 function userStateDirectory(env: Readonly<Record<string, string | undefined>>): string {
