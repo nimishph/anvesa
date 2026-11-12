@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { blocksRelease, compare, renderComparison } from './compare.ts';
+import { compare, isFatal, renderComparison } from './compare.ts';
 import { complexityOf, structureOf } from './footprint.ts';
 import { byFactor, parseManifest, StressError, select } from './manifest.ts';
 import { percentile, type RepoResult, type RunRecord, sample, wordsOf } from './measure.ts';
@@ -164,12 +164,12 @@ function run(id: string, ...results: RepoResult[]): RunRecord {
 
 const SHA_A = 'a'.repeat(40);
 const SHA_B = 'b'.repeat(40);
-const verdicts = (runs: RunRecord[], window = 3) =>
+const movements = (runs: RunRecord[], window = 3) =>
   Object.fromEntries(
-    (compare(runs, { window })[0]?.deltas ?? []).map((delta) => [delta.key, delta.verdict]),
+    (compare(runs, { window })[0]?.deltas ?? []).map((delta) => [delta.key, delta.movement]),
   );
 
-describe('comparing the latest execution with the window before it', () => {
+describe('comparing the latest execution with the average of those before it', () => {
   const steady = {
     'structural.ms': 1000,
     symbols: 168,
@@ -182,35 +182,33 @@ describe('comparing the latest execution with the window before it', () => {
     expect(only?.state).toBe('baseline');
   });
 
-  test('noise inside the window is stable; slower than the worst of it is a regression', () => {
+  test('a time is set against the average of the earlier runs, and only its direction is said', () => {
     const before = [
       run('r1', result(SHA_A, { ...steady, 'structural.ms': 1000 })),
       run('r2', result(SHA_A, { ...steady, 'structural.ms': 1200 })),
     ];
-    expect(
-      verdicts([...before, run('r3', result(SHA_A, { ...steady, 'structural.ms': 1350 }))]),
-    ).toMatchObject({
-      'structural.ms': 'stable',
-    });
-    expect(
-      verdicts([...before, run('r3', result(SHA_A, { ...steady, 'structural.ms': 2400 }))]),
-    ).toMatchObject({
-      'structural.ms': 'regression',
-    });
-    expect(
-      verdicts([...before, run('r3', result(SHA_A, { ...steady, 'structural.ms': 300 }))]),
-    ).toMatchObject({
-      'structural.ms': 'improvement',
-    });
+    const at = (ms: number) =>
+      movements([...before, run('r3', result(SHA_A, { ...steady, 'structural.ms': ms }))])[
+        'structural.ms'
+      ];
+    // Average 1100: within 25% (and the 200 ms floor) either way is stable.
+    expect(at(1350)).toBe('stable');
+    expect(at(1400)).toBe('higher');
+    expect(at(800)).toBe('lower');
+    const [comparison] = compare(
+      [...before, run('r3', result(SHA_A, { ...steady, 'structural.ms': 1400 }))],
+      { window: 3 },
+    );
+    expect(comparison?.deltas.find((d) => d.key === 'structural.ms')?.baseline).toBe(1100);
   });
 
-  test('a difference too small to matter in absolute terms is not a regression', () => {
+  test('a difference too small to matter in absolute terms is stable', () => {
     const before = [
       run('r1', result(SHA_A, { 'startup.ms': 10 })),
       run('r2', result(SHA_A, { 'startup.ms': 10 })),
     ];
     expect(
-      verdicts([...before, run('r3', result(SHA_A, { 'startup.ms': 40 }))])['startup.ms'],
+      movements([...before, run('r3', result(SHA_A, { 'startup.ms': 40 }))])['startup.ms'],
     ).toBe('stable');
   });
 
@@ -220,16 +218,16 @@ describe('comparing the latest execution with the window before it', () => {
       run('r2', result(SHA_A, { 'incremental.ms': 222 })),
     ];
     expect(
-      verdicts([...before, run('r3', result(SHA_A, { 'incremental.ms': 366 }))])['incremental.ms'],
+      movements([...before, run('r3', result(SHA_A, { 'incremental.ms': 366 }))])['incremental.ms'],
     ).toBe('stable');
   });
 
-  test('counts that move, and quality that drops, are reported', () => {
+  test('counts that move, and rates that move, are reported', () => {
     const before = [run('r1', result(SHA_A, steady)), run('r2', result(SHA_A, steady))];
     const after = run('r3', result(SHA_A, { ...steady, symbols: 150, 'query.exact.hitRate': 0.6 }));
-    expect(verdicts([...before, after])).toMatchObject({
+    expect(movements([...before, after])).toMatchObject({
       symbols: 'changed',
-      'query.exact.hitRate': 'regression',
+      'query.exact.hitRate': 'lower',
     });
   });
 
@@ -242,38 +240,66 @@ describe('comparing the latest execution with the window before it', () => {
     const [comparison] = compare(runs, { window: 3 });
     expect(comparison?.runs).toEqual(['r2', 'r3']);
     expect(comparison?.otherCommits).toBe(1);
-    expect(comparison?.deltas[0]?.verdict).toBe('stable');
+    expect(comparison?.deltas[0]?.movement).toBe('stable');
   });
 
-  test('only the last window of executions counts', () => {
+  test('the average is over the last `window` earlier executions', () => {
     const runs = [
       run('r1', result(SHA_A, { symbols: 1 })),
       run('r2', result(SHA_A, { symbols: 5 })),
       run('r3', result(SHA_A, { symbols: 5 })),
       run('r4', result(SHA_A, { symbols: 5 })),
+      run('r5', result(SHA_A, { symbols: 5 })),
     ];
-    expect(compare(runs, { window: 3 })[0]?.runs).toEqual(['r2', 'r3', 'r4']);
-    expect(verdicts(runs)).toMatchObject({ symbols: 'stable' });
+    expect(compare(runs, { window: 3 })[0]?.runs).toEqual(['r2', 'r3', 'r4', 'r5']);
+    expect(movements(runs)).toMatchObject({ symbols: 'stable' });
   });
 
-  test('a regression or a failed run blocks a release; a moved count or an improvement does not', () => {
+  test('only a run that did not finish is fatal; numbers that moved, however far, are not', () => {
     const before = [run('r1', result(SHA_A, steady)), run('r2', result(SHA_A, steady))];
-    const gate = (last: RunRecord) => blocksRelease(compare([...before, last], { window: 3 }));
-    expect(gate(run('r3', result(SHA_A, steady)))).toBe(false);
-    expect(gate(run('r3', result(SHA_A, { ...steady, symbols: 150 })))).toBe(false);
-    expect(gate(run('r3', result(SHA_A, { ...steady, 'structural.ms': 100 })))).toBe(false);
-    expect(gate(run('r3', result(SHA_A, { ...steady, 'query.exact.hitRate': 0.6 })))).toBe(true);
-    expect(gate(run('r3', result(SHA_A, steady, false)))).toBe(true);
+    const fatal = (last: RunRecord) => isFatal(compare([...before, last], { window: 3 }));
+    expect(fatal(run('r3', result(SHA_A, steady)))).toBe(false);
+    expect(fatal(run('r3', result(SHA_A, { ...steady, symbols: 150 })))).toBe(false);
+    expect(fatal(run('r3', result(SHA_A, { ...steady, 'structural.ms': 9000 })))).toBe(false);
+    expect(fatal(run('r3', result(SHA_A, { ...steady, 'query.exact.hitRate': 0.1 })))).toBe(false);
+    expect(fatal(run('r3', result(SHA_A, steady, false)))).toBe(true);
+    // An earlier failure that has since been fixed does not stop this release.
+    const recovered = [run('r1', result(SHA_A, steady, false)), run('r2', result(SHA_A, steady))];
+    expect(isFatal(compare(recovered, { window: 3 }))).toBe(false);
   });
 
-  test('a repository that starts failing is called out', () => {
+  test('the report is neutral, names each run’s processor, and calls out a run that failed', () => {
     const runs = [
       run('r1', result(SHA_A, steady)),
-      run('r2', result(SHA_A, { ...steady, 'health.failures': 1 }, false)),
+      run('r2', result(SHA_A, { ...steady, 'structural.ms': 1400 })),
+      run('r3', {
+        ...result(SHA_A, { ...steady, 'health.failures': 1 }, false),
+        failure: { step: 'dense', message: 'timed out', exitCode: null, timedOut: true },
+      }),
     ];
     const text = renderComparison(compare(runs, { window: 3 }), runs, 3);
-    expect(text).toContain('FAILED');
-    expect(text).toContain('REGRESSION');
-    expect(text).toContain('health.failures');
+    expect(text).toContain('FATAL: the latest run did not finish: dense: timed out');
+    expect(text).toContain('1 repository run(s) FAILED');
+    expect(text).toContain('anvesa 0.1.0');
+    expect(text).toContain('x (1 cores)');
+    expect(text).toContain('changed  health.failures');
+    expect(text).not.toMatch(/regression|improve/i);
+    const moved = [
+      run('r1', result(SHA_A, steady)),
+      run('r2', result(SHA_A, { ...steady, 'structural.ms': 1400 })),
+    ];
+    expect(renderComparison(compare(moved, { window: 3 }), moved, 3)).toContain(
+      'higher   structural.ms              1000ms (avg 1000ms) -> 1400ms  +40%',
+    );
+  });
+
+  test('a number measured for the first time is shown as new', () => {
+    const runs = [
+      run('r1', result(SHA_A, steady)),
+      run('r2', result(SHA_A, { ...steady, 'query.search.recall5': 0.75 })),
+    ];
+    expect(renderComparison(compare(runs, { window: 3 }), runs, 3)).toContain(
+      'new      query.search.recall5       75.0%',
+    );
   });
 });

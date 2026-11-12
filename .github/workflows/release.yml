@@ -48,9 +48,9 @@ jobs:
           if-no-files-found: error
 
   benchmark:
-    # What a release must not get worse at: the golden queries answer exactly as written for every
-    # language, and the stress benchmark, run on this release's own build, does not regress against
-    # the previous release's numbers. A failure here stops the release from being published.
+    # The golden queries must answer exactly as written for every language. The stress benchmark,
+    # run on this release's own build with embeddings on, reports how its numbers compare with the
+    # previous releases' and stops the release only when a repository's run does not finish.
     name: Golden queries and stress benchmark
     needs: build
     runs-on: ubuntu-latest
@@ -98,14 +98,34 @@ jobs:
             echo "::notice::no earlier stress history was found: this run is the baseline"
           fi
 
-      - name: Stress benchmark, compared with the previous release
+      # Dense is measured too (embedding time and memory, search latency and recall), with the
+      # model a new install picks by default.
+      - name: Install the default embedding model
+        run: |
+          program="$(ls dist/anvesa-*-linux-x64/anvesa)"
+          "$program" model install anvesa-code-150m --download
+
+      # A report, not a judge: it says what moved from the average of the previous releases' runs,
+      # and names each run's processor, since hosted runners change from one release to the next.
+      # Only a repository whose run did not finish (a crash, a timeout, no answer) stops the release.
+      - name: Stress benchmark, compared with the previous releases
         run: |
           set -o pipefail
           grep -v '^[[:space:]]*\(#\|$\)' tooling/stress/release-repos.txt | while read -r line; do
             bun run stress add --if-missing $line
           done
           bun run stress setup --download
-          bun run stress run --no-dense --fail-on-regression | tee stress-report.txt
+          bun run stress run --timeout-min 20 --fail-on-fatal | tee stress-report.txt
+
+      - name: Benchmark report in the run summary
+        if: always()
+        run: |
+          {
+            echo '## Stress benchmark'
+            echo '```'
+            cat stress-report.txt 2>/dev/null || echo 'the stress benchmark did not run'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Keep the history for the next release
         if: always()
