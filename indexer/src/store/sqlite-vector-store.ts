@@ -17,7 +17,7 @@ import {
   type VectorStore,
 } from '@cntxt-labs/anvesa-dense';
 import { StoreCorruptError } from '../errors.ts';
-import { allRows, getRow, MEMORY_DATABASE, type StoreDatabase } from './database.ts';
+import { allRows, getRow, MEMORY_DATABASE, type StoreDatabase, statement } from './database.ts';
 
 /** How often a scan checks its deadline. A pacing interval, not a limit on what is searched. */
 const DEADLINE_CHECK_EVERY = 1024;
@@ -76,11 +76,12 @@ export class SqliteVectorStore implements VectorStore {
         }
       }
 
-      db.query('DELETE FROM vector_sources WHERE channel = ? AND path = ?').run(
+      statement(db, 'DELETE FROM vector_sources WHERE channel = ? AND path = ?').run(
         update.channel,
         update.path,
       );
-      db.query(
+      statement(
+        db,
         `INSERT INTO vector_sources
            (channel, path, model, content_hash, transformer_version, cards, quarantined)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -94,18 +95,20 @@ export class SqliteVectorStore implements VectorStore {
         update.quarantined.length,
       );
       if (known === undefined && first !== undefined) {
-        db.query('INSERT INTO vector_dims (channel, model, dims) VALUES (?, ?, ?)').run(
+        statement(db, 'INSERT INTO vector_dims (channel, model, dims) VALUES (?, ?, ?)').run(
           update.channel,
           update.model,
           first,
         );
       }
 
-      const insertCard = db.query(
+      const insertCard = statement(
+        db,
         `INSERT INTO cards (channel, id, path, model, group_key, card)
          VALUES (?, ?, ?, ?, ?, ?)`,
       );
-      const insertVector = db.query(
+      const insertVector = statement(
+        db,
         `INSERT INTO card_vectors (channel, id, model, group_key, dims, vector)
          VALUES (?, ?, ?, ?, ?, ?)`,
       );
@@ -133,7 +136,8 @@ export class SqliteVectorStore implements VectorStore {
         insertRaw.finalize();
       }
 
-      const insertQuarantine = db.query(
+      const insertQuarantine = statement(
+        db,
         'INSERT INTO card_quarantine (channel, path, seq, entry) VALUES (?, ?, ?, ?)',
       );
       update.quarantined.forEach((entry, seq) => {
@@ -146,8 +150,10 @@ export class SqliteVectorStore implements VectorStore {
     return this.#database.transaction(
       'remove cards',
       (db) =>
-        db.query('DELETE FROM vector_sources WHERE channel = ? AND path = ?').run(channel, path)
-          .changes > 0,
+        statement(db, 'DELETE FROM vector_sources WHERE channel = ? AND path = ?').run(
+          channel,
+          path,
+        ).changes > 0,
     );
   }
 
@@ -295,9 +301,9 @@ export class SqliteVectorStore implements VectorStore {
     let seen = 0;
     // Prepared and finalised here, not cached: a cached statement still mid-scan would make the
     // strict close of the database fail.
-    const statement = db.prepare(select);
+    const scan = db.prepare(select);
     try {
-      for (const row of statement.iterate(options.channel, options.model) as Iterable<
+      for (const row of scan.iterate(options.channel, options.model) as Iterable<
         ScanRow & { card?: string }
       >) {
         seen += 1;
@@ -324,7 +330,7 @@ export class SqliteVectorStore implements VectorStore {
         }
       }
     } finally {
-      statement.finalize();
+      scan.finalize();
     }
 
     if (!options.collapse) return collector.result();

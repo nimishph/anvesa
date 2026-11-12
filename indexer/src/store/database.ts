@@ -1,4 +1,4 @@
-import { Database, type SQLQueryBindings } from 'bun:sqlite';
+import { Database, type SQLQueryBindings, type Statement } from 'bun:sqlite';
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { CodeLensError, InvalidArgumentError } from '@cntxt-labs/anvesa-core';
@@ -285,6 +285,7 @@ export class StoreDatabase {
     this.#closed = true;
     for (const release of this.#onClose) release();
     this.#onClose.clear();
+    finalizeStatements(this.#db);
     try {
       this.#db.close(true);
     } catch (failure) {
@@ -309,6 +310,37 @@ function mkdirRecursiveIdempotent(dir: string): void {
     if (existsSync(dir) && statSync(dir).isDirectory()) return;
     throw failure;
   }
+}
+
+/** Each connection's prepared statements, by SQL text; see `statement`. */
+const statements = new WeakMap<Database, Map<string, Statement>>();
+
+/**
+ * The prepared statement for `sql` on this connection, prepared once and kept until the
+ * `StoreDatabase` that owns the connection closes, which finalises it. Use this, not `db.query`:
+ * bun's own cache holds 20 statements, and from the 21st SQL text on `db.query` hands back a
+ * statement nothing finalises, so the strict close of the database fails with "database is
+ * locked". An index run with enough different writes (a quarantined file adds a few) got there.
+ */
+export function statement(db: Database, sql: string): Statement {
+  let held = statements.get(db);
+  if (!held) {
+    held = new Map();
+    statements.set(db, held);
+  }
+  let prepared = held.get(sql);
+  if (!prepared) {
+    prepared = db.prepare(sql);
+    held.set(sql, prepared);
+  }
+  return prepared;
+}
+
+function finalizeStatements(db: Database): void {
+  const held = statements.get(db);
+  if (!held) return;
+  statements.delete(db);
+  for (const prepared of held.values()) prepared.finalize();
 }
 
 /**

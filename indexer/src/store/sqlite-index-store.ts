@@ -16,7 +16,7 @@ import type {
   SymbolFact,
   TypeFact,
 } from '../extract/index.ts';
-import { allRows, getRow, StoreDatabase, type StoreOptions } from './database.ts';
+import { allRows, getRow, StoreDatabase, type StoreOptions, statement } from './database.ts';
 import type {
   CallQuery,
   CallRecord,
@@ -364,7 +364,8 @@ export class SqliteIndexStore implements IndexStore {
     this.#database.transaction('store a file', (db) => {
       clearFile(db, file.path);
       const { facts } = file;
-      db.query(
+      statement(
+        db,
         `INSERT INTO files (path, language, package_root, repo, size, mtime_ms, content_hash,
            has_syntax_errors, imports_supported, unnamed_calls, computed_imports)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -382,7 +383,8 @@ export class SqliteIndexStore implements IndexStore {
         facts.gaps.computedImports,
       );
 
-      const insertSymbol = db.query(
+      const insertSymbol = statement(
+        db,
         `INSERT INTO symbols (path, seq, ${SYMBOL_COLUMNS.replace('path, ', '')})
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
@@ -405,7 +407,8 @@ export class SqliteIndexStore implements IndexStore {
         );
       });
 
-      const insertCall = db.query(
+      const insertCall = statement(
+        db,
         `INSERT INTO calls (path, seq, from_symbol, name, receiver_kind, receiver_name, kind, line)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       );
@@ -422,7 +425,8 @@ export class SqliteIndexStore implements IndexStore {
         );
       });
 
-      const insertImport = db.query(
+      const insertImport = statement(
+        db,
         `INSERT INTO imports (path, seq, specifier, kind, relative, type_only, bindings, line)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       );
@@ -439,14 +443,16 @@ export class SqliteIndexStore implements IndexStore {
         );
       });
 
-      const insertExport = db.query(
+      const insertExport = statement(
+        db,
         'INSERT INTO exports (path, seq, name, local, line) VALUES (?, ?, ?, ?, ?)',
       );
       facts.exports.forEach((entry, seq) => {
         insertExport.run(file.path, seq, entry.name, entry.local, entry.line);
       });
 
-      const insertType = db.query(
+      const insertType = statement(
+        db,
         'INSERT INTO type_bindings (path, seq, scope, name, type, origin) VALUES (?, ?, ?, ?, ?, ?)',
       );
       (facts.types ?? []).forEach((entry, seq) => {
@@ -454,7 +460,7 @@ export class SqliteIndexStore implements IndexStore {
       });
 
       if (file.wexpr) {
-        db.query('INSERT INTO wexpr_cache (path, format_version, text) VALUES (?, ?, ?)').run(
+        statement(db, 'INSERT INTO wexpr_cache (path, format_version, text) VALUES (?, ?, ?)').run(
           file.path,
           file.wexpr.formatVersion,
           file.wexpr.text,
@@ -466,7 +472,8 @@ export class SqliteIndexStore implements IndexStore {
   async quarantineFile(entry: FileQuarantine): Promise<void> {
     this.#database.transaction('quarantine a file', (db) => {
       clearFile(db, entry.path);
-      db.query(
+      statement(
+        db,
         `INSERT INTO file_quarantine (path, reason, message, error_code, size, mtime_ms, content_hash)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
       ).run(
@@ -485,8 +492,11 @@ export class SqliteIndexStore implements IndexStore {
     return this.#database.guard(
       'update a file stamp',
       (db) =>
-        db.query('UPDATE files SET size = ?, mtime_ms = ? WHERE path = ?').run(size, mtimeMs, path)
-          .changes > 0,
+        statement(db, 'UPDATE files SET size = ?, mtime_ms = ? WHERE path = ?').run(
+          size,
+          mtimeMs,
+          path,
+        ).changes > 0,
     );
   }
 
@@ -656,8 +666,9 @@ export class SqliteIndexStore implements IndexStore {
 
   async replaceEdges(sourcePath: string, edges: readonly EdgeRecord[]): Promise<void> {
     this.#database.transaction('store edges', (db) => {
-      db.query('DELETE FROM edges WHERE source_path = ?').run(sourcePath);
-      const insert = db.query(
+      statement(db, 'DELETE FROM edges WHERE source_path = ?').run(sourcePath);
+      const insert = statement(
+        db,
         'INSERT INTO edges (source_path, seq, from_ref, to_ref, kind, confidence, lines) VALUES (?, ?, ?, ?, ?, ?, ?)',
       );
       edges.forEach((edge, seq) => {
@@ -785,7 +796,8 @@ export class SqliteIndexStore implements IndexStore {
 
   async setMeta(key: string, value: string): Promise<void> {
     this.#database.guard('write metadata', (db) => {
-      db.query(
+      statement(
+        db,
         'INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value',
       ).run(key, value);
     });
@@ -794,7 +806,7 @@ export class SqliteIndexStore implements IndexStore {
   async deleteMeta(key: string): Promise<boolean> {
     return this.#database.guard(
       'delete metadata',
-      (db) => db.query('DELETE FROM meta WHERE key = ?').run(key).changes > 0,
+      (db) => statement(db, 'DELETE FROM meta WHERE key = ?').run(key).changes > 0,
     );
   }
 
@@ -825,7 +837,7 @@ export class SqliteIndexStore implements IndexStore {
 
 /** Remove everything held for a path, indexed or quarantined. Returns whether anything was. */
 function clearFile(db: Database, path: string): boolean {
-  const indexed = db.query('DELETE FROM files WHERE path = ?').run(path).changes;
-  const quarantined = db.query('DELETE FROM file_quarantine WHERE path = ?').run(path).changes;
+  const indexed = statement(db, 'DELETE FROM files WHERE path = ?').run(path).changes;
+  const quarantined = statement(db, 'DELETE FROM file_quarantine WHERE path = ?').run(path).changes;
   return indexed + quarantined > 0;
 }
