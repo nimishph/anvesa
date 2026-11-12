@@ -154,7 +154,8 @@ describe('command line', () => {
   test('help puts the commands this user ran lately first; failures do not rank, --help and an opt-out are not counted', async () => {
     const root = makeProject();
     const state = join(root, 'state');
-    const env = { env: { ANVESA_HOME: state } };
+    // With a home, a run would show the telemetry notice and then send: these tests never send.
+    const env = { env: { ANVESA_HOME: state, ANVESA_NO_TELEMETRY: '1' } };
     expect((await cliWith(env, root, '--help')).out).not.toContain('Recently used');
 
     expect((await cliWith(env, root, 'index')).code).toBe(0);

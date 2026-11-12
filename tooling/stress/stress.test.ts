@@ -3,6 +3,43 @@ import { blocksRelease, compare, renderComparison } from './compare.ts';
 import { complexityOf, structureOf } from './footprint.ts';
 import { byFactor, parseManifest, StressError, select } from './manifest.ts';
 import { percentile, type RepoResult, type RunRecord, sample, wordsOf } from './measure.ts';
+import { buildVersion, newerFirst } from './program.ts';
+
+describe('local build discovery', () => {
+  const here = `${process.platform}-${process.arch}`;
+
+  test('finds release and prerelease builds for this platform only', () => {
+    expect(buildVersion(`anvesa-0.7.4-${here}`)).toBe('0.7.4');
+    expect(buildVersion(`anvesa-0.8.0-alpha.0-${here}`)).toBe('0.8.0-alpha.0');
+    expect(buildVersion(`anvesa-1.0.0-rc.1-${here}`)).toBe('1.0.0-rc.1');
+    expect(buildVersion(`anvesa-0.8.0-alpha.0-${here}.zip`)).toBeUndefined();
+    expect(buildVersion('anvesa-0.8.0-plan9-mips')).toBeUndefined();
+    expect(buildVersion('release-0.5.2')).toBeUndefined();
+  });
+
+  test('orders versions newest first, as semver does', () => {
+    const versions = [
+      '0.7.4',
+      '0.8.0-alpha.0',
+      '0.8.0',
+      '0.8.0-alpha.10',
+      '0.8.0-beta',
+      '0.8.0-alpha.2',
+      '0.10.0',
+      '0.8.0-alpha',
+    ];
+    expect([...versions].sort(newerFirst)).toEqual([
+      '0.10.0',
+      '0.8.0',
+      '0.8.0-beta',
+      '0.8.0-alpha.10',
+      '0.8.0-alpha.2',
+      '0.8.0-alpha.0',
+      '0.8.0-alpha',
+      '0.7.4',
+    ]);
+  });
+});
 
 const factors = (over: Record<string, unknown> = {}) => ({
   language: 'typescript',
