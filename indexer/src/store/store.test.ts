@@ -18,6 +18,7 @@ import {
   MEMORY_DATABASE,
   StoreDatabase,
   type StoreOptions,
+  statement,
 } from './database.ts';
 import { indexStoreContract } from './index-store-contract.ts';
 import { MemoryIndexStore } from './memory-index-store.ts';
@@ -929,5 +930,38 @@ describe('vector store specifics', () => {
     ).rejects.toBeInstanceOf(InvalidArgumentError);
     expect(await store.sourceState('demo', 'a.md')).toBeUndefined();
     store.database.close();
+  });
+});
+
+describe('prepared statements', () => {
+  test('more statements than bun caches still close cleanly', () => {
+    // bun's own `db.query` cache holds 20; past that it leaks a statement and the strict close
+    // fails with "database is locked". The store's cache has no limit and finalises on close.
+    const path = join(makeTree({}), 'index.db');
+    const database = StoreDatabase.open(path);
+    database.guard('prepare many', (db) => {
+      for (let i = 0; i < 30; i += 1) statement(db, `SELECT ${i} AS n`).get();
+    });
+    expect(() => database.close()).not.toThrow();
+  });
+
+  test('the same SQL is prepared once', () => {
+    const database = StoreDatabase.open(MEMORY_DATABASE);
+    database.guard('prepare', (db) => {
+      expect(statement(db, 'SELECT 1')).toBe(statement(db, 'SELECT 1'));
+    });
+    database.close();
+  });
+
+  test('no store code uses db.query, whose cache leaks past 20 statements', () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const dirs = [here, join(here, '..', '..', '..', 'retriever', 'src')];
+    const offenders = dirs.flatMap((dir) =>
+      readdirSync(dir)
+        .filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts'))
+        .filter((name) => /\bdb\.query\(/.test(readFileSync(join(dir, name), 'utf8')))
+        .map((name) => join(basename(dir), name)),
+    );
+    expect(offenders).toEqual([]);
   });
 });

@@ -149,9 +149,15 @@ async function syncPropagation(
   }
 
   database.transaction('store propagated vectors', (db) => {
-    const update = db.query('UPDATE card_vectors SET vector = ? WHERE channel = ? AND id = ?');
-    for (const [id, vector] of next) {
-      update.run(Buffer.from(vector.buffer, vector.byteOffset, vector.byteLength), CHANNEL, id);
+    // Prepared and finalised, not `db.query`: past bun's 20 cached statements that hands back one
+    // nothing finalises, and the strict close of the database fails.
+    const update = db.prepare('UPDATE card_vectors SET vector = ? WHERE channel = ? AND id = ?');
+    try {
+      for (const [id, vector] of next) {
+        update.run(Buffer.from(vector.buffer, vector.byteOffset, vector.byteLength), CHANNEL, id);
+      }
+    } finally {
+      update.finalize();
     }
   });
   if (config) await store.setMeta(PROPAGATE_META, JSON.stringify(config));

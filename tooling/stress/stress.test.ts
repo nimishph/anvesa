@@ -2,7 +2,14 @@ import { describe, expect, test } from 'bun:test';
 import { compare, isFatal, renderComparison } from './compare.ts';
 import { complexityOf, structureOf } from './footprint.ts';
 import { byFactor, parseManifest, StressError, select } from './manifest.ts';
-import { percentile, type RepoResult, type RunRecord, sample, wordsOf } from './measure.ts';
+import {
+  failureDetail,
+  percentile,
+  type RepoResult,
+  type RunRecord,
+  sample,
+  wordsOf,
+} from './measure.ts';
 import { buildVersion, newerFirst } from './program.ts';
 
 describe('local build discovery', () => {
@@ -96,6 +103,27 @@ describe('the manifest', () => {
 });
 
 describe('measuring a repository', () => {
+  test('a failed step is reported by the error anvesa printed, not its closing braces', () => {
+    const stderr = [
+      'note: recorded "model": "anvesa-code-150m" in .anvesa/config.json',
+      JSON.stringify(
+        {
+          error: {
+            code: 'INDEXER_STORE_OPERATION',
+            message: 'Index database failed to close the database',
+            cause: { name: 'Error', message: 'database is locked' },
+          },
+        },
+        null,
+        2,
+      ),
+    ].join('\n');
+    expect(failureDetail(stderr)).toBe(
+      'INDEXER_STORE_OPERATION: Index database failed to close the database (database is locked)',
+    );
+    expect(failureDetail('one\ntwo\nthree\nfour')).toBe('two | three | four');
+  });
+
   test('sizes and layouts fall into classes', () => {
     expect(complexityOf(10)).toBe('small');
     expect(complexityOf(300)).toBe('medium');

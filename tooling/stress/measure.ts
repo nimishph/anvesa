@@ -185,6 +185,32 @@ class StepFailed extends StressError {
   }
 }
 
+/**
+ * What a failed step said, in one line. anvesa ends a failure with its error as JSON on stderr, and
+ * the last lines of that are closing braces, so the error and its cause are read out of it; any
+ * other output is reported by its last lines.
+ */
+export function failureDetail(output: string): string {
+  const start = output.lastIndexOf('\n{');
+  const candidate = start >= 0 ? output.slice(start + 1) : output.startsWith('{') ? output : '';
+  const error = parsedError(candidate);
+  if (typeof error?.message !== 'string') return tailLines(output, 3);
+  const code = typeof error.code === 'string' ? `${error.code}: ` : '';
+  const cause = typeof error.cause?.message === 'string' ? ` (${error.cause.message})` : '';
+  return `${code}${error.message}${cause}`;
+}
+
+/** The `error` of anvesa's JSON failure, or `undefined` when `text` is not one. */
+function parsedError(text: string): Json | undefined {
+  if (text === '') return undefined;
+  try {
+    return (JSON.parse(text) as Json).error as Json | undefined;
+  } catch (failure) {
+    if (failure instanceof SyntaxError) return undefined;
+    throw failure;
+  }
+}
+
 async function measureRepo(entry: Entry, options: RunOptions): Promise<RepoResult> {
   const say = options.onProgress ?? (() => undefined);
   const { id, factors } = entry;
@@ -228,7 +254,7 @@ async function measureRepo(entry: Entry, options: RunOptions): Promise<RepoResul
       timedOut: done.timedOut,
     };
     if (expectOk && done.exitCode !== 0) {
-      const detail = tailLines(done.stderr.trim() || done.stdout.trim(), 3);
+      const detail = failureDetail(done.stderr.trim() || done.stdout.trim());
       throw new StepFailed({
         step,
         message: done.timedOut
