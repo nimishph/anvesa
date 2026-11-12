@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { findProjectRoot } from './project-root.ts';
+import { findProjectRoot, isProjectRoot } from './project-root.ts';
 
 const roots: string[] = [];
 afterAll(() => {
@@ -55,5 +55,24 @@ describe('findProjectRoot', () => {
     expect(findProjectRoot(join(home, 'work/src'), { ANVESA_HOME: join(home, '.anvesa') })).toBe(
       join(home, 'work/src'),
     );
+  });
+
+  test("the real user's .anvesa is not a project either, whatever HOME a run was given", () => {
+    // Its config.json holds preferences (the telemetry choice), not a project. A run with a
+    // made-up HOME, as tests use, still sits under the real home on most machines.
+    const home = tree('.anvesa/config.json', 'work/src/a.ts');
+    const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+    process.env.HOME = home;
+    process.env.USERPROFILE = home;
+    try {
+      expect(isProjectRoot(home, env)).toBe(false);
+      // Any other directory with the same file is a project.
+      expect(isProjectRoot(tree('.anvesa/config.json'), env)).toBe(true);
+    } finally {
+      for (const [name, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
   });
 });

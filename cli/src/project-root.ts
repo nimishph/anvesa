@@ -5,7 +5,12 @@ import { dirname, join, resolve } from 'node:path';
 /** Files in `.anvesa/` that only a project has; any one of them marks its directory as a root. */
 const PROJECT_MARKERS = ['config.json', 'workspace.json', 'index.db', 'fragments.json'] as const;
 
-/** Whether `directory/.anvesa` holds a project (and is not the per-user state directory). */
+/**
+ * Whether `directory/.anvesa` holds a project (and is not a per-user state directory). The
+ * per-user directory has a `config.json` of its own (preferences, such as the telemetry choice),
+ * so it is told apart by where it is, not by what is in it: the one `env` names, and the real
+ * user's `~/.anvesa` whatever `env` says (a run with another `HOME` still lives under it).
+ */
 export function isProjectRoot(
   directory: string,
   env: Readonly<Record<string, string | undefined>>,
@@ -13,6 +18,7 @@ export function isProjectRoot(
   const state = join(resolve(directory), '.anvesa');
   return (
     state !== userStateDirectory(env) &&
+    state !== resolve(homedir(), '.anvesa') &&
     PROJECT_MARKERS.some((marker) => existsSync(join(state, marker)))
   );
 }

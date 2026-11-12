@@ -1,0 +1,3 @@
+[test]
+# Keeps every test away from the real telemetry collector (see the file).
+preload = ["./tooling/test-setup.ts"]
