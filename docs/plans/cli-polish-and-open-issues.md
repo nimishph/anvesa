@@ -233,6 +233,12 @@ kind: text
 expression: show_notice in cli/src/telemetry.ts
 ```
 
+Done in Wave D. `TELEMETRY_REMINDER` is printed on stderr by `index`, `search` and `query` while
+telemetry is on, not with `--json`, by the MCP server or in CI. `show_notice: false` in the user's
+`preferences.telemetry` (`anvesa telemetry quiet`) or the project's `telemetry` block hides it;
+`anvesa telemetry notice` shows it again, and `telemetry status` says which. `telemetry on|off` now
+keep the rest of the choice instead of overwriting it.
+
 ## Requirement: `anvesa ui` edits the project's settings {#req-ui-settings}
 
 New. A Settings view in the dashboard reads `.anvesa/config.json` against `schemas/config.v1.json`
@@ -246,6 +252,15 @@ another page in the browser cannot rewrite the config.
 kind: text
 expression: api/config in ui/src/server.ts
 ```
+
+Done in Wave D. The edit is in `retriever/src/config-edit.ts`: key by key on the file as written
+(order, indentation, line endings and untouched sections kept), checked with
+`validateProjectConfig` (the loader's own rules, which mirror the schema), under the file's lock
+(`lockFile`, moved to core so the dashboard shares it), and only if the file is still at the revision
+the view read. A save that changes the model, `indexing.ignore` or whether a channel is on says to run
+`anvesa index`. The PUT needs the token in the `X-Anvesa-Token` header (the URL token is enough only
+to read), a JSON body and no foreign `Origin`. New channels stay with `anvesa channel add`, which
+pins the module's checksum.
 
 ## Requirement: the anvesa skill can be installed into an agent's skill folder {#req-skill-install}
 
@@ -261,3 +276,10 @@ project, and writes to a home directory nobody approved.
 kind: text
 expression: /skill install/ in cli/src/help.ts
 ```
+
+Done in Wave D. The skill is bundled into the program (`cli/src/skill.ts`), so the copy installed
+matches the anvesa running; a test holds its `version:` to the package version. Folders: Claude
+Code `.claude/skills`, opencode `.opencode/skills` (user: `~/.config/opencode/skills`), Codex
+`.agents/skills`. `init --yes` installs it for `--agent` (Claude Code by default); on a terminal it
+asks; `--no-skill` skips it. A copy with no `version:` is taken as the person's own and never
+refreshed.

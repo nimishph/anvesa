@@ -1,0 +1,122 @@
+/* ANVESA UI — Project settings view */
+
+.settings-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 760px;
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.settings-group {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface-glass);
+  padding: 1rem 1.25rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.settings-group legend {
+  padding: 0 0.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.settings-field select,
+.settings-field input,
+.settings-field textarea,
+.settings-table input[type="number"] {
+  max-width: 100%;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.65rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+}
+
+.settings-table input[type="number"] {
+  width: 6.5rem;
+}
+
+.settings-field textarea {
+  resize: vertical;
+}
+
+.settings-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.settings-hint {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.settings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.settings-table th {
+  text-align: left;
+  color: var(--text-secondary);
+  font-weight: 600;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-table td {
+  padding: 0.45rem 0.5rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.settings-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.settings-message {
+  border-radius: var(--radius-md);
+  padding: 0.65rem 0.9rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--border-medium);
+  color: var(--text-primary);
+}
+
+.settings-message[data-kind="ok"] {
+  border-color: var(--accent-emerald);
+  background: var(--accent-emerald-glow);
+}
+
+.settings-message[data-kind="warn"] {
+  border-color: var(--accent-amber);
+  background: var(--accent-amber-glow);
+}
+
+.settings-message[data-kind="error"] {
+  border-color: var(--accent-rose);
+  background: var(--accent-rose-glow);
+}

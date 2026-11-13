@@ -32,6 +32,7 @@ export {
   pinChannelModule,
 } from './channel-module.ts';
 export * from './config.ts';
+export * from './config-edit.ts';
 export * from './conjunction.ts';
 export * from './errors.ts';
 export * from './federation.ts';

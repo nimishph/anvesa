@@ -190,7 +190,18 @@ Configure in `.anvesa/workspace.json`:
 `{"federation": {"repositories": [{"name": "payments", "path": "../payments", "weight": 1.0}]}}`.
 Only search and dependents reach other repositories. See `anvesa primer federation`.
 
-### 12. Primer
+### 12. Installing this skill
+
+```bash
+anvesa skill install                     # .claude/skills/anvesa/SKILL.md in this project
+anvesa skill install --agent opencode    # .opencode/skills/; --agent codex: .agents/skills/
+anvesa skill install --user              # in your home folder, for every project
+anvesa skill status                      # where it is installed, and at which version
+```
+`anvesa init` offers it. `index` and `search` keep an installed copy at the running version, and
+never install one that is not there.
+
+### 13. Primer
 
 `anvesa primer` lists topics: overview, wql, fusion, graph, indexing, grammars, models, channels,
 patterns, federation, telemetry. `anvesa primer <topic>` prints one (25-50 lines).

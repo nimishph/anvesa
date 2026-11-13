@@ -3,6 +3,7 @@
 import graphCss from '../public/css/graph.css' with { type: 'file' };
 import mainCss from '../public/css/main.css' with { type: 'file' };
 import searchCss from '../public/css/search.css' with { type: 'file' };
+import settingsCss from '../public/css/settings.css' with { type: 'file' };
 import statusCss from '../public/css/status.css' with { type: 'file' };
 import indexHtml from '../public/index.html' with { type: 'file' };
 // @ts-expect-error a browser script, imported only for its path
@@ -13,6 +14,8 @@ import graphJs from '../public/js/graph.js' with { type: 'file' };
 import mockDataJs from '../public/js/mock-data.js' with { type: 'file' };
 // @ts-expect-error a browser script, imported only for its path
 import searchJs from '../public/js/search.js' with { type: 'file' };
+// @ts-expect-error a browser script, imported only for its path
+import settingsJs from '../public/js/settings.js' with { type: 'file' };
 // @ts-expect-error a browser script, imported only for its path
 import statusJs from '../public/js/status.js' with { type: 'file' };
 
@@ -25,10 +28,12 @@ export const ASSETS: ReadonlyMap<string, string> = new Map([
   ['/css/graph.css', graphCss],
   ['/css/main.css', mainCss],
   ['/css/search.css', searchCss],
+  ['/css/settings.css', settingsCss],
   ['/css/status.css', statusCss],
   ['/js/app.js', appJs],
   ['/js/graph.js', graphJs],
   ['/js/mock-data.js', mockDataJs],
   ['/js/search.js', searchJs],
+  ['/js/settings.js', settingsJs],
   ['/js/status.js', statusJs],
 ]);
