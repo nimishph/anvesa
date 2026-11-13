@@ -357,7 +357,7 @@ describe('the anvesa-code models', () => {
       expect(spec.modelData?.path).toBe('model.onnx_data');
       expect(weightBytes(spec)).toBeGreaterThan(spec.model.bytes);
     }
-    const order = MODEL_CATALOG.map(weightBytes);
+    const order = MODEL_CATALOG.filter((spec) => spec.tier !== undefined).map(weightBytes);
     expect(order).toEqual([...order].sort((a, b) => a - b));
   });
 });

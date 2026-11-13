@@ -243,6 +243,19 @@ describe('downloading', () => {
     expect(await cache.find(spec)).toBeDefined();
   });
 
+  test('a model pinned to a revision is fetched at that commit, not main', async () => {
+    const pinned: ModelSpec = { ...spec, revision: 'e7f32e3c00f91d699e8c43b53106206bcc72bb22' };
+    const requested: string[] = [];
+    await new ModelCache(scratch()).download(pinned, {
+      allowNetwork: true,
+      fetch: serving(upstream, requested),
+    });
+    expect(requested).toEqual([
+      'https://huggingface.co/acme/test-model/resolve/e7f32e3c00f91d699e8c43b53106206bcc72bb22/tokenizer.json',
+      'https://huggingface.co/acme/test-model/resolve/e7f32e3c00f91d699e8c43b53106206bcc72bb22/onnx/model.onnx',
+    ]);
+  });
+
   test('a model with external weights downloads them too, under the name the model reads them by', async () => {
     const data = new TextEncoder().encode('the weights'.repeat(50));
     const big: ModelSpec = {

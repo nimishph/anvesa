@@ -34,6 +34,12 @@ export interface ModelSpec {
   readonly tier: Tier | undefined;
   /** Upstream repository the files come from. */
   readonly repo: string;
+  /**
+   * The upstream commit the files are fetched at. Absent: `main`, for repositories anvesa
+   * publishes. A model from someone else's repository is pinned, so a later push there cannot turn
+   * an install into a checksum failure.
+   */
+  readonly revision?: string;
   readonly model: ModelFileSpec;
   /**
    * The weights of a model too large for one ONNX file (over 2 GB), kept beside it under the name
@@ -190,8 +196,57 @@ export const BUILTIN_MODELS: Readonly<Record<Tier, ModelSpec>> = {
 /** The tier automatic choice uses. */
 export const DEFAULT_TIER: Tier = 'low';
 
-/** Built in beyond the tiers. None at present. */
-export const ADDITIONAL_MODELS: readonly ModelSpec[] = [];
+/**
+ * gte-modernbert-base (Alibaba-NLP, Apache-2.0): a general-purpose English encoder on ModernBERT,
+ * offered for people who want an open model that is not anvesa's own. Its ONNX export as published
+ * upstream, fp32 in one file; [CLS] pooling. Its window is 8,192 tokens, but cards are cut at 512
+ * like the anvesa-code models', so indexing costs the same per card. It comes with no learned
+ * ranker, and has not been scored on anvesa-gen-lab's bench.
+ */
+const GTE_MODERNBERT_BASE: ModelSpec = {
+  id: 'gte-modernbert-base',
+  tier: undefined,
+  repo: 'Alibaba-NLP/gte-modernbert-base',
+  revision: 'e7f32e3c00f91d699e8c43b53106206bcc72bb22',
+  model: {
+    path: 'onnx/model.onnx',
+    bytes: 596392315,
+    sha256: '947f31df7effaeec4edb57c50e4ed7e0f2034d9336063f92615b92e3e0d24d78',
+  },
+  tokenizer: {
+    path: 'tokenizer.json',
+    bytes: 3583228,
+    sha256: '6c8aaa9a542084f2457eab775d4eeb51f92a70c0fd9de28d5edb0ddec3c08d30',
+  },
+  dimensions: 768,
+  maxTokens: 512,
+  pooling: 'cls',
+  paramsM: 149,
+  license: 'Apache-2.0',
+  notes:
+    'An open, general-purpose English encoder (ModernBERT), not trained for code search. Not ' +
+    'scored on the anvesa-gen-lab bench, and it comes with no ranker, so symbol search ranks by ' +
+    'the first stage alone. Never chosen automatically: name it with --model or anvesa model use.',
+  summary: 'open general-purpose encoder; not scored on code',
+};
+
+/**
+ * Open-licence models anvesa can fetch and pin besides its own: listed by `model list`, installed
+ * with `model install <id> --download`, used only when named. Never chosen automatically.
+ */
+export const OPEN_MODELS: readonly ModelSpec[] = [GTE_MODERNBERT_BASE];
+
+/** Built in beyond the tiers: the open models. */
+export const ADDITIONAL_MODELS: readonly ModelSpec[] = OPEN_MODELS;
+
+/** Where a model comes from, as `model list` groups them. */
+export type ModelFamily = 'anvesa-code' | 'open' | 'custom';
+
+export function modelFamily(id: string): ModelFamily {
+  if (ANVESA_CODE_MODELS.some((spec) => spec.id === id)) return 'anvesa-code';
+  if (OPEN_MODELS.some((spec) => spec.id === id)) return 'open';
+  return 'custom';
+}
 
 export const ANVESA_CODE_MODELS: readonly ModelSpec[] = [CODE_400M, CODE_150M, CODE_1B];
 
@@ -211,11 +266,11 @@ export const RETIRED_MODELS: Readonly<Record<string, string>> = {
   'bge-large-en-v1.5': 'anvesa-code-400m',
 };
 
-/** Every built-in model, smallest download first. */
+/** Every built-in model: anvesa's own smallest first (so the default leads), then the open ones. */
 export const MODEL_CATALOG: readonly ModelSpec[] = [
-  ...TIERS.map((tier) => BUILTIN_MODELS[tier]),
-  ...ADDITIONAL_MODELS,
-].sort((a, b) => weightBytes(a) - weightBytes(b));
+  ...TIERS.map((tier) => BUILTIN_MODELS[tier]).sort((a, b) => weightBytes(a) - weightBytes(b)),
+  ...[...ADDITIONAL_MODELS].sort((a, b) => weightBytes(a) - weightBytes(b)),
+];
 
 /** The bytes of a model's weights: its ONNX file and, for a model over 2 GB, the external weights beside it. */
 export function weightBytes(spec: ModelSpec): number {

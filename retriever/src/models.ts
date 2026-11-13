@@ -10,8 +10,10 @@ import {
   installCustomModel,
   MODEL_CATALOG,
   ModelCache,
+  type ModelFamily,
   type ModelSpec,
   ModelUnavailableError,
+  modelFamily,
   openLocalEmbedder,
   type Pooling,
   probeHardware,
@@ -27,6 +29,8 @@ export interface ModelRow {
   readonly id: string;
   /** Shipped with anvesa (in the catalog), as opposed to brought in by the user. */
   readonly builtin: boolean;
+  /** anvesa's own encoders, the open models anvesa can fetch, or one the user brought in. */
+  readonly family: ModelFamily;
   readonly tier: Tier | undefined;
   readonly dimensions: number;
   readonly maxTokens: number;
@@ -42,6 +46,7 @@ export interface ModelRow {
 const rowOf = async (cache: ModelCache, spec: ModelSpec): Promise<ModelRow> => ({
   id: spec.id,
   builtin: builtinModel(spec.id) !== undefined,
+  family: modelFamily(spec.id),
   tier: spec.tier,
   dimensions: spec.dimensions,
   maxTokens: spec.maxTokens,
