@@ -186,9 +186,9 @@ export const COMMAND_HELP: readonly CommandHelp[] = [
     section: 'Extend',
     keys: ['model'],
     name: 'model <subcommand>',
-    summary: 'local embedding models',
+    summary: 'local embedding models: list them, pick one, install',
     details:
-      '  model list|install|verify|doctor       local embedding models; install <new-name> --from <dir|file.onnx>\n                                         brings your own (--pooling, --max-tokens, --force)',
+      '  model list|use|install|verify|doctor   local embedding models: anvesa-code, open models such as\n                                         gte-modernbert-base, and your own. use [model] picks the one this\n                                         project uses (asks on a terminal; --download fetches it first).\n                                         install <new-name> --from <dir|file.onnx> brings your own\n                                         (--pooling, --max-tokens, --force)',
   },
   {
     section: 'Safety',

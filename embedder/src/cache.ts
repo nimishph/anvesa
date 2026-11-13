@@ -223,7 +223,7 @@ export class ModelCache {
         [TOKENIZER_FILE, spec.tokenizer] as [string, ModelFileSpec],
         ...pinnedFiles(spec).filter(([file]) => file !== TOKENIZER_FILE),
       ]) {
-        const url = `https://huggingface.co/${spec.repo}/resolve/main/${pinned.path}`;
+        const url = `https://huggingface.co/${spec.repo}/resolve/${spec.revision ?? 'main'}/${pinned.path}`;
         if (!options.allowNetwork) throw new NetworkForbiddenError(spec.id, url);
         options.deadline?.throwIfExpired(`download ${spec.id}`);
         const response = await fetcher(
