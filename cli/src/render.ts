@@ -380,6 +380,7 @@ export function renderStructural(
   }> & {
     coverage: { files: number; missing: readonly string[] };
     conjunction?: { semantic: string; wql: string } | undefined;
+    stale?: readonly { path: string; reason: 'removed' | 'changed' }[] | undefined;
   },
   options?: RenderOptions,
 ): string {
@@ -435,6 +436,10 @@ export function renderStructural(
     pageFooter(page, 'matches'),
     `searched ${page.coverage.files} files`,
     missing,
+    ...(page.stale ?? []).map(
+      (file) =>
+        `warning: ${file.path} ${file.reason === 'removed' ? 'was deleted' : 'changed'} since it was indexed; its results may be out of date (run: anvesa index)`,
+    ),
   );
 }
 
