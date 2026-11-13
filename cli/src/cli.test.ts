@@ -12,6 +12,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import {
+  CONFIG_SCHEMA_URL,
   type Embedder,
   ModelCache,
   nativeLanguageKeys,
@@ -373,6 +374,7 @@ describe('command line', () => {
       followSymlinks: false,
     });
     expect(JSON.parse(readFileSync(join(root, '.anvesa/config.json'), 'utf8'))).toEqual({
+      $schema: CONFIG_SCHEMA_URL,
       channels: {},
     });
     // A scaffolded workspace.json is what index actually reads without erroring.
@@ -392,6 +394,41 @@ describe('command line', () => {
       kept: [],
     });
     expect(readFileSync(join(root, '.anvesaignore'), 'utf8')).toContain('node_modules');
+  });
+
+  describe('init adds $schema to a config it keeps', () => {
+    const configPath = (root: string) => join(root, '.anvesa/config.json');
+    const withConfig = (text: string) => {
+      const root = makeProject();
+      mkdirSync(join(root, '.anvesa'), { recursive: true });
+      writeFileSync(configPath(root), text);
+      return root;
+    };
+
+    test('a config without one gets it first, every other key kept in order', async () => {
+      const root = withConfig('{\n    "model": "anvesa-code-150m",\n    "channels": {}\n}\n');
+      const ran = await cli(root, 'init', '--no-download', '--json');
+      expect(ran.code).toBe(0);
+      expect(json(ran)).toMatchObject({ updated: ['.anvesa/config.json'] });
+      expect(readFileSync(configPath(root), 'utf8')).toBe(
+        `{\n    "$schema": "${CONFIG_SCHEMA_URL}",\n    "model": "anvesa-code-150m",\n    "channels": {}\n}\n`,
+      );
+    });
+
+    test('a $schema the user set stays, whatever it says', async () => {
+      const text = '{\n  "$schema": "./my-schema.json",\n  "channels": {}\n}\n';
+      const root = withConfig(text);
+      const ran = await cli(root, 'init', '--no-download', '--json');
+      expect(json(ran)).toMatchObject({ updated: [] });
+      expect(readFileSync(configPath(root), 'utf8')).toBe(text);
+    });
+
+    test('a config that is not JSON is left alone, with a note', async () => {
+      const root = withConfig('{ not json');
+      const ran = await cli(root, 'init', '--no-download');
+      expect(ran.out).toContain('not a JSON object; left as it is');
+      expect(readFileSync(configPath(root), 'utf8')).toBe('{ not json');
+    });
   });
 
   test('init keeps an anvesa section in the agent instruction files, refreshed on every run', async () => {
@@ -2185,7 +2222,7 @@ describe('declarative patterns', () => {
     writeFileSync(join(patternsDir, 'broken.json'), '{ not json');
     writeFileSync(
       join(patternsDir, 'bad-kind.json'),
-      JSON.stringify({ name: 'bad-kind', target: { kind: 'no-such-kind' } }),
+      JSON.stringify({ name: 'bad-kind', description: 'x', target: { kind: 'no-such-kind' } }),
     );
     const listed = await cli(root, 'pattern', 'list');
     expect(listed.code).toBe(0);
@@ -2193,6 +2230,42 @@ describe('declarative patterns', () => {
     expect(listed.out).toContain('CORE_INVALID_ARGUMENT');
     expect(listed.out).toContain('invalid bad-kind.json');
     expect(listed.out).toContain('STRUCTURAL_INVALID_ARGUMENT');
+  });
+
+  test('a pattern needs a description and a name of its own; run takes only declared arguments', async () => {
+    const root = makeProject();
+    await cli(root, 'index');
+    const patternsDir = join(root, '.anvesa', 'patterns');
+    mkdirSync(patternsDir, { recursive: true });
+    const fn = (name: string, extra: object = {}) =>
+      JSON.stringify({
+        name,
+        target: { kind: 'function', name: '$name' },
+        params: [{ name: 'name' }],
+        ...extra,
+      });
+    writeFileSync(join(patternsDir, 'undescribed.json'), fn('undescribed'));
+    writeFileSync(join(patternsDir, 'twin-a.json'), fn('twin', { description: 'a' }));
+    writeFileSync(join(patternsDir, 'twin-b.json'), fn('twin', { description: 'b' }));
+    writeFileSync(join(patternsDir, 'fine.json'), fn('fine', { description: 'by name' }));
+
+    const listed = json(await cli(root, 'pattern', 'list', '--json'));
+    expect(listed.patterns.map((p: { name: string }) => p.name)).toEqual(['fine']);
+    const invalid = listed.invalid.map((i: { file: string; message: string }) => [
+      i.file,
+      i.message,
+    ]);
+    expect(invalid.map(([file]: string[]) => file)).toEqual([
+      'twin-a.json',
+      'twin-b.json',
+      'undescribed.json',
+    ]);
+    expect(invalid[0][1]).toContain('twin-b.json');
+    expect(invalid[2][1]).toContain('description');
+
+    const bogus = await cli(root, 'pattern', 'run', 'fine', 'name=parseConfig', 'bogus=1');
+    expect(bogus.code).not.toBe(0);
+    expect(bogus.err).toContain('bogus');
   });
 
   test('status on an unindexed directory does not create .anvesa/ directory', async () => {

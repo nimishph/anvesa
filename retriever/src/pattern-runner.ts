@@ -71,7 +71,7 @@ export class PatternRunner {
     const files = readdirSync(dir)
       .filter((f) => f.endsWith('.json'))
       .sort();
-    const patterns: PatternSpec[] = [];
+    const loaded: { readonly file: string; readonly spec: PatternSpec }[] = [];
     const invalid: InvalidPatternFile[] = [];
     for (const f of files) {
       try {
@@ -85,14 +85,39 @@ export class PatternRunner {
         if (!parsed || typeof parsed.name !== 'string' || !parsed.name || !parsed.target) {
           throw new InvalidArgumentError('pattern', 'an object with "name" and "target"', f);
         }
+        if (typeof parsed.description !== 'string' || !parsed.description.trim()) {
+          throw new InvalidArgumentError('pattern', 'a "description" saying what it finds', f);
+        }
         compilePattern(parsed);
-        patterns.push(parsed);
+        loaded.push({ file: f, spec: parsed });
       } catch (failure) {
         const typed = toCodeLensError(failure, `load pattern ${f}`);
         invalid.push({ file: f, code: typed.code, message: typed.message });
       }
     }
+    // Two files with one name: neither runs, since which one `run` picked would be an accident.
+    const byName = new Map<string, string[]>();
+    for (const { file, spec } of loaded)
+      byName.set(spec.name, [...(byName.get(spec.name) ?? []), file]);
+    const patterns: PatternSpec[] = [];
+    for (const { file, spec } of loaded) {
+      const sharing = byName.get(spec.name) ?? [];
+      if (sharing.length === 1) {
+        patterns.push(spec);
+        continue;
+      }
+      const typed = toCodeLensError(
+        new InvalidArgumentError(
+          'pattern',
+          `a name no other pattern uses ("${spec.name}" is also in ${sharing.filter((other) => other !== file).join(', ')})`,
+          file,
+        ),
+        `load pattern ${file}`,
+      );
+      invalid.push({ file, code: typed.code, message: typed.message });
+    }
     patterns.sort((a, b) => a.name.localeCompare(b.name));
+    invalid.sort((a, b) => a.file.localeCompare(b.file));
     return { patterns, invalid };
   }
 
