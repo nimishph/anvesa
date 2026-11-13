@@ -71,16 +71,22 @@ export function initGraphVisualizer(state, api) {
     if (symbolInput) symbolInput.value = symName;
 
     let data = null;
+    let live = false;
     try {
       const resp = await api.getNeighbors(symName);
+      live = Boolean(resp?.live);
       if (resp && resp.success && resp.neighbors) {
         data = resp.neighbors;
+      } else if (live) {
+        // A live project that has no such symbol says so; it never draws the sample graph.
+        showGraphMessage(resp?.error || `no symbol named ${symName} in this index`);
+        return;
       }
     } catch {
-      // Fallback to mock
+      // No server answered: the sample graph below.
     }
 
-    if (!data) {
+    if (!data && !live) {
       data =
         window.ANVESA_MOCK?.graphData?.[symName] ||
         window.ANVESA_MOCK?.graphData?.['Retriever.search'];
@@ -90,6 +96,8 @@ export function initGraphVisualizer(state, api) {
   }
 
   function buildGraphStructure(data, rootName) {
+    const note = document.getElementById('graphMessage');
+    if (note) note.hidden = true;
     nodes = [];
     links = [];
 
@@ -570,7 +578,24 @@ export function initGraphVisualizer(state, api) {
     }
   }
 
-  // Initial load
-  loadSymbolGraph(activeSymbol);
+  function showGraphMessage(message) {
+    nodes = [];
+    links = [];
+    activeNodeData = null;
+    const note = document.getElementById('graphMessage');
+    if (note) {
+      note.textContent = message;
+      note.hidden = false;
+    }
+  }
+
+  // Initial load: the sample symbol only when no index answers; a live project waits for a name.
+  api
+    .getStatus()
+    .then((resp) => {
+      if (resp?.success && resp.live) showGraphMessage('Enter a symbol to see its callers and callees.');
+      else loadSymbolGraph(activeSymbol);
+    })
+    .catch(() => loadSymbolGraph(activeSymbol));
   renderGraph();
 }

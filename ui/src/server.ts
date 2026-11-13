@@ -17,6 +17,8 @@ export interface ServerOptions {
   readonly queryParams?: Readonly<Record<string, string>>;
   readonly token?: string;
   readonly retriever?: LiveRetriever;
+  /** The models directory (`--models`); else the default one, as the CLI uses. */
+  readonly models?: string;
 }
 
 interface SearchPayload {
@@ -25,6 +27,23 @@ interface SearchPayload {
   readonly weights?: Record<string, number>;
   readonly scope?: string;
   readonly limit?: number;
+}
+
+/**
+ * The answer when a live retriever throws. A project with no index yet is not live, so the page may
+ * show its sample data and say so; any other failure is reported as it is, never hidden behind
+ * sample data (#47).
+ */
+function failure(
+  err: unknown,
+  what: string,
+  extra: Readonly<Record<string, unknown>> = {},
+): Record<string, unknown> {
+  const error = toCodeLensError(err, what);
+  if ((err as { code?: unknown } | null)?.code === 'RETRIEVER_NOT_INDEXED') {
+    return { success: true, live: false, demo: true, message: error.message, ...extra };
+  }
+  return { success: false, live: true, error: error.message, ...extra };
 }
 
 /** What the dashboard asks of a retriever. */
@@ -164,6 +183,8 @@ export async function startUiServer(options: ServerOptions = {}) {
   let retriever: LiveRetriever | null = options.retriever ?? null;
   let ownRetriever = false;
   let retrieverLoadError: string | null = null;
+  /** Why there is no encoder, when there is none: only structural (WQL) search runs live. */
+  let embedderNote: string | null = null;
   // Set once listening; no request arrives before then.
   let port = 0;
 
@@ -200,7 +221,13 @@ export async function startUiServer(options: ServerOptions = {}) {
           if (live) {
             try {
               const status = await live.status();
-              return sendJson(res, { success: true, live: true, status, root: projectRoot });
+              return sendJson(res, {
+                success: true,
+                live: true,
+                status,
+                root: projectRoot,
+                ...(embedderNote ? { embedder: { available: false, reason: embedderNote } } : {}),
+              });
             } catch (err) {
               const error = toCodeLensError(err, 'get status');
               return sendJson(res, {
@@ -236,14 +263,7 @@ export async function startUiServer(options: ServerOptions = {}) {
               );
               return sendJson(res, { success: true, live: true, result });
             } catch (err) {
-              const error = toCodeLensError(err, 'search');
-              return sendJson(res, {
-                success: true,
-                live: false,
-                fallback: true,
-                error: error.message,
-                query,
-              });
+              return sendJson(res, failure(err, 'search', { query }));
             }
           }
           return sendJson(res, { success: true, live: false, demo: true, query });
@@ -264,14 +284,7 @@ export async function startUiServer(options: ServerOptions = {}) {
               );
               return sendJson(res, { success: true, live: true, result });
             } catch (err) {
-              const error = toCodeLensError(err, 'query wql');
-              return sendJson(res, {
-                success: true,
-                live: false,
-                fallback: true,
-                error: error.message,
-                wql,
-              });
+              return sendJson(res, failure(err, 'query wql', { wql }));
             }
           }
           return sendJson(res, { success: true, live: false, demo: true, wql });
@@ -284,14 +297,7 @@ export async function startUiServer(options: ServerOptions = {}) {
               const callers = await live.callers(symbol);
               return sendJson(res, { success: true, live: true, callers });
             } catch (err) {
-              const error = toCodeLensError(err, 'get callers');
-              return sendJson(res, {
-                success: true,
-                live: false,
-                fallback: true,
-                error: error.message,
-                symbol,
-              });
+              return sendJson(res, failure(err, 'get callers', { symbol }));
             }
           }
           return sendJson(res, { success: true, live: false, demo: true, symbol });
@@ -304,14 +310,7 @@ export async function startUiServer(options: ServerOptions = {}) {
               const callees = await live.callees(symbol);
               return sendJson(res, { success: true, live: true, callees });
             } catch (err) {
-              const error = toCodeLensError(err, 'get callees');
-              return sendJson(res, {
-                success: true,
-                live: false,
-                fallback: true,
-                error: error.message,
-                symbol,
-              });
+              return sendJson(res, failure(err, 'get callees', { symbol }));
             }
           }
           return sendJson(res, { success: true, live: false, demo: true, symbol });
@@ -324,14 +323,7 @@ export async function startUiServer(options: ServerOptions = {}) {
               const neighbors = await live.neighbors(symbol);
               return sendJson(res, { success: true, live: true, neighbors });
             } catch (err) {
-              const error = toCodeLensError(err, 'get neighbors');
-              return sendJson(res, {
-                success: true,
-                live: false,
-                fallback: true,
-                error: error.message,
-                symbol,
-              });
+              return sendJson(res, failure(err, 'get neighbors', { symbol }));
             }
           }
           return sendJson(res, { success: true, live: false, demo: true, symbol });
@@ -344,14 +336,7 @@ export async function startUiServer(options: ServerOptions = {}) {
               const dependents = await live.dependents(path);
               return sendJson(res, { success: true, live: true, dependents });
             } catch (err) {
-              const error = toCodeLensError(err, 'get dependents');
-              return sendJson(res, {
-                success: true,
-                live: false,
-                fallback: true,
-                error: error.message,
-                path,
-              });
+              return sendJson(res, failure(err, 'get dependents', { path }));
             }
           }
           return sendJson(res, { success: true, live: false, demo: true, path });
@@ -367,13 +352,7 @@ export async function startUiServer(options: ServerOptions = {}) {
               );
               return sendJson(res, { success: true, live: true, repomap });
             } catch (err) {
-              const error = toCodeLensError(err, 'get repomap');
-              return sendJson(res, {
-                success: true,
-                live: false,
-                fallback: true,
-                error: error.message,
-              });
+              return sendJson(res, failure(err, 'get repomap'));
             }
           }
           return sendJson(res, { success: true, live: false, demo: true });
@@ -387,13 +366,7 @@ export async function startUiServer(options: ServerOptions = {}) {
               const routes = await live.routes(defined({ method, path: routePath }));
               return sendJson(res, { success: true, live: true, routes });
             } catch (err) {
-              const error = toCodeLensError(err, 'get routes');
-              return sendJson(res, {
-                success: true,
-                live: false,
-                fallback: true,
-                error: error.message,
-              });
+              return sendJson(res, failure(err, 'get routes'));
             }
           }
           return sendJson(res, { success: true, live: false, demo: true });
@@ -444,9 +417,21 @@ export async function startUiServer(options: ServerOptions = {}) {
   // Opened only once the port is held, so a failed start leaves nothing open.
   if (!retriever) {
     try {
-      const { loadProjectConfig, Retriever } = await import('@cntxt-labs/anvesa-retriever');
+      const { loadProjectConfig, ModelCache, openProjectEmbedder, Retriever } = await import(
+        '@cntxt-labs/anvesa-retriever'
+      );
       const config = await loadProjectConfig(projectRoot);
-      retriever = await Retriever.open({ root: projectRoot, config });
+      // The same encoder `anvesa search` uses, so plain-language search runs live here too.
+      const opened = await openProjectEmbedder(
+        config,
+        options.models === undefined ? new ModelCache() : new ModelCache(options.models),
+      );
+      if (!opened.embedder) embedderNote = opened.reason;
+      retriever = await Retriever.open({
+        root: projectRoot,
+        config,
+        ...(opened.embedder ? { embedder: opened.embedder } : {}),
+      });
       ownRetriever = true;
     } catch (err) {
       retrieverLoadError = toCodeLensError(err, 'open the index').message;

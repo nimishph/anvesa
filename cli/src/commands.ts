@@ -760,6 +760,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
     await startUiServer({
       ...(port !== undefined ? { port } : {}),
       root: root(ctx),
+      models: modelCache(ctx).root,
       open: !noOpen,
       queryParams,
     });

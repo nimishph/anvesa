@@ -228,6 +228,9 @@ export function initSearchStudio(state, api) {
       const items = resp?.result?.items || resp?.result?.hits;
       if (resp && resp.success && resp.result && Array.isArray(items)) {
         renderResults(items, elapsed, false);
+      } else if (resp?.live) {
+        // A live project that could not answer says why; sample results would pass for real ones.
+        renderError(resp.error || 'the search failed');
       } else {
         // Fallback or filter mock items
         const hits = window.ANVESA_MOCK?.searchResults || [];
@@ -241,12 +244,54 @@ export function initSearchStudio(state, api) {
         renderResults(filtered.length ? filtered : hits, elapsed, true, resp?.error);
       }
     } catch (err) {
+      if (await isLive()) {
+        renderError(String(err));
+        return;
+      }
       const hits = window.ANVESA_MOCK?.searchResults || [];
       renderResults(hits, 12.4, true, String(err));
     }
   }
 
-  function renderDefaultResults() {
+  /** Whether an index answers: then the page never shows sample data in its place. */
+  let livePromise = null;
+  function isLive() {
+    livePromise ??= api
+      .getStatus()
+      .then((resp) => Boolean(resp?.success && resp.live))
+      .catch(() => false);
+    return livePromise;
+  }
+
+  function renderError(message) {
+    if (resultsMetaText) {
+      resultsMetaText.innerHTML = `<span class="badge badge-emerald">Live Index</span> · search failed`;
+    }
+    if (resultsContainer) {
+      resultsContainer.innerHTML = `
+        <div class="state-container" role="alert">
+          <div class="state-title">The index could not answer this search</div>
+          <div class="state-desc">${escapeHtml(message)}</div>
+        </div>
+      `;
+    }
+  }
+
+  async function renderDefaultResults() {
+    if (await isLive()) {
+      if (resultsMetaText) {
+        resultsMetaText.innerHTML = '<span class="badge badge-emerald">Live Index</span>';
+      }
+      if (resultsContainer) {
+        resultsContainer.innerHTML = `
+          <div class="state-container">
+            <div class="state-title">Search this project</div>
+            <div class="state-desc">Ask in plain language, or write WQL such as //function[@name~="auth"].</div>
+          </div>
+        `;
+      }
+      return;
+    }
     const hits = window.ANVESA_MOCK?.searchResults || [];
     renderResults(hits, 8.2, true);
   }
