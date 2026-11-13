@@ -185,7 +185,7 @@ another page in the browser cannot rewrite the config.
 
 ```yojana:claim
 kind: text
-expression: /api/config in ui/src/server.ts
+expression: api/config in ui/src/server.ts
 ```
 
 ## Requirement: the anvesa skill can be installed into an agent's skill folder {#req-skill-install}
