@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import {
   AggregateFailureError,
@@ -289,8 +289,17 @@ export interface ScoredWqlHit extends WqlHit {
   readonly score?: number | undefined;
 }
 
+/** A file a result came from that is not as it was indexed: the result may no longer be true. */
+export interface StaleFile {
+  readonly path: string;
+  /** `removed`: gone from disk. `changed`: its size or modification time differ from the index's. */
+  readonly reason: 'removed' | 'changed';
+}
+
 export interface QueryPage extends Page<ScoredWqlHit> {
   readonly coverage: StructuralCoverage;
+  /** Files on this page that changed or went away since they were indexed (#49). */
+  readonly stale?: readonly StaleFile[];
   readonly conjunction?: { readonly semantic: string; readonly wql: string };
 }
 
@@ -660,8 +669,41 @@ export class Retriever {
     });
   }
 
-  /** Structural retrieval: a WQL query over the outlines of every indexed file. */
+  /**
+   * Structural retrieval: a WQL query over the outlines of every indexed file. The page says which
+   * of its files changed or went away since indexing, so a stale answer is never taken for a
+   * current one; only the files on the page are looked at.
+   */
   async query(wql: string, given: QueryOptions = {}): Promise<QueryPage> {
+    const page = await this.#queryIndex(wql, given);
+    const stale = await this.#staleFiles(
+      page.items.flatMap((item) => (item.path ? [item.path] : [])),
+    );
+    return stale.length > 0 ? { ...page, stale } : page;
+  }
+
+  async #staleFiles(paths: readonly string[]): Promise<StaleFile[]> {
+    const stale: StaleFile[] = [];
+    for (const path of new Set(paths)) {
+      const indexed = await this.store.fileState(path);
+      if (!indexed) continue;
+      const now = await stat(join(this.root, path)).catch((failure: unknown) => {
+        // Gone is an answer; any other failure to look is not, and is reported as itself.
+        if ((failure as { code?: unknown } | null)?.code === 'ENOENT') return undefined;
+        throw toCodeLensError(failure, `check ${path} against the index`);
+      });
+      if (!now) stale.push({ path, reason: 'removed' });
+      else if (
+        now.size !== indexed.size ||
+        Math.trunc(now.mtimeMs) !== Math.trunc(indexed.mtimeMs)
+      ) {
+        stale.push({ path, reason: 'changed' });
+      }
+    }
+    return stale;
+  }
+
+  async #queryIndex(wql: string, given: QueryOptions): Promise<QueryPage> {
     const options = this.#scoped(given);
     await this.#requireIndexed();
     const split = splitConjunction(wql, undefined, options.semantic);
@@ -1274,6 +1316,14 @@ export class Retriever {
     readonly module: string;
     readonly nextSteps: readonly string[];
   }> {
+    if (isBuiltinChannel(name)) {
+      // A project channel by this name would hide the built-in one, its cards and its ranking (#50).
+      throw new InvalidArgumentError(
+        'name',
+        `a name other than the built-in channels (${BUILTIN_CHANNELS.join(', ')})`,
+        name,
+      );
+    }
     const scaffolded: string[] = [];
     let module = options.module;
     let nextSteps: readonly string[] = [];
@@ -1297,6 +1347,21 @@ export class Retriever {
 
   /** Remove a channel: its cards, and its entry in the project config. */
   async removeChannel(name: string): Promise<{ readonly removedSources: number }> {
+    if (isBuiltinChannel(name)) {
+      // Removing one only dropped its cards until the next index put them back (#50).
+      throw new InvalidArgumentError(
+        'name',
+        `a channel this project added; ${name} is built in (to leave it out of search: --exclude ${name})`,
+        name,
+      );
+    }
+    if (!this.registry.has(name) && this.config.channels[name] === undefined) {
+      throw new InvalidArgumentError(
+        'name',
+        `one of this project's channels (${Object.keys(this.config.channels).join(', ') || 'none'})`,
+        name,
+      );
+    }
     let removedSources = 0;
     for (const path of await this.vectors.sourcePaths(name)) {
       if (await this.vectors.removeSource(name, path)) removedSources += 1;

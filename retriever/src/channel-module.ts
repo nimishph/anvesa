@@ -118,7 +118,21 @@ export async function loadChannelModule(
   if (candidate === undefined || candidate === null || typeof candidate !== 'object') {
     throw new ChannelModuleError(channel, module, 'it has no default export that is a transformer');
   }
-  const transformer = defineTransformer(candidate as Transformer);
+  const declaredTransformer = defineTransformer(candidate as Transformer);
+  // Cards are rebuilt when a transformer's version changes. A module edited without a version
+  // bump (a new claim(), a changed transform) would otherwise keep its old cards until someone
+  // remembered to bump it (#50), so the version anvesa records carries the module's own checksum.
+  const moduleHash = await moduleChecksum(projectRoot, module);
+  const transformer: Transformer = {
+    name: declaredTransformer.name,
+    version: `${declaredTransformer.version}+${moduleHash}`,
+    channel: declaredTransformer.channel,
+    categoryId: declaredTransformer.categoryId,
+    categoryLabel: declaredTransformer.categoryLabel,
+    trust: declaredTransformer.trust,
+    claim: (file) => declaredTransformer.claim(file),
+    transform: (file, context) => declaredTransformer.transform(file, context),
+  };
   if (transformer.channel !== channel) {
     throw new ChannelModuleError(
       channel,

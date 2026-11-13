@@ -598,6 +598,33 @@ describe('command line', () => {
     expect(existsSync(join(fresh, '.anvesa'))).toBe(false);
   });
 
+  test('query says which of its files changed or were deleted since indexing (#49)', async () => {
+    const root = makeProject();
+    await cli(root, 'index');
+    const fresh = json(await cli(root, 'query', '//function', '--json'));
+    expect(fresh.stale).toBeUndefined();
+
+    writeFileSync(join(root, 'src/config.ts'), `${project['src/config.ts']}// edited\n`);
+    rmSync(join(root, 'src/server.ts'));
+    const page = json(await cli(root, 'query', '//function', '--json'));
+    expect(page.stale).toEqual([
+      { path: 'src/config.ts', reason: 'changed' },
+      { path: 'src/server.ts', reason: 'removed' },
+    ]);
+    const shown = await cli(root, 'query', '//function');
+    expect(shown.out).toContain('warning: src/server.ts was deleted since it was indexed');
+    expect(shown.out).toContain('warning: src/config.ts changed since it was indexed');
+  });
+
+  test('a negative --limit is a limit error, not an unknown option (#49)', async () => {
+    const root = makeProject();
+    const ran = await cli(root, 'query', '//function', '--limit', '-1');
+    expect(ran.code).toBe(2);
+    expect(ran.err).toContain('Invalid --limit: expected a positive whole number, received -1');
+    const unknown = await cli(root, 'query', '//function', '--bogus');
+    expect(unknown.err).toContain("Unknown option '--bogus'");
+  });
+
   test('index records the model it embedded with; another model is named, not a silent zero', async () => {
     const root = makeProject();
     const first = await cli(root, 'index');
@@ -1038,6 +1065,39 @@ describe('command line', () => {
     expect(second.items.length).toBeGreaterThan(0);
     expect(second.items[0].name).not.toBe(first.items[0].name);
     expect((await cli(root, 'query', '//function', '--limit', '0')).code).toBe(2);
+  });
+
+  test('built-in channels cannot be shadowed or removed, and an unknown one is an error (#50)', async () => {
+    const root = makeProject();
+    await cli(root, 'index');
+    for (const name of ['docs', 'symbols']) {
+      const added = await cli(root, 'channel', 'add', name);
+      expect(added.code).toBe(2);
+      expect(added.err).toContain('built-in');
+      const removed = await cli(root, 'channel', 'remove', name);
+      expect(removed.code).toBe(2);
+      expect(removed.err).toContain(`--exclude ${name}`);
+    }
+    expect(existsSync(join(root, '.anvesa/channels/docs'))).toBe(false);
+    const ghost = await cli(root, 'channel', 'remove', 'ghost');
+    expect(ghost.code).toBe(2);
+    expect(ghost.err).toContain('ghost');
+  });
+
+  test('editing a channel module re-embeds its cards without a version bump (#50)', async () => {
+    const root = makeProject();
+    const module = join(root, 'notes-channel.ts');
+    copyFileSync(NOTES_CHANNEL, module);
+    expect((await cli(root, 'channel', 'make', 'notes', './notes-channel.ts')).code).toBe(0);
+    await cli(root, 'index');
+    const outcomes = (report: { reports: { outcome: string }[] }) =>
+      [...new Set(report.reports.map((r) => r.outcome))].sort();
+    const again = json(await cli(root, 'channel', 'index', 'notes', '--json'));
+    expect(again.reports.length).toBeGreaterThan(0);
+    expect(outcomes(again)).toEqual(['unchanged']);
+    writeFileSync(module, `${readFileSync(module, 'utf8')}\n// claim() edited\n`);
+    const edited = json(await cli(root, 'channel', 'index', 'notes', '--json'));
+    expect(outcomes(edited)).not.toContain('unchanged');
   });
 
   test('a channel goes from add to test to index to retrieve', async () => {
