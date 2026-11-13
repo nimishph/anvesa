@@ -12,6 +12,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import {
+  CONFIG_SCHEMA_URL,
   type Embedder,
   ModelCache,
   nativeLanguageKeys,
@@ -373,6 +374,7 @@ describe('command line', () => {
       followSymlinks: false,
     });
     expect(JSON.parse(readFileSync(join(root, '.anvesa/config.json'), 'utf8'))).toEqual({
+      $schema: CONFIG_SCHEMA_URL,
       channels: {},
     });
     // A scaffolded workspace.json is what index actually reads without erroring.
@@ -392,6 +394,41 @@ describe('command line', () => {
       kept: [],
     });
     expect(readFileSync(join(root, '.anvesaignore'), 'utf8')).toContain('node_modules');
+  });
+
+  describe('init adds $schema to a config it keeps', () => {
+    const configPath = (root: string) => join(root, '.anvesa/config.json');
+    const withConfig = (text: string) => {
+      const root = makeProject();
+      mkdirSync(join(root, '.anvesa'), { recursive: true });
+      writeFileSync(configPath(root), text);
+      return root;
+    };
+
+    test('a config without one gets it first, every other key kept in order', async () => {
+      const root = withConfig('{\n    "model": "anvesa-code-150m",\n    "channels": {}\n}\n');
+      const ran = await cli(root, 'init', '--no-download', '--json');
+      expect(ran.code).toBe(0);
+      expect(json(ran)).toMatchObject({ updated: ['.anvesa/config.json'] });
+      expect(readFileSync(configPath(root), 'utf8')).toBe(
+        `{\n    "$schema": "${CONFIG_SCHEMA_URL}",\n    "model": "anvesa-code-150m",\n    "channels": {}\n}\n`,
+      );
+    });
+
+    test('a $schema the user set stays, whatever it says', async () => {
+      const text = '{\n  "$schema": "./my-schema.json",\n  "channels": {}\n}\n';
+      const root = withConfig(text);
+      const ran = await cli(root, 'init', '--no-download', '--json');
+      expect(json(ran)).toMatchObject({ updated: [] });
+      expect(readFileSync(configPath(root), 'utf8')).toBe(text);
+    });
+
+    test('a config that is not JSON is left alone, with a note', async () => {
+      const root = withConfig('{ not json');
+      const ran = await cli(root, 'init', '--no-download');
+      expect(ran.out).toContain('not a JSON object; left as it is');
+      expect(readFileSync(configPath(root), 'utf8')).toBe('{ not json');
+    });
   });
 
   test('init keeps an anvesa section in the agent instruction files, refreshed on every run', async () => {

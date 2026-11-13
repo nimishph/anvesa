@@ -300,6 +300,27 @@ interface ScaffoldFile {
   readonly content: string;
 }
 
+/**
+ * Put `$schema` first in a config that has none, keeping every other key, value and their order,
+ * the file's indentation and line endings. A `$schema` already there, whatever its value, stays.
+ */
+async function addSchemaToConfig(path: string): Promise<'added' | 'present' | 'invalid'> {
+  const text = await readFile(path, 'utf8');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return 'invalid';
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return 'invalid';
+  if ('$schema' in parsed) return 'present';
+  const indent = /^\{\r?\n([ \t]+)/.exec(text)?.[1] ?? 2;
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  const next = JSON.stringify({ $schema: CONFIG_SCHEMA_URL, ...parsed }, null, indent);
+  await writeFile(path, `${next.replace(/\n/g, eol)}${eol}`, 'utf8');
+  return 'added';
+}
+
 /** `init`'s starter files: valid, minimal, and safe to run `anvesa index` against as-is. */
 function scaffoldFiles(): readonly ScaffoldFile[] {
   return [
@@ -329,7 +350,7 @@ function scaffoldFiles(): readonly ScaffoldFile[] {
     },
     {
       path: PROJECT_CONFIG_PATH,
-      content: `${JSON.stringify({ channels: {} }, null, 2)}\n`,
+      content: `${JSON.stringify({ $schema: CONFIG_SCHEMA_URL, channels: {} }, null, 2)}\n`,
     },
   ];
 }
@@ -536,6 +557,11 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       await writeFile(absolute, file.content, 'utf8');
       created.push(file.path);
     }
+    // A config kept from before still gets `$schema`, so editors validate it; nothing else changes.
+    const schemaNote = kept.includes(PROJECT_CONFIG_PATH)
+      ? await addSchemaToConfig(join(projectRoot, PROJECT_CONFIG_PATH))
+      : undefined;
+    const updated = schemaNote === 'added' ? [PROJECT_CONFIG_PATH] : [];
     // Always refreshed, --force or not: the user's text is outside the markers and stays.
     const agentFiles =
       ctx.parsed.values['no-agents-file'] === true
@@ -551,9 +577,9 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
     const agentLines = renderAgentFiles('anvesa', agentFiles);
     emit(
       ctx,
-      { created, kept, agentFiles, setup },
+      { created, kept, updated, agentFiles, setup },
       () =>
-        `${created.map((f) => `created ${f}`).join('\n')}${created.length ? '\n' : ''}${kept.map((f) => `kept ${f} (already exists; use --force to overwrite)`).join('\n')}${kept.length ? '\n' : ''}${agentLines.map((line) => `${line}\n`).join('')}${renderSetup(setup)}`,
+        `${created.map((f) => `created ${f}`).join('\n')}${created.length ? '\n' : ''}${kept.map((f) => `kept ${f} (already exists; use --force to overwrite)`).join('\n')}${kept.length ? '\n' : ''}${updated.map((f) => `updated ${f} (added $schema)\n`).join('')}${schemaNote === 'invalid' ? `note: ${PROJECT_CONFIG_PATH} is not a JSON object; left as it is\n` : ''}${agentLines.map((line) => `${line}\n`).join('')}${renderSetup(setup)}`,
     );
   },
 
