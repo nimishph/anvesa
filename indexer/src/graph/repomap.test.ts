@@ -147,4 +147,71 @@ describe('generateRepoMap', () => {
     expect(srcDir).toBeDefined();
     expect(srcDir?.isDir).toBe(true);
   });
+
+  describe('budget, scope and depth (#51)', () => {
+    /** `count` files under src/pkg/, each with a few symbols, the first one imported by all. */
+    async function storeOf(count: number): Promise<MemoryIndexStore> {
+      const store = new MemoryIndexStore();
+      for (let i = 0; i < count; i++) {
+        const path = `src/pkg/file${i}.ts`;
+        await store.replaceFile({
+          path,
+          language: 'typescript',
+          packageRoot: undefined,
+          repo: '',
+          size: 10,
+          mtimeMs: 1,
+          contentHash: `h${i}`,
+          facts: makeFacts(
+            path,
+            [0, 1, 2].map((s) =>
+              symFact({
+                id: `${path}#fn${s}`,
+                name: `functionNumber${s}`,
+                kind: 'function',
+                startLine: s * 10 + 1,
+                endLine: s * 10 + 5,
+              }),
+            ),
+          ),
+        });
+        if (i > 0) {
+          await store.replaceEdges(path, [{ from: path, to: 'src/pkg/file0.ts', kind: 'imports' }]);
+        }
+      }
+      return store;
+    }
+
+    test('a budget keeps the highest-ranked files and says how many it left out', async () => {
+      const store = await storeOf(30);
+      const whole = await generateRepoMap(store);
+      expect(whole.budget).toBeUndefined();
+      expect(whole.files).toHaveLength(30);
+
+      const cut = await generateRepoMap(store, { budget: 200 });
+      expect(cut.budget?.tokens).toBe(200);
+      expect(cut.budget?.used).toBeLessThanOrEqual(200);
+      expect(cut.budget?.shownFiles).toBe(cut.files.length);
+      expect((cut.budget?.shownFiles ?? 0) + (cut.budget?.omittedFiles ?? 0)).toBe(30);
+      expect(cut.budget?.omittedFiles).toBeGreaterThan(0);
+      // The most central file is kept first.
+      expect(cut.files[0]?.path).toBe('src/pkg/file0.ts');
+      expect(cut.totalFiles).toBe(30);
+    });
+
+    test('a directory with no indexed files is an error, not an empty map', async () => {
+      const store = await storeOf(2);
+      await expect(generateRepoMap(store, { scope: 'nonexistent/dir' })).rejects.toThrow(
+        /nonexistent\/dir/,
+      );
+    });
+
+    test('--depth counts from the directory asked for', async () => {
+      const store = await storeOf(2);
+      const scoped = await generateRepoMap(store, { scope: 'src/pkg', depth: 1 });
+      const pkg = scoped.tree.children?.[0]?.children?.[0];
+      expect(pkg?.path).toBe('src/pkg');
+      expect(pkg?.children?.map((child) => child.name).sort()).toEqual(['file0.ts', 'file1.ts']);
+    });
+  });
 });

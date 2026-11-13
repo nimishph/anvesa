@@ -711,7 +711,13 @@ export function renderRepoMap(result: RepoMapResult): string {
   }
 
   printNode(result.tree, '', true);
-  return lines(...outputLines);
+  const budget = result.budget;
+  return lines(
+    ...outputLines,
+    budget && budget.omittedFiles > 0
+      ? `\nbudget: ${budget.shownFiles} of ${budget.shownFiles + budget.omittedFiles} files fit in ~${budget.tokens} tokens; ${budget.omittedFiles} lower-ranked files left out (raise --budget, or narrow with a directory or --depth)`
+      : undefined,
+  );
 }
 
 export function renderRoutes(routes: readonly RouteInfo[]): string {
