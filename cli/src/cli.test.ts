@@ -665,6 +665,69 @@ describe('command line', () => {
     expect(unknown.err).toContain('my-encoder');
   });
 
+  test('model use picks the encoder a project uses: by name, from a list, never one it cannot load', async () => {
+    const root = makeProject();
+    const models = join(root, 'models');
+    const source = join(root, 'source');
+    mkdirSync(source, { recursive: true });
+    writeFileSync(join(source, 'model.onnx'), 'a stand-in graph');
+    copyFileSync(
+      resolve(import.meta.dir, '../../embedder/src/__fixtures__/bpe.tokenizer.json'),
+      join(source, 'tokenizer.json'),
+    );
+    await new ModelCache(models).installCustom({
+      id: 'my-encoder',
+      maxTokens: 128,
+      pooling: 'cls',
+      source,
+      files: { model: join(source, 'model.onnx'), tokenizer: join(source, 'tokenizer.json') },
+      validate: async () => 8,
+    });
+    const configModel = () =>
+      JSON.parse(readFileSync(join(root, '.anvesa', 'config.json'), 'utf8')).model;
+    const answering = (answers: string[]) => ({
+      prompt: async () => answers.shift(),
+    });
+
+    // The list groups models by where they come from.
+    const listed = json(await cli(root, 'model', 'list', '--models', models, '--json'));
+    const family = (id: string) => listed.find((row: { id: string }) => row.id === id)?.family;
+    expect([
+      family('anvesa-code-150m'),
+      family('gte-modernbert-base'),
+      family('my-encoder'),
+    ]).toEqual(['anvesa-code', 'open', 'custom']);
+
+    // No name and nobody to ask: an error that says how to name one.
+    const unnamed = await cli(root, 'model', 'use', '--models', models);
+    expect(unnamed.code).toBe(2);
+    expect(unnamed.err).toContain('anvesa model use <model>');
+
+    const named = await cli(root, 'model', 'use', 'my-encoder', '--models', models);
+    expect(named.code).toBe(0);
+    expect(named.out).toContain('now uses my-encoder');
+    expect(configModel()).toBe('my-encoder');
+
+    // From the list: a model not installed is offered for download, and a no changes nothing.
+    const declined = await cliWith(
+      answering(['gte-modernbert-base', 'n']),
+      root,
+      'model',
+      'use',
+      '--models',
+      models,
+    );
+    expect(declined.code).toBe(2);
+    expect(declined.err).toContain('--download');
+    expect(declined.err).toContain('gte-modernbert-base');
+    expect(configModel()).toBe('my-encoder');
+
+    // Enter keeps the model in use.
+    const kept = await cliWith(answering(['']), root, 'model', 'use', '--models', models);
+    expect(kept.code).toBe(0);
+    expect(kept.out).toContain('kept my-encoder');
+  });
+
   test('search, retrieve and query share one layout: a header on a terminal, rows, cards on --expand', async () => {
     const root = makeProject();
     expect((await cli(root, 'index')).code).toBe(0);
