@@ -27,8 +27,10 @@ import {
   getPlatformInfo,
   readTelemetryChoice,
   recordRanking,
+  reminderQuieted,
   setGlobalTelemetry,
   TELEMETRY_NOTICE,
+  TELEMETRY_REMINDER,
   TELEMETRY_USER_AGENT,
   telemetryQueueFile,
   telemetryStatus,
@@ -156,6 +158,40 @@ describe('when telemetry sends', () => {
     expect(second.enabled).toBe(true);
     expect(printed).toHaveLength(1);
     await second.close();
+  });
+
+  it('prints the one-line notice on every run while on, unless quieted', async () => {
+    const env = sending();
+    const printed: string[] = [];
+    const run = (config?: ProjectConfig) =>
+      createTelemetryCollector({
+        env,
+        ...(config ? { config } : {}),
+        notice: (text) => printed.push(text),
+        reminder: (text) => printed.push(text),
+      });
+    // The first run shows the full notice and sends nothing, so it owes no reminder.
+    await run().close();
+    expect(printed).toEqual([TELEMETRY_NOTICE]);
+    await run().close();
+    await run().close();
+    expect(printed).toEqual([TELEMETRY_NOTICE, TELEMETRY_REMINDER, TELEMETRY_REMINDER]);
+
+    printed.length = 0;
+    await run(projectConfig({ show_notice: false })).close();
+    expect(reminderQuieted(env, projectConfig({ show_notice: false }))).toBe(true);
+    writeTelemetryChoice(env, { ...readTelemetryChoice(env), show_notice: false });
+    const quiet = run();
+    expect(quiet.enabled).toBe(true);
+    await quiet.close();
+    expect(printed).toEqual([]);
+
+    // Off: nothing to remind anyone of.
+    writeTelemetryChoice(env, { enabled: false, notice_shown: true });
+    expect(run().enabled).toBe(false);
+    writeTelemetryChoice(env, { enabled: false, notice_shown: true, show_notice: true });
+    expect(run().enabled).toBe(false);
+    expect(printed).toEqual([]);
   });
 
   it('never shows the notice, nor sends, where nobody reads it', () => {
@@ -461,6 +497,25 @@ describe('anvesa telemetry', () => {
 
     const blocked = await cli({ ...env, DO_NOT_TRACK: '1' }, 'status');
     expect(blocked.stdout).toContain('telemetry: off (DO_NOT_TRACK is set)');
+  });
+
+  it('quiet and notice hide and show the per-run line, and leave the rest of the choice', async () => {
+    const env = sending();
+    await cli(env, 'off');
+    const quiet = await cli(env, 'quiet');
+    expect(quiet.code).toBe(0);
+    expect(quiet.stdout).toContain('notice:    hidden');
+    expect(readTelemetryChoice(env)).toEqual({
+      enabled: false,
+      notice_shown: true,
+      show_notice: false,
+    });
+    // on keeps quiet as it was.
+    await cli(env, 'on');
+    expect(readTelemetryChoice(env)).toMatchObject({ enabled: true, show_notice: false });
+    const notice = await cli(env, 'notice', '--json');
+    expect(JSON.parse(notice.stdout)).toMatchObject({ showNotice: true });
+    expect(readTelemetryChoice(env).show_notice).toBe(true);
   });
 
   it('refuses an unknown subcommand', async () => {

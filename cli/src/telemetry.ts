@@ -77,6 +77,14 @@ queries, code, paths, file or symbol names, or your IP. Nothing was sent this ru
   details:      anvesa telemetry status
 `;
 
+/**
+ * The line `index`, `search` and `query` print on stderr each run while telemetry is on, so it is
+ * never something the person was told once and forgot. `anvesa telemetry quiet` (or
+ * `show_notice: false`) stops it; telemetry itself stays on.
+ */
+export const TELEMETRY_REMINDER =
+  'anvesa: anonymous usage telemetry is on (no code, queries or paths). Off: anvesa telemetry off. Hide this line: anvesa telemetry quiet\n';
+
 type Env = Readonly<Record<string, string | undefined>>;
 
 /** What the person chose, kept between runs. Nothing else is. */
@@ -85,6 +93,8 @@ export interface TelemetryChoice {
   readonly enabled?: boolean;
   /** Whether `TELEMETRY_NOTICE` has been shown, so the default may send. */
   readonly notice_shown?: boolean;
+  /** `false`: no `TELEMETRY_REMINDER` line on each run (`anvesa telemetry quiet`). */
+  readonly show_notice?: boolean;
 }
 
 /**
@@ -141,11 +151,22 @@ export function readTelemetryChoice(env: Env): TelemetryChoice {
   const preferences = read && 'config' in read ? read.config.preferences : undefined;
   const telemetry = isObject(preferences) ? preferences.telemetry : undefined;
   if (!isObject(telemetry)) return {};
-  const { enabled, notice_shown } = telemetry;
+  const { enabled, notice_shown, show_notice } = telemetry;
   return {
     ...(typeof enabled === 'boolean' ? { enabled } : {}),
     ...(notice_shown === true ? { notice_shown } : {}),
+    ...(typeof show_notice === 'boolean' ? { show_notice } : {}),
   };
+}
+
+/**
+ * Whether the per-run line is turned off: `show_notice: false` in the user's preferences or in the
+ * project's `telemetry` block. Either may quiet it; neither can turn telemetry on.
+ */
+export function reminderQuieted(env: Env, config?: ProjectConfig): boolean {
+  const project = config?.telemetry;
+  if (typeof project === 'object' && project.show_notice === false) return true;
+  return readTelemetryChoice(env).show_notice === false;
 }
 
 /**
@@ -177,6 +198,11 @@ export interface TelemetryClientOptions {
   readonly env?: Env;
   /** Prints the notice. Absent where nobody would read it (the MCP server): then nothing is sent. */
   readonly notice?: (text: string) => void;
+  /**
+   * Prints `TELEMETRY_REMINDER` when telemetry is on and not quieted. Given only by `index`,
+   * `search` and `query`, in a terminal, without `--json`.
+   */
+  readonly reminder?: (text: string) => void;
   readonly onPayload?: (payload: TelemetryPayload) => Promise<void> | void;
 }
 
@@ -441,6 +467,9 @@ export function createTelemetryCollector(options: TelemetryClientOptions = {}): 
     }
   }
   if (!status.active) return new NoopTelemetryCollector();
+  if (options.reminder && !reminderQuieted(options.env ?? process.env, options.config)) {
+    options.reminder(TELEMETRY_REMINDER);
+  }
   return new ActiveTelemetryCollector({
     ...(status.endpoint ? { endpoint: status.endpoint } : {}),
     ...(status.logFile ? { logFile: status.logFile } : {}),

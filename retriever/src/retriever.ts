@@ -305,7 +305,8 @@ export interface QueryPage extends Page<ScoredWqlHit> {
 
 export type { ChannelInfo };
 
-const BUILTIN_CHANNELS = ['symbols', 'docs'] as const;
+/** The channels every project has. */
+export const BUILTIN_CHANNELS = ['symbols', 'docs'] as const;
 
 /** Whether a channel ships with anvesa, rather than being one a project defined. */
 export function isBuiltinChannel(name: string): boolean {

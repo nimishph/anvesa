@@ -131,6 +131,14 @@ when there are more and how to ask for them (`--cursor`). Nothing is cut silentl
 Without an installed model, structural queries and the call graph still work, and dense search says
 what is missing.
 
+`anvesa ui` opens a dashboard on `127.0.0.1` (search, graph, repomap, health). Its Settings view
+edits `.anvesa/config.json`: the model (from the same list as `anvesa model use`), channels and their
+weights, the fusion constant, extra ignore globs and the project's telemetry settings. It changes only
+those keys and leaves the rest of the file as written. Each save is checked as `anvesa` would load
+the file, is refused if the file changed since the view read it, and says which changes need
+`anvesa index` again. A save needs the session token in a request header, which a page on another
+site cannot send.
+
 ### Teaching it a language
 
 A language becomes searchable by symbol once it has a *mapping*: which syntax nodes are declarations,
@@ -346,6 +354,13 @@ the `preferences.telemetry` block of your user config, `~/.anvesa/config.json` (
 set), with whether the notice was shown; never an id. A project's `.anvesa/config.json` ignores
 `preferences`, so a repository cannot turn telemetry on.
 
+**A line on every run.** While telemetry is on, `index`, `search` and `query` print one line on
+stderr saying so, every run, so it is never something you were told once and forgot. It is not
+printed with `--json`, by the MCP server or in CI. `anvesa telemetry quiet` hides it (kept as
+`show_notice: false` in your user config) and `anvesa telemetry notice` shows it again. A project
+can hide it for everyone with `"telemetry": { "show_notice": false }` in `.anvesa/config.json`.
+Hiding the line leaves telemetry as it is.
+
 **What is sent.** Each event records:
 - which command or MCP tool ran (custom channels as `retrieve_custom`, never by name)
 - its duration and result count as ranges (`10-50` ms, `6-20` results)
@@ -397,8 +412,20 @@ Tools: `search`, one `retrieve_<channel>` per channel, `query`, `callers`, `call
 
 Every install (the npm package and each platform archive) ships `skills/anvesa/SKILL.md`: a
 skill file that teaches an agent when to reach for anvesa over grep and how to use its commands
-(or MCP tools). Point an agent's skill loader at that path, or copy it into wherever your agent
-harness reads skills from.
+(or MCP tools). Put it where your agent reads skills:
+
+```bash
+anvesa skill install                     # Claude Code, this project: .claude/skills/anvesa/
+anvesa skill install --agent opencode    # .opencode/skills/anvesa/ (--user: ~/.config/opencode/skills/)
+anvesa skill install --agent codex       # .agents/skills/anvesa/ (--user: ~/.agents/skills/)
+anvesa skill install --user              # ~/.claude/skills/anvesa/, for every project
+anvesa skill status
+```
+
+`anvesa init` offers the same (`--no-skill` skips it). `index` and `search` bring an installed copy
+up to the version of the anvesa running, silently, and never install one that is not there. There
+is no npm postinstall step: it would be skipped under `--ignore-scripts`, runs with no project to
+put the skill in, and would write into your home folder without asking.
 
 ### Claude Code plugin
 

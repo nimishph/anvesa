@@ -5,7 +5,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 import { extname, resolve } from 'node:path';
 import { InvalidArgumentError, toCodeLensError } from '@cntxt-labs/anvesa-core';
-import type { Retriever } from '@cntxt-labs/anvesa-retriever';
+import type { ConfigEdits, Retriever } from '@cntxt-labs/anvesa-retriever';
 import { ASSETS } from './assets.ts';
 
 const DEFAULT_PORT = 3847;
@@ -60,6 +60,66 @@ export type LiveRetriever = Pick<
   | 'repoMap'
   | 'routes'
 >;
+
+interface ConfigPayload {
+  readonly revision?: string;
+  readonly edits?: ConfigEdits;
+}
+
+/**
+ * The Settings view's data: the config file as written, the revision a change must name, and what
+ * it can choose from (the models of `anvesa model use`, the project's channels).
+ */
+async function settingsOf(projectRoot: string, models: string | undefined) {
+  const { BUILTIN_CHANNELS, listModels, ModelCache, readConfigFile } = await import(
+    '@cntxt-labs/anvesa-retriever'
+  );
+  const file = readConfigFile(projectRoot);
+  const cache = models === undefined ? new ModelCache() : new ModelCache(models);
+  const names = [...new Set([...BUILTIN_CHANNELS, ...Object.keys(file.config.channels)])];
+  return {
+    path: file.path,
+    exists: file.exists,
+    revision: file.revision,
+    raw: file.raw,
+    models: (await listModels(cache)).map((row) => ({
+      id: row.id,
+      family: row.family,
+      installed: row.installed,
+      sizeMb: row.sizeMb,
+      license: row.license,
+      summary: row.summary,
+    })),
+    channels: names.map((name) => {
+      const channel = file.config.channels[name];
+      return {
+        name,
+        builtin: (BUILTIN_CHANNELS as readonly string[]).includes(name),
+        enabled: channel?.enabled ?? true,
+        weight: channel?.weight ?? 1,
+      };
+    }),
+  };
+}
+
+/**
+ * A change to the config must come from the dashboard itself: the token in a header (a page on
+ * another site cannot set one without a preflight this server never grants), a JSON body, and no
+ * Origin but this server's.
+ */
+function sameOriginWrite(req: IncomingMessage, port: number): string | undefined {
+  if (typeof req.headers['x-anvesa-token'] !== 'string') {
+    return 'the session token must be sent in the X-Anvesa-Token header';
+  }
+  if (!(req.headers['content-type'] ?? '').startsWith('application/json')) {
+    return 'the body must be application/json';
+  }
+  const origin = req.headers.origin;
+  if (origin && origin !== `http://127.0.0.1:${port}` && origin !== `http://localhost:${port}`) {
+    return `requests from ${origin} may not change settings`;
+  }
+  return undefined;
+}
 
 /** The port asked for: the option, then `ANVESA_PORT`. Undefined when neither names one. */
 function requestedPort(options: ServerOptions): number | undefined {
@@ -245,6 +305,43 @@ export async function startUiServer(options: ServerOptions = {}) {
             message:
               retrieverLoadError ?? 'Project not yet indexed. Running in demo / inspection mode.',
           });
+        }
+
+        if (pathname === '/api/config' && req.method === 'GET') {
+          try {
+            return sendJson(res, {
+              success: true,
+              ...(await settingsOf(projectRoot, options.models)),
+            });
+          } catch (err) {
+            return sendJson(res, failure(err, 'read the settings'));
+          }
+        }
+
+        if (pathname === '/api/config' && req.method === 'PUT') {
+          const refused = sameOriginWrite(req, port);
+          if (refused) return sendJson(res, { success: false, error: refused }, 403);
+          const body = await readBody<ConfigPayload>(req);
+          if (typeof body.revision !== 'string' || !body.edits) {
+            return sendJson(
+              res,
+              { success: false, error: 'send { revision, edits } as read from GET /api/config' },
+              400,
+            );
+          }
+          try {
+            const { editConfigFile } = await import('@cntxt-labs/anvesa-retriever');
+            const result = editConfigFile(projectRoot, body.revision, body.edits);
+            return sendJson(res, {
+              success: true,
+              changed: result.changed,
+              reindex: result.reindex,
+              ...(await settingsOf(projectRoot, options.models)),
+            });
+          } catch (err) {
+            const error = toCodeLensError(err, 'save the settings');
+            return sendJson(res, { success: false, error: error.message, code: error.code }, 400);
+          }
         }
 
         if (pathname === '/api/search' && req.method === 'POST') {

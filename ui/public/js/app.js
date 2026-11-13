@@ -4,6 +4,7 @@
 
 import { initGraphVisualizer } from './graph.js';
 import { initSearchStudio } from './search.js';
+import { initSettings } from './settings.js';
 import { initStatusAndWql } from './status.js';
 
 class ApiClient {
@@ -69,6 +70,23 @@ class ApiClient {
     return res.json();
   }
 
+  async getConfig() {
+    const res = await fetch(this._withToken(`${this.baseUrl}/api/config`), {
+      headers: this._headers(),
+    });
+    return res.json();
+  }
+
+  /** The token goes in the header only: the server refuses a settings change without it. */
+  async putConfig(payload) {
+    const res = await fetch(`${this.baseUrl}/api/config`, {
+      method: 'PUT',
+      headers: this._headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload),
+    });
+    return res.json();
+  }
+
   async getRoutes(method, path) {
     let url = `${this.baseUrl}/api/routes`;
     const params = [];
@@ -106,6 +124,8 @@ document.addEventListener('DOMContentLoaded', () => {
     tab.addEventListener('click', () => {
       const view = tab.getAttribute('data-view');
       if (view) switchView(view);
+      // Read afresh each time, so the view shows the file as it is now.
+      if (view === 'settings') void settings.load();
     });
   });
 
@@ -262,6 +282,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initSearchStudio(state, api);
   initGraphVisualizer(state, api);
   initStatusAndWql(state, api);
+  const settings = initSettings(api);
 
   // Parse and apply URL query parameters (Agent UI Showcase)
   function applyUrlParameters() {
@@ -278,8 +299,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const repomap = params.get('repomap');
     const routes = params.get('routes');
 
-    if (view && ['search', 'graph', 'wql', 'status'].includes(view.toLowerCase())) {
+    if (view && ['search', 'graph', 'wql', 'status', 'settings'].includes(view.toLowerCase())) {
       switchView(view.toLowerCase());
+      if (view.toLowerCase() === 'settings') void settings.load();
     } else if (
       symbol ||
       repomap === 'true' ||
