@@ -1878,6 +1878,10 @@ describe('sharded indexing', () => {
 
     const disabled = await cli(root, 'fragments', 'disable');
     expect(disabled.code).toBe(0);
+    // The shard databases go; the manifest, the project's own, stays for a later enable (#51).
+    expect(existsSync(join(root, '.anvesa', 'shards'))).toBe(false);
+    expect(existsSync(join(root, '.anvesa', 'fragments.json'))).toBe(true);
+    expect(disabled.out).toContain('removed the shard databases');
     expect((await cli(root, 'fragments', 'status')).out).toContain('sharded indexing is off');
     // Turned off on purpose, the manifest that stays behind is not warned about.
     expect((await cli(root, 'index', '--force')).out).not.toContain('is not used');

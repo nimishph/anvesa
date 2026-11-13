@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import {
   AggregateFailureError,
@@ -347,6 +347,8 @@ export class Retriever {
   readonly #graph: GraphQueries;
   readonly #only: readonly string[] | undefined;
   readonly #shards: ShardSet | undefined;
+  /** Where the shard databases live, whether or not sharding is on now. */
+  readonly #shardDirectory: string;
   readonly #backups: readonly StoreBackup[];
   readonly #gate: RedTeamGate;
   #indexedModels:
@@ -364,6 +366,7 @@ export class Retriever {
     store: IndexStore;
     vectors: VectorStore;
     shards: ShardSet | undefined;
+    shardDirectory: string;
     backups: readonly StoreBackup[];
     gate: RedTeamGate;
     registry: ChannelRegistry;
@@ -389,6 +392,7 @@ export class Retriever {
     this.#ownsRuntime = parts.ownsRuntime;
     this.#only = parts.only;
     this.#shards = parts.shards;
+    this.#shardDirectory = parts.shardDirectory;
     this.#backups = parts.backups;
     this.#gate = parts.gate;
     this.#extractor = new FactExtractor(parts.engine);
@@ -414,6 +418,7 @@ export class Retriever {
     const gate = await gateForProject(options.root);
     const workspace = await Workspace.open({ root: options.root });
     const databasePath = options.databasePath ?? join(options.root, '.anvesa', 'index.db');
+    const shardDirectory = join(dirname(databasePath), 'shards');
     // One database, or one per fragment when the project asks for that (and has said what they are).
     let shards: ShardSet | undefined;
     let store: IndexStore;
@@ -430,7 +435,7 @@ export class Retriever {
           { hint: 'Run `anvesa fragments enable`, which proposes one and turns this on.' },
         );
       }
-      shards = await ShardSet.open({ directory: join(dirname(databasePath), 'shards'), manifest });
+      shards = await ShardSet.open({ directory: shardDirectory, manifest });
       store = shards.index;
       vectors = shards.vectors;
       backups = shards.backups;
@@ -453,6 +458,7 @@ export class Retriever {
       store,
       vectors,
       shards,
+      shardDirectory,
       backups,
       gate,
       registry,
@@ -1552,7 +1558,12 @@ export class Retriever {
   }
 
   /** Turn sharded indexing on or off in the project config. Takes effect the next time it is opened. */
-  async setFragments(on: boolean): Promise<void> {
+  /**
+   * Turn sharded indexing on or off. Turning it off removes the shard databases (derived data the
+   * single index replaces) and keeps the manifest, which is the project's own and what `enable`
+   * uses again (#51). Returns the shard directory when it was removed.
+   */
+  async setFragments(on: boolean): Promise<{ readonly removedShards?: string }> {
     // "off" is written out, not left unset: it records the choice, so the manifest kept beside it
     // is not taken for one that was forgotten.
     await this.#writeConfig({
@@ -1560,6 +1571,9 @@ export class Retriever {
       fragments: on,
       indexing: { ...this.config.indexing, fragments: on ? 'on' : 'off' },
     });
+    if (on || this.#shards !== undefined || !existsSync(this.#shardDirectory)) return {};
+    await rm(this.#shardDirectory, { recursive: true, force: true });
+    return { removedShards: this.#shardDirectory };
   }
 
   // --- internals --------------------------------------------------------------------------------

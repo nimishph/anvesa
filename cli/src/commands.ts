@@ -1448,8 +1448,13 @@ export async function fragmentsCommand(ctx: Context): Promise<void> {
       });
     case 'disable':
       return withProject(ctx, { embed: false, monolith: true }, async ({ retriever }) => {
-        await retriever.setFragments(false);
-        emit(ctx, { enabled: false }, () => 'sharded indexing is off. Run: anvesa index --force\n');
+        const off = await retriever.setFragments(false);
+        emit(
+          ctx,
+          { enabled: false, ...off },
+          () =>
+            `sharded indexing is off${off.removedShards ? `; removed the shard databases in ${off.removedShards}` : ''}. .anvesa/fragments.json is kept for a later enable.\nThe single index was not kept up to date while sharded. Run: anvesa index --force\n`,
+        );
       });
     case 'settle':
       return withProject(ctx, { embed: false }, async ({ retriever }) => {
