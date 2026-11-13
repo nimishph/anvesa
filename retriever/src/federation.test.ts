@@ -370,6 +370,38 @@ describe('federation: failures, paging and matching', () => {
     ]);
   });
 
+  test('each result keeps the similarity its repository gave it, not the rank-fusion score (#51)', async () => {
+    const child = await indexedRepo(services);
+    const host = await hostWith([{ name: 'payments', path: child }], services);
+    const fed = new FederatedRetriever(host, 'host');
+    open.push(fed);
+
+    const page = await fed.search('payment requests', { limit: 4 });
+    const alone = await host.search('payment requests', { limit: 10 });
+    const own = new Map(alone.items.map((item) => [item.key, item.bestScore]));
+    for (const item of page.items.filter((hit) => hit.repo === 'host')) {
+      expect(item.bestScore).toBe(own.get(item.key.slice('host:'.length)));
+    }
+    // A similarity, not a fused position near 1/(k+1).
+    expect(Math.max(...page.items.map((item) => item.bestScore ?? 0))).toBeGreaterThan(0.1);
+  });
+
+  test('--repo naming no repository is an error; one that is not ready is reported (#51)', async () => {
+    const child = await indexedRepo(services);
+    const host = await hostWith([
+      { name: 'payments', path: child },
+      { name: 'ledger', path: join(child, 'does-not-exist') },
+    ]);
+    const fed = new FederatedRetriever(host, 'host');
+    open.push(fed);
+
+    await expect(fed.search('payment', { repos: ['ghost'] })).rejects.toThrow(/ghost/);
+    await expect(fed.dependents('src/host.ts', { repos: ['ghost'] })).rejects.toThrow(/ghost/);
+
+    const page = await fed.search('payment', { repos: ['ledger'] });
+    expect(page.degraded.map((d) => [d.lane, d.repo])).toEqual([['open', 'ledger']]);
+  });
+
   test('a repository that cannot be opened is reported in degraded', async () => {
     const child = await indexedRepo(services);
     writeFileSync(join(child, '.anvesa', 'config.json'), '{ not json');

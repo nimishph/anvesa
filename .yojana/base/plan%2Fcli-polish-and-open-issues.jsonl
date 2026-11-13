@@ -1,12 +1,12 @@
 {"planId":"plan/cli-polish-and-open-issues","status":"draft"}
-{"id":"req-channel-gaps","revision":"r_5eb08dd9944c5747"}
-{"id":"req-command-audit","revision":"r_78a578f1aa020c8e"}
+{"id":"req-channel-gaps","revision":"r_34416cc0fc341e97"}
+{"id":"req-command-audit","revision":"r_9551432eaba474c6"}
 {"id":"req-init-schema","revision":"r_75d4516619405c7c"}
 {"id":"req-laravel-prefixes","revision":"r_1b3662f9b9a13c50"}
 {"id":"req-model-catalog","revision":"r_ea84533990940092"}
 {"id":"req-model-recorded","revision":"r_169caca4a7b11533"}
 {"id":"req-model-use","revision":"r_0e86d266298b80b5"}
-{"id":"req-observed-rest","revision":"r_8d853ebb222f7feb"}
+{"id":"req-observed-rest","revision":"r_58e3ab9d81d7a781"}
 {"id":"req-pattern-escape","revision":"r_d93d5b18f3f007e9"}
 {"id":"req-skill-install","revision":"r_ba8f10567706babe"}
 {"id":"req-telemetry-notice","revision":"r_8881e9494fb75329"}
@@ -14,4 +14,4 @@
 {"id":"req-ui-embedder","revision":"r_1cb657e98e385597"}
 {"id":"req-ui-highlight","revision":"r_51c159f6046a3737"}
 {"id":"req-ui-settings","revision":"r_842bcc8d63451642"}
-{"id":"req-wql-docs","revision":"r_ddbf3435b2a8fbc8"}
+{"id":"req-wql-docs","revision":"r_da1d3ff494168ca1"}

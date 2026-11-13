@@ -95,7 +95,7 @@ describe('errors', () => {
     ['//class[name="x"]', '"@"'],
     ['//class[@name=="x"]', 'value'],
     ['//class//', 'tag name'],
-    ['//class method', '"//", ">"'],
+    ['//class method', '"//", "/", ">"'],
     ['//1abc', 'tag name'],
     ['//class[contains(@name "x")]', '","'],
   ])('%s -> mentions %s', (query, expected) => {
@@ -135,6 +135,20 @@ describe('matching', () => {
     expect(names('//class>method')).toEqual(['Outer.run', 'Outer.Inner.run']);
     expect(names('//program>method')).toEqual([]);
     expect(names('//program>function')).toEqual(['run']);
+  });
+
+  test('"/" is the child axis too, as in XPath and the primer (#49)', () => {
+    expect(names('//class/method')).toEqual(names('//class>method'));
+    expect(names('//program/function')).toEqual(['run']);
+    expect(parseWql('//class/method').steps.map((step) => step.relation)).toEqual([
+      'descendant',
+      'child',
+    ]);
+  });
+
+  test('"=~" is the regular-expression operator, as "~=" is (#49)', () => {
+    expect(names('//method[@name=~"^r"]')).toEqual(names('//method[@name~="^r"]'));
+    expect(parseWql('//f[@name=~"a"]').steps[0]?.predicates[0]?.op).toBe('regex');
   });
 
   test('a node reachable through several matches is returned once', () => {

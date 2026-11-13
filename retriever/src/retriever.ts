@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import {
   AggregateFailureError,
@@ -289,8 +289,17 @@ export interface ScoredWqlHit extends WqlHit {
   readonly score?: number | undefined;
 }
 
+/** A file a result came from that is not as it was indexed: the result may no longer be true. */
+export interface StaleFile {
+  readonly path: string;
+  /** `removed`: gone from disk. `changed`: its size or modification time differ from the index's. */
+  readonly reason: 'removed' | 'changed';
+}
+
 export interface QueryPage extends Page<ScoredWqlHit> {
   readonly coverage: StructuralCoverage;
+  /** Files on this page that changed or went away since they were indexed (#49). */
+  readonly stale?: readonly StaleFile[];
   readonly conjunction?: { readonly semantic: string; readonly wql: string };
 }
 
@@ -338,6 +347,8 @@ export class Retriever {
   readonly #graph: GraphQueries;
   readonly #only: readonly string[] | undefined;
   readonly #shards: ShardSet | undefined;
+  /** Where the shard databases live, whether or not sharding is on now. */
+  readonly #shardDirectory: string;
   readonly #backups: readonly StoreBackup[];
   readonly #gate: RedTeamGate;
   #indexedModels:
@@ -355,6 +366,7 @@ export class Retriever {
     store: IndexStore;
     vectors: VectorStore;
     shards: ShardSet | undefined;
+    shardDirectory: string;
     backups: readonly StoreBackup[];
     gate: RedTeamGate;
     registry: ChannelRegistry;
@@ -380,6 +392,7 @@ export class Retriever {
     this.#ownsRuntime = parts.ownsRuntime;
     this.#only = parts.only;
     this.#shards = parts.shards;
+    this.#shardDirectory = parts.shardDirectory;
     this.#backups = parts.backups;
     this.#gate = parts.gate;
     this.#extractor = new FactExtractor(parts.engine);
@@ -405,6 +418,7 @@ export class Retriever {
     const gate = await gateForProject(options.root);
     const workspace = await Workspace.open({ root: options.root });
     const databasePath = options.databasePath ?? join(options.root, '.anvesa', 'index.db');
+    const shardDirectory = join(dirname(databasePath), 'shards');
     // One database, or one per fragment when the project asks for that (and has said what they are).
     let shards: ShardSet | undefined;
     let store: IndexStore;
@@ -421,7 +435,7 @@ export class Retriever {
           { hint: 'Run `anvesa fragments enable`, which proposes one and turns this on.' },
         );
       }
-      shards = await ShardSet.open({ directory: join(dirname(databasePath), 'shards'), manifest });
+      shards = await ShardSet.open({ directory: shardDirectory, manifest });
       store = shards.index;
       vectors = shards.vectors;
       backups = shards.backups;
@@ -444,6 +458,7 @@ export class Retriever {
       store,
       vectors,
       shards,
+      shardDirectory,
       backups,
       gate,
       registry,
@@ -660,8 +675,41 @@ export class Retriever {
     });
   }
 
-  /** Structural retrieval: a WQL query over the outlines of every indexed file. */
+  /**
+   * Structural retrieval: a WQL query over the outlines of every indexed file. The page says which
+   * of its files changed or went away since indexing, so a stale answer is never taken for a
+   * current one; only the files on the page are looked at.
+   */
   async query(wql: string, given: QueryOptions = {}): Promise<QueryPage> {
+    const page = await this.#queryIndex(wql, given);
+    const stale = await this.#staleFiles(
+      page.items.flatMap((item) => (item.path ? [item.path] : [])),
+    );
+    return stale.length > 0 ? { ...page, stale } : page;
+  }
+
+  async #staleFiles(paths: readonly string[]): Promise<StaleFile[]> {
+    const stale: StaleFile[] = [];
+    for (const path of new Set(paths)) {
+      const indexed = await this.store.fileState(path);
+      if (!indexed) continue;
+      const now = await stat(join(this.root, path)).catch((failure: unknown) => {
+        // Gone is an answer; any other failure to look is not, and is reported as itself.
+        if ((failure as { code?: unknown } | null)?.code === 'ENOENT') return undefined;
+        throw toCodeLensError(failure, `check ${path} against the index`);
+      });
+      if (!now) stale.push({ path, reason: 'removed' });
+      else if (
+        now.size !== indexed.size ||
+        Math.trunc(now.mtimeMs) !== Math.trunc(indexed.mtimeMs)
+      ) {
+        stale.push({ path, reason: 'changed' });
+      }
+    }
+    return stale;
+  }
+
+  async #queryIndex(wql: string, given: QueryOptions): Promise<QueryPage> {
     const options = this.#scoped(given);
     await this.#requireIndexed();
     const split = splitConjunction(wql, undefined, options.semantic);
@@ -1274,6 +1322,14 @@ export class Retriever {
     readonly module: string;
     readonly nextSteps: readonly string[];
   }> {
+    if (isBuiltinChannel(name)) {
+      // A project channel by this name would hide the built-in one, its cards and its ranking (#50).
+      throw new InvalidArgumentError(
+        'name',
+        `a name other than the built-in channels (${BUILTIN_CHANNELS.join(', ')})`,
+        name,
+      );
+    }
     const scaffolded: string[] = [];
     let module = options.module;
     let nextSteps: readonly string[] = [];
@@ -1297,6 +1353,21 @@ export class Retriever {
 
   /** Remove a channel: its cards, and its entry in the project config. */
   async removeChannel(name: string): Promise<{ readonly removedSources: number }> {
+    if (isBuiltinChannel(name)) {
+      // Removing one only dropped its cards until the next index put them back (#50).
+      throw new InvalidArgumentError(
+        'name',
+        `a channel this project added; ${name} is built in (to leave it out of search: --exclude ${name})`,
+        name,
+      );
+    }
+    if (!this.registry.has(name) && this.config.channels[name] === undefined) {
+      throw new InvalidArgumentError(
+        'name',
+        `one of this project's channels (${Object.keys(this.config.channels).join(', ') || 'none'})`,
+        name,
+      );
+    }
     let removedSources = 0;
     for (const path of await this.vectors.sourcePaths(name)) {
       if (await this.vectors.removeSource(name, path)) removedSources += 1;
@@ -1487,7 +1558,12 @@ export class Retriever {
   }
 
   /** Turn sharded indexing on or off in the project config. Takes effect the next time it is opened. */
-  async setFragments(on: boolean): Promise<void> {
+  /**
+   * Turn sharded indexing on or off. Turning it off removes the shard databases (derived data the
+   * single index replaces) and keeps the manifest, which is the project's own and what `enable`
+   * uses again (#51). Returns the shard directory when it was removed.
+   */
+  async setFragments(on: boolean): Promise<{ readonly removedShards?: string }> {
     // "off" is written out, not left unset: it records the choice, so the manifest kept beside it
     // is not taken for one that was forgotten.
     await this.#writeConfig({
@@ -1495,6 +1571,9 @@ export class Retriever {
       fragments: on,
       indexing: { ...this.config.indexing, fragments: on ? 'on' : 'off' },
     });
+    if (on || this.#shards !== undefined || !existsSync(this.#shardDirectory)) return {};
+    await rm(this.#shardDirectory, { recursive: true, force: true });
+    return { removedShards: this.#shardDirectory };
   }
 
   // --- internals --------------------------------------------------------------------------------

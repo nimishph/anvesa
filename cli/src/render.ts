@@ -380,6 +380,7 @@ export function renderStructural(
   }> & {
     coverage: { files: number; missing: readonly string[] };
     conjunction?: { semantic: string; wql: string } | undefined;
+    stale?: readonly { path: string; reason: 'removed' | 'changed' }[] | undefined;
   },
   options?: RenderOptions,
 ): string {
@@ -435,6 +436,10 @@ export function renderStructural(
     pageFooter(page, 'matches'),
     `searched ${page.coverage.files} files`,
     missing,
+    ...(page.stale ?? []).map(
+      (file) =>
+        `warning: ${file.path} ${file.reason === 'removed' ? 'was deleted' : 'changed'} since it was indexed; its results may be out of date (run: anvesa index)`,
+    ),
   );
 }
 
@@ -706,7 +711,13 @@ export function renderRepoMap(result: RepoMapResult): string {
   }
 
   printNode(result.tree, '', true);
-  return lines(...outputLines);
+  const budget = result.budget;
+  return lines(
+    ...outputLines,
+    budget && budget.omittedFiles > 0
+      ? `\nbudget: ${budget.shownFiles} of ${budget.shownFiles + budget.omittedFiles} files fit in ~${budget.tokens} tokens; ${budget.omittedFiles} lower-ranked files left out (raise --budget, or narrow with a directory or --depth)`
+      : undefined,
+  );
 }
 
 export function renderRoutes(routes: readonly RouteInfo[]): string {

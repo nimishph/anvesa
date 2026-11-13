@@ -281,6 +281,20 @@ async function withProject<T>(
   }
 }
 
+/**
+ * `--federated` and `--repo` reach other repositories only from search and dependents. Elsewhere
+ * they were ignored, or failed on a channel only another repository had (#51): say so instead.
+ */
+function onlyLocal(ctx: Context, command: string): void {
+  if (ctx.parsed.values.federated === true || (ctx.parsed.values.repo?.length ?? 0) > 0) {
+    throw new InvalidArgumentError(
+      '--federated',
+      `search or dependents: ${command} reads this repository only`,
+      ctx.parsed.values.repo?.join(', ') ?? 'true',
+    );
+  }
+}
+
 /** `--weight docs=0.25` (repeatable) as a lane-to-weight map. */
 function parseWeights(entries: readonly string[] | undefined): Record<string, number> | undefined {
   if (!entries || entries.length === 0) return undefined;
@@ -828,8 +842,9 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       emitResults(ctx, page, facts, (options) => show.renderSearch(page, options));
     }),
 
-  retrieve: (ctx) =>
-    withProject(ctx, { embed: true }, async ({ retriever }) => {
+  retrieve: (ctx) => {
+    onlyLocal(ctx, 'retrieve');
+    return withProject(ctx, { embed: true }, async ({ retriever }) => {
       const channel = need(ctx, 0, 'channel');
       const query = need(ctx, 1, 'query') && rest(ctx, 1);
       const startedAt = performance.now();
@@ -849,9 +864,11 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       });
       const facts = await searchFacts(ctx, retriever, query, startedAt);
       emitResults(ctx, page, facts, (options) => show.renderRetrieved(page, options));
-    }),
+    });
+  },
 
   query: (ctx) => {
+    onlyLocal(ctx, 'query');
     const rawWql = rest(ctx, 0) || need(ctx, 0, 'wql');
     const semantic = ctx.parsed.values.semantic;
     const split = splitConjunction(rawWql, undefined, semantic);
@@ -1431,8 +1448,13 @@ export async function fragmentsCommand(ctx: Context): Promise<void> {
       });
     case 'disable':
       return withProject(ctx, { embed: false, monolith: true }, async ({ retriever }) => {
-        await retriever.setFragments(false);
-        emit(ctx, { enabled: false }, () => 'sharded indexing is off. Run: anvesa index --force\n');
+        const off = await retriever.setFragments(false);
+        emit(
+          ctx,
+          { enabled: false, ...off },
+          () =>
+            `sharded indexing is off${off.removedShards ? `; removed the shard databases in ${off.removedShards}` : ''}. .anvesa/fragments.json is kept for a later enable.\nThe single index was not kept up to date while sharded. Run: anvesa index --force\n`,
+        );
       });
     case 'settle':
       return withProject(ctx, { embed: false }, async ({ retriever }) => {

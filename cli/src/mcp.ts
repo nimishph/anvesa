@@ -10,7 +10,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { z } from 'zod';
 import { type Context, openSession, resultFacts } from './commands.ts';
-import { getPrimer } from './primer.ts';
+import { getPrimer, PRIMER_TOPIC_NAMES } from './primer.ts';
 import { extractDocSummary, metaOf, toJson } from './render.ts';
 import { getGlobalTelemetry } from './telemetry.ts';
 import { VERSION } from './version.ts';
@@ -418,13 +418,12 @@ export function createMcpServer(retriever: Retriever): McpServer {
   server.registerTool(
     'primer',
     {
-      description:
-        'Token-frugal guidance on Anvesa concepts (overview, wql, fusion, graph, indexing, grammars). Returns table of contents if topic is omitted.',
+      description: `Token-frugal guidance on Anvesa concepts (${PRIMER_TOPIC_NAMES.join(', ')}). Returns table of contents if topic is omitted.`,
       inputSchema: {
         topic: z
           .string()
           .optional()
-          .describe('Specific topic name, e.g. overview, wql, fusion, graph, indexing, grammars.'),
+          .describe(`Specific topic name: one of ${PRIMER_TOPIC_NAMES.join(', ')}.`),
       },
     },
     ({ topic }) => respond(async () => getPrimer(topic), 'primer'),
