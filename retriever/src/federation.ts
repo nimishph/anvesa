@@ -136,6 +136,7 @@ export class FederatedRetriever {
       targets.push({ name: this.hostName, retriever: this.host, weight });
     }
     for (const st of statuses) {
+      degraded.push(...this.#unready(st, wanted));
       if (st.status !== 'ready' || (wanted && !wanted.has(st.name))) continue;
       try {
         const retriever = await this.#child(st);
@@ -198,7 +199,13 @@ export class FederatedRetriever {
         weight: target.weight,
         hits: page.items.map((item) => {
           const key = `${target.name}:${item.key}`;
-          return { key, item: { ...item, repo: target.name, key }, score: item.score };
+          // The repository's own fused score is a rank position (~0.02), not a similarity: the
+          // similarity is its bestScore, and that is what a result's bar shows (#51).
+          return {
+            key,
+            item: { ...item, repo: target.name, key },
+            ...(item.bestScore === undefined ? {} : { score: item.bestScore }),
+          };
         }),
       });
     });
@@ -258,6 +265,7 @@ export class FederatedRetriever {
 
     const names = importNames(path);
     for (const st of this.#configured().map((repo) => this.#inspect(repo))) {
+      degraded.push(...this.#unready(st, wanted));
       if (st.status !== 'ready' || (wanted && !wanted.has(st.name))) continue;
       try {
         const child = await this.#child(st);
@@ -316,9 +324,41 @@ export class FederatedRetriever {
     return config?.enabled ? config.repositories : [];
   }
 
-  /** The repository names asked for, or `undefined` for all of them. */
+  /**
+   * The repository names asked for, or `undefined` for all of them. A name that is neither the
+   * host's nor a configured repository's is an error: it would otherwise search nothing and return
+   * an empty page as if that were the answer (#51).
+   */
   #wanted(repos: readonly string[] | undefined): ReadonlySet<string> | undefined {
-    return repos && repos.length > 0 ? new Set(repos) : undefined;
+    if (!repos || repos.length === 0) return undefined;
+    const known = [this.hostName, ...this.#configured().map((repo) => repo.name)];
+    for (const name of repos) {
+      if (name !== 'host' && !known.includes(name)) {
+        throw new InvalidArgumentError(
+          '--repo',
+          `a repository of this federation (${known.join(', ')})`,
+          name,
+        );
+      }
+    }
+    return new Set(repos);
+  }
+
+  /** A repository asked for by name that cannot be searched: said, not silently left out. */
+  #unready(st: FederatedRepoStatus, wanted: ReadonlySet<string> | undefined): FederatedFailure[] {
+    if (st.status === 'ready' || !wanted?.has(st.name)) return [];
+    return [
+      {
+        lane: 'open',
+        error: toCodeLensError(
+          new InvalidArgumentError('--repo', 'a repository with an index', st.name, {
+            hint: st.error ?? `It is ${st.status}.`,
+          }),
+          `open ${st.name}`,
+        ),
+        repo: st.name,
+      },
+    ];
   }
 
   /**

@@ -625,6 +625,18 @@ describe('command line', () => {
     expect(unknown.err).toContain("Unknown option '--bogus'");
   });
 
+  test('--federated on a command that reads one repository is refused, not ignored (#51)', async () => {
+    const root = makeProject();
+    for (const argv of [
+      ['query', '//function', '--federated'],
+      ['retrieve', 'docs', 'install', '--repo', 'other'],
+    ]) {
+      const ran = await cli(root, ...argv);
+      expect(ran.code).toBe(2);
+      expect(ran.err).toContain('search or dependents');
+    }
+  });
+
   test('index records the model it embedded with; another model is named, not a silent zero', async () => {
     const root = makeProject();
     const first = await cli(root, 'index');
