@@ -812,6 +812,10 @@ const MODEL_COLUMNS: readonly Column<ModelRow>[] = [
 const MODEL_GROUPS: readonly { readonly family: ModelRow['family']; readonly title: string }[] = [
   { family: 'anvesa-code', title: "anvesa-code: anvesa's own code-search encoders" },
   { family: 'open', title: 'Open models: open-licence encoders anvesa can fetch and pin' },
+  {
+    family: 'configured',
+    title: 'Configured: described in a .anvesa/models/<id>.json or ~/.anvesa/models/<id>.json',
+  },
   { family: 'custom', title: 'Brought in by you' },
 ];
 

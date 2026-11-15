@@ -11,6 +11,7 @@ import { escapeHtml } from './search.js';
 const FAMILY_LABELS = {
   'anvesa-code': 'anvesa code models',
   open: 'open models',
+  configured: 'described by your config',
   custom: 'brought in by you',
 };
 

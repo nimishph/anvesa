@@ -1,11 +1,14 @@
 export type { InferenceBackend, ModelOutput, OnnxOptions, TokenBatch } from './backend.ts';
 export { openOnnx, prepareNativeRuntime } from './backend.ts';
 export type {
+  ConfigTier,
+  ConfiguredModel,
   CustomInstall,
   CustomRecord,
   DownloadOptions,
   FetchLike,
   InstalledModel,
+  ModelCacheOptions,
 } from './cache.ts';
 export { ModelCache, modelsDirectory } from './cache.ts';
 export type { CustomModelOptions, CustomModelPlan } from './custom.ts';
@@ -28,12 +31,13 @@ export {
   modelFamily,
   OPEN_MODELS,
   PEAK_RSS_MEASUREMENTS,
-  RETIRED_MODELS,
   TIERS,
   weightBytes,
 } from './models.ts';
 export type { OpenOptions, Resolution } from './open.ts';
-export { openLocalEmbedder, resolveModel, retired } from './open.ts';
+export { openLocalEmbedder, resolveModel } from './open.ts';
+export type { BuiltinFamily, ModelConfig, ModelRegistry } from './registry.ts';
+export { buildRegistry, parseModelConfig, parseModelSpec } from './registry.ts';
 export type { Tokenizer, WordPieceOptions } from './tokenizer.ts';
 export { tokenizerFromJson, tokenizerFromVocabulary, WordPieceTokenizer } from './tokenizer.ts';
 export { ByteLevelBpeTokenizer } from './tokenizer-bpe.ts';

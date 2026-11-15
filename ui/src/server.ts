@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { extname, resolve } from 'node:path';
+import { extname, join, resolve } from 'node:path';
 import { InvalidArgumentError, toCodeLensError } from '@cntxt-labs/anvesa-core';
 import type { ConfigEdits, Retriever } from '@cntxt-labs/anvesa-retriever';
 import { ASSETS } from './assets.ts';
@@ -77,11 +77,11 @@ interface ConfigPayload {
  * it can choose from (the models of `anvesa model use`, the project's channels).
  */
 async function settingsOf(projectRoot: string, models: string | undefined) {
-  const { BUILTIN_CHANNELS, listModels, ModelCache, readConfigFile } = await import(
-    '@cntxt-labs/anvesa-retriever'
-  );
+  const { BUILTIN_CHANNELS, listModels, ModelCache, modelsDirectory, readConfigFile } =
+    await import('@cntxt-labs/anvesa-retriever');
   const file = readConfigFile(projectRoot);
-  const cache = models === undefined ? new ModelCache() : new ModelCache(models);
+  const projectModels = { projectModels: join(projectRoot, '.anvesa', 'models') };
+  const cache = new ModelCache(models ?? modelsDirectory(), projectModels);
   const names = [...new Set([...BUILTIN_CHANNELS, ...Object.keys(file.config.channels)])];
   return {
     path: file.path,
@@ -537,14 +537,15 @@ export async function startUiServer(options: ServerOptions = {}) {
   // Opened only once the port is held, so a failed start leaves nothing open.
   if (!retriever) {
     try {
-      const { loadProjectConfig, ModelCache, openProjectEmbedder, Retriever } = await import(
-        '@cntxt-labs/anvesa-retriever'
-      );
+      const { loadProjectConfig, ModelCache, modelsDirectory, openProjectEmbedder, Retriever } =
+        await import('@cntxt-labs/anvesa-retriever');
       const config = await loadProjectConfig(projectRoot);
       // The same encoder `anvesa search` uses, so plain-language search runs live here too.
       const opened = await openProjectEmbedder(
         config,
-        options.models === undefined ? new ModelCache() : new ModelCache(options.models),
+        new ModelCache(options.models ?? modelsDirectory(), {
+          projectModels: join(projectRoot, '.anvesa', 'models'),
+        }),
       );
       if (!opened.embedder) embedderNote = opened.reason;
       retriever = await Retriever.open({

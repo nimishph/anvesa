@@ -1,0 +1,24 @@
+{
+  "$schema": "../../schemas/model.v1.json",
+  "id": "gte-modernbert-base",
+  "family": "open",
+  "repo": "Alibaba-NLP/gte-modernbert-base",
+  "revision": "e7f32e3c00f91d699e8c43b53106206bcc72bb22",
+  "model": {
+    "path": "onnx/model.onnx",
+    "bytes": 596392315,
+    "sha256": "947f31df7effaeec4edb57c50e4ed7e0f2034d9336063f92615b92e3e0d24d78"
+  },
+  "tokenizer": {
+    "path": "tokenizer.json",
+    "bytes": 3583228,
+    "sha256": "6c8aaa9a542084f2457eab775d4eeb51f92a70c0fd9de28d5edb0ddec3c08d30"
+  },
+  "dimensions": 768,
+  "maxTokens": 512,
+  "pooling": "cls",
+  "paramsM": 149,
+  "license": "Apache-2.0",
+  "summary": "open general-purpose encoder; not scored on code",
+  "notes": "An open, general-purpose English encoder (ModernBERT), not trained for code search. Not scored on the anvesa-gen-lab bench, and it comes with no ranker, so symbol search ranks by the first stage alone. Never chosen automatically: name it with --model or anvesa model use."
+}

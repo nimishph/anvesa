@@ -104,3 +104,16 @@ export class ModelShapeError extends EmbedderSubsystemError {
     });
   }
 }
+
+/** A model's configuration (a built-in `embedder/models/<id>.json`, or a catalog of them) is not valid. */
+export class ModelConfigError extends EmbedderSubsystemError {
+  readonly code = 'EMBEDDER_MODEL_CONFIG';
+
+  constructor(source: string, problem: string, init: ErrorInit = {}) {
+    super(`Model configuration ${source} is not valid: ${problem}`, {
+      hint: 'Fix the file against schemas/model.v1.json, then run bun run embedder/scripts/gen-model-index.ts.',
+      ...init,
+      context: { source, problem, ...init.context },
+    });
+  }
+}
