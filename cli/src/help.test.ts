@@ -1,15 +1,15 @@
 import { describe, expect, test } from 'bun:test';
 import { HELP, helpFor, renderHelp } from './cli.ts';
-import { COMMANDS } from './commands.ts';
-import { COMMAND_HELP, SECTIONS } from './help.ts';
+import { COMMAND_HELP, REGISTRY, SECTIONS } from './cmd/registry.ts';
 
-/** Commands cli.ts routes itself, beside the COMMANDS table. */
+/** Commands cli.ts once routed itself, beside its table: still registered. */
 const ROUTED = ['channel', 'model', 'grammar', 'mapping', 'fragments', 'redteam', 'pattern', 'mcp'];
 
 describe('help', () => {
   test('every command the CLI runs has an entry, in a section, under one key', () => {
     const keys = COMMAND_HELP.flatMap((entry) => entry.keys);
-    for (const command of [...Object.keys(COMMANDS), ...ROUTED]) expect(keys).toContain(command);
+    const words = REGISTRY.commands.flatMap((command) => command.words);
+    for (const command of [...words, ...ROUTED]) expect(keys).toContain(command);
     expect(new Set(keys).size).toBe(keys.length);
     for (const section of SECTIONS) {
       expect(COMMAND_HELP.some((entry) => entry.section === section)).toBe(true);

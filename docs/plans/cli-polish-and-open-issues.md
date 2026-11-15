@@ -104,7 +104,7 @@ a note.
 
 ```yojana:claim
 kind: text
-expression: added \$schema in cli/src/commands.ts
+expression: added \$schema in cli/src/cmd/commands/project/init.ts
 ```
 
 ## Requirement: `anvesa model use` picks the project's encoder interactively {#req-model-use}
@@ -121,7 +121,7 @@ no id it errors, naming `model use <model>`.
 
 ```yojana:claim
 kind: text
-expression: case 'use' in cli/src/commands.ts
+expression: case 'use' in cli/src/cmd/commands/extend/model.ts
 ```
 
 ## Requirement: `model list` shows the anvesa-code models and a curated set of open models {#req-model-catalog}
@@ -274,7 +274,7 @@ project, and writes to a home directory nobody approved.
 
 ```yojana:claim
 kind: text
-expression: /skill install/ in cli/src/help.ts
+expression: /skill install/ in cli/src/cmd/commands/agent/skill.ts
 ```
 
 Done in Wave D. The skill is bundled into the program (`cli/src/skill.ts`), so the copy installed

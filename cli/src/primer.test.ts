@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { DEFAULT_RRF_K } from '@cntxt-labs/anvesa-retriever';
-import { COMMANDS } from './commands.ts';
+import { REGISTRY } from './cmd/registry.ts';
 import { getPrimer, PRIMER_TOPIC_NAMES, PRIMER_TOPICS, renderPrimer } from './primer.ts';
 
 describe('anvesa primer CLI & MCP Tool (anv-35b)', () => {
@@ -52,7 +52,7 @@ describe('anvesa primer CLI & MCP Tool (anv-35b)', () => {
 
   it('guarantees zero-drift: all core CLI subcommands are documented in primer topics', () => {
     const registeredSubcommands = [
-      ...Object.keys(COMMANDS),
+      ...REGISTRY.commands.filter((c) => c.id !== 'agent:version').flatMap((c) => c.words),
       'channel',
       'grammar',
       'mapping',

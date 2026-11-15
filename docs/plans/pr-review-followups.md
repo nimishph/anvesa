@@ -200,17 +200,22 @@ cli/src/cmd/
     agent/         primer.ts, skill.ts, telemetry.ts, issue.ts, mcp.ts
 ```
 
-- Each module exports one `defineCommand({ id, words, summary, details, options, run })`. `id` is
-  `resource:cmd_name` (`graph:callers`, `model:use`, `search:query`); `words` is what a person
-  types (`callers`; `model use`).
-- Help, the drift test and the MCP server read the registry, so `help.ts`'s separate list goes
-  away.
+- Each module exports one `defineCommand({ id, words, help, run })`. `id` is `resource:cmd_name`,
+  the resource being the folder (`graph:callers`, `search:query`, `extend:model`); `words` is the
+  first word a person types (`callers`; `model`).
+  - As built, one module per top-level command. A command with subcommands (`model use`,
+    `channel add`) keeps dispatching them inside its module, so its id is `extend:model`, not
+    `model:use`. Splitting subcommands into their own ids is a later step, if wanted.
+- Help, the usage record and the drift tests read the registry, so `help.ts` is gone. Commands
+  that share a help line (`callers|callees|neighbors`) share one `HelpEntry`. The MCP server keeps
+  its own tool list and uses the shared session code (`cmd/shared/`).
 - `run` receives its services (the session opener, the model cache, the prompt, the clock), so a
   test can pass fakes without building an `Environment`.
 - Discovery is a generated index, as in `req-model-registry` (a compiled binary has no folder to
-  scan), and a test checks that it matches the folder.
-- Behaviour does not change: the existing CLI tests run unchanged against the new layout. That is
-  the check that the move was only a move.
+  scan): `cli/scripts/gen-command-index.ts` writes `cli/src/cmd/commands.generated.ts`, and a test
+  checks that it matches the folder.
+- Behaviour does not change: `cli.test.ts` runs unchanged against the new layout, and the help
+  output is byte-for-byte the same. That is the check that the move was only a move.
 
 ```yojana:claim
 kind: path

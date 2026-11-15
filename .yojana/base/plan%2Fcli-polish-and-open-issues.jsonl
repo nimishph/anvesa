@@ -1,14 +1,14 @@
 {"planId":"plan/cli-polish-and-open-issues","status":"draft"}
 {"id":"req-channel-gaps","revision":"r_34416cc0fc341e97"}
 {"id":"req-command-audit","revision":"r_9551432eaba474c6"}
-{"id":"req-init-schema","revision":"r_75d4516619405c7c"}
+{"id":"req-init-schema","revision":"r_a6862b61ff31fa59"}
 {"id":"req-laravel-prefixes","revision":"r_1b3662f9b9a13c50"}
 {"id":"req-model-catalog","revision":"r_ea84533990940092"}
 {"id":"req-model-recorded","revision":"r_169caca4a7b11533"}
-{"id":"req-model-use","revision":"r_0e86d266298b80b5"}
+{"id":"req-model-use","revision":"r_a31cafcbd0ed03e1"}
 {"id":"req-observed-rest","revision":"r_58e3ab9d81d7a781"}
 {"id":"req-pattern-escape","revision":"r_d93d5b18f3f007e9"}
-{"id":"req-skill-install","revision":"r_48e63bfa15c9f24d"}
+{"id":"req-skill-install","revision":"r_6a9d76d218aeb8bf"}
 {"id":"req-telemetry-notice","revision":"r_a1c86d6c2597be55"}
 {"id":"req-tokenizer-accept","revision":"r_3bad65877f3b454c"}
 {"id":"req-ui-embedder","revision":"r_1cb657e98e385597"}
