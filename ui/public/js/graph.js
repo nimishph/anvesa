@@ -4,8 +4,9 @@
  */
 
 import { escapeHtml } from './search.js';
+import { showStatePanel, stateOf, statePanelHtml, unreachable } from './state-panel.js';
 
-export function initGraphVisualizer(state, api) {
+export function initGraphVisualizer(_state, api) {
   const canvas = document.getElementById('graphCanvas');
   const symbolInput = document.getElementById('graphSymbolInput');
   const inspector = document.getElementById('nodeInspectorDrawer');
@@ -44,21 +45,19 @@ export function initGraphVisualizer(state, api) {
   let lastMouseX = 0;
   let lastMouseY = 0;
   let hoveredNode = null;
-  let animationFrameId = null;
 
   let nodes = [];
   let links = [];
-  let activeSymbol = 'Retriever.search';
   let activeNodeData = null;
 
   function resizeCanvas() {
-    if (!canvas || !canvas.parentElement) return;
+    if (!canvas?.parentElement) return;
     width = canvas.parentElement.clientWidth;
     height = canvas.parentElement.clientHeight;
     canvas.width = width * window.devicePixelRatio;
     canvas.height = height * window.devicePixelRatio;
-    canvas.style.width = width + 'px';
-    canvas.style.height = height + 'px';
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
     ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
   }
 
@@ -67,32 +66,18 @@ export function initGraphVisualizer(state, api) {
 
   // Load symbol into graph
   async function loadSymbolGraph(symName) {
-    activeSymbol = symName;
     if (symbolInput) symbolInput.value = symName;
 
-    let data = null;
-    let live = false;
     try {
       const resp = await api.getNeighbors(symName);
-      live = Boolean(resp?.live);
-      if (resp && resp.success && resp.neighbors) {
-        data = resp.neighbors;
-      } else if (live) {
-        // A live project that has no such symbol says so; it never draws the sample graph.
-        showGraphMessage(resp?.error || `no symbol named ${symName} in this index`);
-        return;
+      if (resp?.success && resp.neighbors) {
+        buildGraphStructure(resp.neighbors, symName);
+      } else {
+        showGraphPanel(stateOf(resp) ?? { state: 'error', error: `no graph for ${symName}` });
       }
-    } catch {
-      // No server answered: the sample graph below.
+    } catch (err) {
+      showGraphPanel(unreachable(err));
     }
-
-    if (!data && !live) {
-      data =
-        window.ANVESA_MOCK?.graphData?.[symName] ||
-        window.ANVESA_MOCK?.graphData?.['Retriever.search'];
-    }
-
-    buildGraphStructure(data, symName);
   }
 
   function buildGraphStructure(data, rootName) {
@@ -106,8 +91,8 @@ export function initGraphVisualizer(state, api) {
       id: 'target',
       name: rootName,
       type: 'target',
-      kind: data?.symbol?.kind || 'method',
-      path: data?.symbol?.path || 'src/retriever.ts',
+      kind: data?.symbol?.kind || '',
+      path: data?.symbol?.path || '',
       radius: 26,
       color: '#6366f1',
       x: 0,
@@ -120,15 +105,12 @@ export function initGraphVisualizer(state, api) {
     nodes.push(targetNode);
 
     // Callers (Incoming Links)
-    const callers = data?.callers || [
-      { id: 'cli:search', name: 'anvesa search', kind: 'command', path: 'cli/src/commands.ts:643' },
-      { id: 'mcp:tool', name: 'MCP Server', kind: 'tool', path: 'cli/src/mcp.ts:61' },
-    ];
+    const callers = data?.callers || [];
     callers.forEach((c, idx) => {
       const angle = (idx / Math.max(1, callers.length)) * Math.PI - Math.PI / 2;
       const dist = 160 + (idx % 2) * 30;
       const node = {
-        id: 'caller_' + idx,
+        id: `caller_${idx}`,
         name: c.name,
         type: 'caller',
         kind: c.kind || 'function',
@@ -145,26 +127,12 @@ export function initGraphVisualizer(state, api) {
     });
 
     // Callees (Outgoing Links)
-    const callees = data?.callees || [
-      { id: 'fuse', name: 'fuse', kind: 'function', path: 'retriever/src/fuse.ts:34' },
-      {
-        id: 'retrieveDense',
-        name: 'retrieveDense',
-        kind: 'function',
-        path: 'dense/src/retrieve.ts:28',
-      },
-      {
-        id: 'StructuralEngine',
-        name: 'StructuralEngine.query',
-        kind: 'method',
-        path: 'structural/src/engine.ts:89',
-      },
-    ];
+    const callees = data?.callees || [];
     callees.forEach((c, idx) => {
       const angle = (idx / Math.max(1, callees.length)) * Math.PI + Math.PI / 2;
       const dist = 170 + (idx % 2) * 30;
       const node = {
-        id: 'callee_' + idx,
+        id: `callee_${idx}`,
         name: c.name,
         type: 'callee',
         kind: c.kind || 'function',
@@ -184,7 +152,7 @@ export function initGraphVisualizer(state, api) {
     const neighbors = data?.neighbors || [];
     neighbors.forEach((n, idx) => {
       const node = {
-        id: 'neighbor_' + idx,
+        id: `neighbor_${idx}`,
         name: n.name,
         type: 'neighbor',
         kind: n.kind || 'symbol',
@@ -338,7 +306,7 @@ export function initGraphVisualizer(state, api) {
     ctx.restore();
 
     simulatePhysics();
-    animationFrameId = requestAnimationFrame(renderGraph);
+    requestAnimationFrame(renderGraph);
   }
 
   // Mouse & interaction events
@@ -401,6 +369,7 @@ export function initGraphVisualizer(state, api) {
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+    // biome-ignore lint/plugin: the zoom range of the canvas, not a cap on any result
     scale = Math.min(Math.max(scale * zoomFactor, 0.4), 3.0);
   });
 
@@ -426,7 +395,7 @@ export function initGraphVisualizer(state, api) {
 
   if (btnRefocusGraph) {
     btnRefocusGraph.addEventListener('click', () => {
-      if (activeNodeData && activeNodeData.name) {
+      if (activeNodeData?.name) {
         loadSymbolGraph(activeNodeData.name);
         if (inspector) inspector.classList.remove('open');
       }
@@ -475,18 +444,28 @@ export function initGraphVisualizer(state, api) {
     repomapTree.innerHTML =
       '<div style="padding:2rem;text-align:center;color:var(--text-secondary);">Calculating PageRank weights...</div>';
 
-    let repomap = null;
+    let repomap;
     try {
       const resp = await api.getRepoMap();
-      if (resp && resp.success && resp.repomap) repomap = resp.repomap;
-    } catch {}
-
-    if (!repomap) repomap = window.ANVESA_MOCK?.repomap;
+      const panel = stateOf(resp);
+      if (panel) {
+        showStatePanel(repomapTree, panel);
+        return;
+      }
+      repomap = resp.repomap;
+    } catch (err) {
+      showStatePanel(repomapTree, unreachable(err));
+      return;
+    }
 
     const files = repomap?.files || [];
+    if (files.length === 0) {
+      showStatePanel(repomapTree, { state: 'empty', error: 'no files ranked in this scope' });
+      return;
+    }
     repomapTree.innerHTML = files
       .map((file) => {
-        const prPct = (file.pageRank * 100).toFixed(1) + '%';
+        const prPct = `${(file.pageRank * 100).toFixed(1)}%`;
         const safePath = escapeHtml(file.path);
         const safePrPct = escapeHtml(prPct);
         return `
@@ -537,65 +516,87 @@ export function initGraphVisualizer(state, api) {
   }
 
   // Render Routes
-  async function loadRoutes() {
-    if (!routesTableBody) return;
-    let routes = null;
-    try {
-      const resp = await api.getRoutes();
-      if (resp && resp.success && resp.routes) routes = resp.routes;
-    } catch {}
+  /** The routes last loaded, which the filter box narrows. */
+  let routesLoaded = [];
 
-    if (!routes) routes = window.ANVESA_MOCK?.routes || [];
-
-    function renderRoutesList(list) {
-      routesTableBody.innerHTML = list
-        .map((r) => {
-          const safeMethod = escapeHtml(r.method);
-          const mClass = 'm-' + safeMethod.toLowerCase();
-          return `
-          <tr>
-            <td><span class="method-pill ${mClass}">${safeMethod}</span></td>
-            <td><span class="route-pattern">${escapeHtml(r.path)}</span></td>
-            <td><span class="route-handler">${escapeHtml(r.handler)}</span></td>
-            <td style="color:var(--text-secondary);">${escapeHtml(r.file)}</td>
-            <td><span class="badge badge-indigo">${escapeHtml(r.framework)}</span></td>
-          </tr>
-        `;
-        })
-        .join('');
+  function renderRoutesList(list) {
+    if (list.length === 0) {
+      routesTableBody.innerHTML = `<tr><td colspan="5">${statePanelHtml(
+        { state: 'empty', error: routesLoaded.length ? 'no route matches the filter' : '' },
+        routesLoaded.length ? undefined : 'No routes were found in this project',
+      )}</td></tr>`;
+      return;
     }
-
-    renderRoutesList(routes);
-
-    if (routesSearchInput) {
-      routesSearchInput.addEventListener('input', (e) => {
-        const q = e.target.value.toLowerCase();
-        const filtered = routes.filter(
-          (r) => r.path.toLowerCase().includes(q) || r.handler.toLowerCase().includes(q),
-        );
-        renderRoutesList(filtered);
-      });
-    }
+    routesTableBody.innerHTML = list
+      .map((r) => {
+        const safeMethod = escapeHtml(r.method);
+        const mClass = `m-${safeMethod.toLowerCase()}`;
+        return `
+        <tr>
+          <td><span class="method-pill ${mClass}">${safeMethod}</span></td>
+          <td><span class="route-pattern">${escapeHtml(r.route)}</span></td>
+          <td><span class="route-handler">${escapeHtml(r.handler)}</span></td>
+          <td style="color:var(--text-secondary);">${escapeHtml(`${r.path}:${r.line}`)}</td>
+          <td><span class="badge badge-indigo">${escapeHtml(r.framework)}</span></td>
+        </tr>
+      `;
+      })
+      .join('');
   }
 
-  function showGraphMessage(message) {
+  if (routesSearchInput) {
+    routesSearchInput.addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase();
+      renderRoutesList(
+        routesLoaded.filter(
+          (r) => r.route.toLowerCase().includes(q) || r.handler.toLowerCase().includes(q),
+        ),
+      );
+    });
+  }
+
+  async function loadRoutes() {
+    if (!routesTableBody) return;
+    let panel;
+    try {
+      const resp = await api.getRoutes();
+      panel = stateOf(resp);
+      if (!panel) routesLoaded = resp.routes ?? [];
+    } catch (err) {
+      panel = unreachable(err);
+    }
+    if (panel) {
+      routesLoaded = [];
+      routesTableBody.innerHTML = `<tr><td colspan="5">${statePanelHtml(panel)}</td></tr>`;
+      return;
+    }
+    renderRoutesList(routesLoaded);
+  }
+
+  /** No graph to draw: say why, in the panel over the canvas. */
+  function showGraphPanel(panel, title) {
     nodes = [];
     links = [];
     activeNodeData = null;
     const note = document.getElementById('graphMessage');
     if (note) {
-      note.textContent = message;
+      showStatePanel(note, panel, title);
       note.hidden = false;
     }
   }
 
-  // Initial load: the sample symbol only when no index answers; a live project waits for a name.
+  // Initial load: an invitation when the index answers, else why it does not.
   api
     .getStatus()
     .then((resp) => {
-      if (resp?.success && resp.live) showGraphMessage('Enter a symbol to see its callers and callees.');
-      else loadSymbolGraph(activeSymbol);
+      const panel = stateOf(resp);
+      if (panel) showGraphPanel(panel);
+      else
+        showGraphPanel(
+          { state: 'invalid', error: '' },
+          'Enter a symbol to see its callers and callees.',
+        );
     })
-    .catch(() => loadSymbolGraph(activeSymbol));
+    .catch((err) => showGraphPanel(unreachable(err)));
   renderGraph();
 }

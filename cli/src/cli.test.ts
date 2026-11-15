@@ -274,14 +274,15 @@ describe('command line', () => {
       expect(ran.code).toBe(0);
       expect(served).toEqual([]);
       expect(ran.out).toContain('encoder: not installed');
-      expect(ran.out).toContain('anvesa model install');
+      expect(ran.out).toContain('anvesa model use');
       expect(ran.out).toContain('parser python: 1 files not indexed');
       expect(ran.out).toContain('anvesa grammar install python --user --download');
     });
 
-    test('it asks which encoder, shows the whole list for this machine, and which one it recommends', async () => {
+    test('it ends with model use: the whole list, and which one this machine suits', async () => {
       const { root, home, models } = pythonProject();
-      const dialogue = scripted(['s', 'n']);
+      // Parsers, then the skill, then the encoder: the model is chosen once the rest is in place.
+      const dialogue = scripted(['n', 'n', 's']);
       const ran = await cliWith(
         { grammars: { home }, fetch: fakeFetch, prompt: dialogue.prompt },
         root,
@@ -295,15 +296,37 @@ describe('command line', () => {
         expect(ran.err).toContain(id);
       }
       expect(ran.err).toContain('recommended');
-      expect(dialogue.asked[0]).toContain('Install which?');
-      expect(dialogue.asked[1]).toContain('Download parsers');
+      expect(dialogue.asked[0]).toContain('Download parsers');
+      expect(dialogue.asked[1]).toContain('anvesa skill');
+      expect(dialogue.asked[2]).toContain('Use which?');
+      expect(dialogue.asked[2]).toContain('Enter = anvesa-code');
       expect(ran.out).toContain('skipped at your request');
+    });
+
+    test('Enter takes the recommended encoder, and a no to its download skips, never fails', async () => {
+      const { root, home, models } = pythonProject();
+      served.length = 0;
+      // Parsers no, skill no, Enter for the recommended encoder, then no to downloading it.
+      const dialogue = scripted(['n', 'n', '', 'n']);
+      const ran = await cliWith(
+        { grammars: { home }, fetch: fakeFetch, prompt: dialogue.prompt },
+        root,
+        'init',
+        '--models',
+        models,
+      );
+      expect(ran.code).toBe(0);
+      expect(served).toEqual([]);
+      const recommended = /Enter = (\S+),/.exec(dialogue.asked[2] ?? '')?.[1];
+      expect(recommended).toStartWith('anvesa-code-');
+      expect(dialogue.asked[3]).toContain(`${recommended} is not installed`);
+      expect(ran.out).toContain(`encoder: ${recommended} not downloaded; later: anvesa model use`);
     });
 
     test('a parser picked from the list is downloaded with progress, and works afterwards', async () => {
       const { root, home, models } = pythonProject();
       served.length = 0;
-      const dialogue = scripted(['s', 'python']);
+      const dialogue = scripted(['python', 'n', 's']);
       const ran = await cliWith(
         { grammars: { home }, fetch: fakeFetch, prompt: dialogue.prompt },
         root,
@@ -328,7 +351,7 @@ describe('command line', () => {
       const { root, home, models } = pythonProject();
       served.length = 0;
       const none = await cliWith(
-        { grammars: { home }, fetch: fakeFetch, prompt: scripted(['s', 'y']).prompt },
+        { grammars: { home }, fetch: fakeFetch, prompt: scripted(['y', 'n', 's']).prompt },
         root,
         'init',
         '--models',
@@ -339,7 +362,7 @@ describe('command line', () => {
       expect(none.out).toContain('network use is off');
 
       const other = await cliWith(
-        { grammars: { home }, fetch: fakeFetch, prompt: scripted(['s', 'ruby']).prompt },
+        { grammars: { home }, fetch: fakeFetch, prompt: scripted(['ruby', 'n', 's']).prompt },
         root,
         'init',
         '--models',
@@ -353,7 +376,7 @@ describe('command line', () => {
       const { root, home, models } = pythonProject();
       const broken = (async () => new Response('nope', { status: 503 })) as unknown as typeof fetch;
       const ran = await cliWith(
-        { grammars: { home }, fetch: broken, prompt: scripted(['s', 'y']).prompt },
+        { grammars: { home }, fetch: broken, prompt: scripted(['y', 'n', 's']).prompt },
         root,
         'init',
         '--models',

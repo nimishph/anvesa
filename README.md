@@ -46,7 +46,7 @@ WebAssembly grammar instead, installed on demand; so is everything where the nat
 Models and wasm grammars work offline once installed:
 
 ```sh
-anvesa init                               # scaffolds, then proposes an encoder and parsers to download
+anvesa init                               # scaffolds, offers parsers and the skill, then runs model use
 anvesa model list                         # the built-in models and which are installed
 anvesa model install anvesa-code-400m --download                # or --from <folder> offline
 anvesa grammar list

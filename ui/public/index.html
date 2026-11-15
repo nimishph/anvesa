@@ -19,9 +19,9 @@
   <!-- Top Application Header -->
   <header class="app-header">
     <div class="brand-group">
-      <a href="javascript:void(0)" class="brand-logo" onclick="location.reload()">
+      <button type="button" class="brand-logo" onclick="location.reload()" title="Reload">
         <div class="brand-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
             <polyline points="2 17 12 22 22 17"></polyline>
             <polyline points="2 12 12 17 22 12"></polyline>
@@ -29,31 +29,31 @@
         </div>
         <span class="brand-name">anvesa</span>
         <span class="brand-badge">v0.8.0-alpha.3</span>
-      </a>
+      </button>
 
       <div class="project-indicator" id="projectRootIndicator" title="Active Project Workspace">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
         </svg>
-        <span id="projectRootText">sutras/anvesa</span>
-        <span id="connectionStatusPill" class="badge badge-emerald" style="margin-left:4px;">
-          <span class="status-dot pulse"></span> Ready
+        <span id="projectRootText">…</span>
+        <span id="connectionStatusPill" class="badge badge-indigo" style="margin-left:4px;">
+          <span class="status-dot pulse"></span> Checking…
         </span>
       </div>
     </div>
 
     <!-- Center Navigation Tabs -->
     <nav class="header-nav">
-      <button class="nav-tab active" data-view="search">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <button type="button" class="nav-tab active" data-view="search">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="11" cy="11" r="8"></circle>
           <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
         </svg>
         Search Studio
       </button>
 
-      <button class="nav-tab" data-view="graph">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <button type="button" class="nav-tab" data-view="graph">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="18" cy="5" r="3"></circle>
           <circle cx="6" cy="12" r="3"></circle>
           <circle cx="18" cy="19" r="3"></circle>
@@ -63,22 +63,22 @@
         Code Graph
       </button>
 
-      <button class="nav-tab" data-view="wql">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <button type="button" class="nav-tab" data-view="wql">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
         </svg>
         WQL Playground
       </button>
 
-      <button class="nav-tab" data-view="status">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <button type="button" class="nav-tab" data-view="status">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
         </svg>
         System Health
       </button>
 
-      <button class="nav-tab" data-view="settings">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <button type="button" class="nav-tab" data-view="settings">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="3"></circle>
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
         </svg>
@@ -88,8 +88,8 @@
 
     <!-- Header Actions -->
     <div class="header-actions">
-      <button class="btn-command-palette" id="btnCommandPalette" title="Quick Palette (Ctrl+K or /)">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <button type="button" class="btn-command-palette" id="btnCommandPalette" title="Quick Palette (Ctrl+K or /)">
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="11" cy="11" r="8"></circle>
           <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
         </svg>
@@ -98,7 +98,7 @@
       </button>
 
       <a href="https://github.com/nimishph/anvesa" target="_blank" rel="noreferrer" class="btn-icon" title="View Documentation">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <span class="visually-hidden">Documentation</span><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="12" r="10"></circle>
           <line x1="12" y1="16" x2="12" y2="12"></line>
           <line x1="12" y1="8" x2="12.01" y2="8"></line>
@@ -119,7 +119,7 @@
         <!-- Search Hero Controls -->
         <div class="search-hero">
           <div class="search-input-wrapper">
-            <svg class="search-icon-lens" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <svg aria-hidden="true" class="search-icon-lens" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <circle cx="11" cy="11" r="8"></circle>
               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
             </svg>
@@ -186,12 +186,12 @@
         <!-- Query Suggestion Chips -->
         <div class="query-chips-row">
           <span class="query-chip-title">Suggestions:</span>
-          <button class="query-chip" data-query="parse configuration">parse configuration</button>
-          <button class="query-chip" data-query="fuse reciprocal rank">fuse reciprocal rank</button>
-          <button class="query-chip" data-query="openSession project">openSession project</button>
-          <button class="query-chip" data-query="tree-sitter syntax runtime">syntax runtime</button>
-          <button class="query-chip" data-query="//function[@name^=&quot;parse&quot;]">//function[@name^="parse"]</button>
-          <button class="query-chip" data-query="red-team screening gate">red-team screening gate</button>
+          <button type="button" class="query-chip" data-query="parse configuration">parse configuration</button>
+          <button type="button" class="query-chip" data-query="fuse reciprocal rank">fuse reciprocal rank</button>
+          <button type="button" class="query-chip" data-query="openSession project">openSession project</button>
+          <button type="button" class="query-chip" data-query="tree-sitter syntax runtime">syntax runtime</button>
+          <button type="button" class="query-chip" data-query="//function[@name^=&quot;parse&quot;]">//function[@name^="parse"]</button>
+          <button type="button" class="query-chip" data-query="red-team screening gate">red-team screening gate</button>
         </div>
 
         <!-- Search Meta Bar -->
@@ -200,8 +200,8 @@
             <span id="resultsMetaText">Found 4 results in 8.2ms · Model: bge-base-en-v1.5</span>
           </div>
           <div class="view-format-toggle">
-            <button class="toggle-btn active" id="btnViewCards">Cards</button>
-            <button class="toggle-btn" id="btnViewLocations">Locations</button>
+            <button type="button" class="toggle-btn active" id="btnViewCards">Cards</button>
+            <button type="button" class="toggle-btn" id="btnViewLocations">Locations</button>
           </div>
         </div>
 
@@ -218,7 +218,7 @@
               anvesa search "parse configuration" --weight docs=0.8
             </code>
           </div>
-          <button class="btn-card-action" onclick="navigator.clipboard.writeText(document.getElementById('cliPreviewOutput').innerText)">
+          <button type="button" class="btn-card-action" onclick="navigator.clipboard.writeText(document.getElementById('cliPreviewOutput').innerText)">
             Copy CLI Command
           </button>
         </div>
@@ -235,8 +235,8 @@
         <!-- Subnav Bar -->
         <div class="graph-subnav">
           <div class="graph-subnav-tabs">
-            <button class="subnav-btn active" id="btnSubCallGraph">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button type="button" class="subnav-btn active" id="btnSubCallGraph">
+              <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="18" cy="5" r="3"></circle>
                 <circle cx="6" cy="12" r="3"></circle>
                 <circle cx="18" cy="19" r="3"></circle>
@@ -245,16 +245,16 @@
               </svg>
               Call Hierarchy Graph
             </button>
-            <button class="subnav-btn" id="btnSubRepomap">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button type="button" class="subnav-btn" id="btnSubRepomap">
+              <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
                 <polyline points="2 17 12 22 22 17"></polyline>
                 <polyline points="2 12 12 17 22 12"></polyline>
               </svg>
               PageRank Architectural Repomap
             </button>
-            <button class="subnav-btn" id="btnSubRoutes">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button type="button" class="subnav-btn" id="btnSubRoutes">
+              <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M4 17h16M4 12h16M4 7h16"></path>
               </svg>
               HTTP Routes Discovery
@@ -268,7 +268,7 @@
             <!-- Floating Controls -->
             <div class="canvas-floating-controls">
               <div class="symbol-search-box">
-                <svg class="symbol-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg aria-hidden="true" class="symbol-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <circle cx="11" cy="11" r="8"></circle>
                   <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                 </svg>
@@ -282,15 +282,15 @@
               </div>
 
               <div class="canvas-tool-group">
-                <button class="tool-btn" id="btnZoomIn" title="Zoom In">+</button>
-                <button class="tool-btn" id="btnZoomOut" title="Zoom Out">−</button>
-                <button class="tool-btn" id="btnResetView" title="Reset Layout">⊡</button>
+                <button type="button" class="tool-btn" id="btnZoomIn" title="Zoom In">+</button>
+                <button type="button" class="tool-btn" id="btnZoomOut" title="Zoom Out">−</button>
+                <button type="button" class="tool-btn" id="btnResetView" title="Reset Layout">⊡</button>
               </div>
             </div>
 
             <!-- Canvas Element -->
             <canvas id="graphCanvas"></canvas>
-            <div id="graphMessage" class="state-desc" role="status" hidden
+            <div id="graphMessage" role="status" hidden
               style="position:absolute;top:50%;left:0;right:0;text-align:center;transform:translateY(-50%);pointer-events:none;"></div>
 
             <!-- Legend Overlay -->
@@ -305,7 +305,7 @@
             <div class="node-inspector-drawer" id="nodeInspectorDrawer">
               <div class="inspector-header">
                 <span class="modal-title" id="inspectorSymbolTitle">Retriever.search</span>
-                <button class="modal-close" id="btnInspectorClose">✕</button>
+                <button type="button" class="modal-close" id="btnInspectorClose">✕</button>
               </div>
               <div class="inspector-body">
                 <div style="display:flex;align-items:center;gap:0.5rem;">
@@ -322,7 +322,7 @@
                     <div class="inspector-stat-lbl">Callees</div>
                   </div>
                 </div>
-                <button class="btn-primary" id="btnRefocusGraph" style="width:100%;">
+                <button type="button" class="btn-primary" id="btnRefocusGraph" style="width:100%;">
                   Center Graph on this Symbol
                 </button>
               </div>
@@ -361,11 +361,11 @@
           <div class="routes-container">
             <div class="routes-toolbar">
               <div class="routes-filter-group">
-                <button class="method-pill m-all">ALL</button>
-                <button class="method-pill m-get">GET</button>
-                <button class="method-pill m-post">POST</button>
-                <button class="method-pill m-put">PUT</button>
-                <button class="method-pill m-delete">DELETE</button>
+                <button type="button" class="method-pill m-all">ALL</button>
+                <button type="button" class="method-pill m-get">GET</button>
+                <button type="button" class="method-pill m-post">POST</button>
+                <button type="button" class="method-pill m-put">PUT</button>
+                <button type="button" class="method-pill m-delete">DELETE</button>
               </div>
               <input 
                 type="text" 
@@ -410,8 +410,8 @@
                 Query exact code shapes with XPath-like structural syntax over Tree-Sitter AST nodes.
               </p>
             </div>
-            <button class="btn-primary" id="btnRunWql">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <button type="button" class="btn-primary" id="btnRunWql">
+              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <polygon points="5 3 19 12 5 21 5 3"></polygon>
               </svg>
               Execute Query
@@ -426,12 +426,12 @@
 
           <div class="syntax-snippets-row">
             <span style="font-size:0.75rem;color:var(--text-tertiary);font-weight:600;">Presets:</span>
-            <button class="syntax-tag-btn" data-syntax="//function">//function</button>
-            <button class="syntax-tag-btn" data-syntax="//class//method">//class//method</button>
-            <button class="syntax-tag-btn" data-syntax="//interface">//interface</button>
-            <button class="syntax-tag-btn" data-syntax="//arrow_function">//arrow_function</button>
-            <button class="syntax-tag-btn" data-syntax="//function[@export=true]">//function[@export=true]</button>
-            <button class="syntax-tag-btn" data-syntax="//import_statement[@source^=&quot;@cntxt-labs&quot;]">//import_statement[@source^="@cntxt-labs"]</button>
+            <button type="button" class="syntax-tag-btn" data-syntax="//function">//function</button>
+            <button type="button" class="syntax-tag-btn" data-syntax="//class//method">//class//method</button>
+            <button type="button" class="syntax-tag-btn" data-syntax="//interface">//interface</button>
+            <button type="button" class="syntax-tag-btn" data-syntax="//arrow_function">//arrow_function</button>
+            <button type="button" class="syntax-tag-btn" data-syntax="//function[@export=true]">//function[@export=true]</button>
+            <button type="button" class="syntax-tag-btn" data-syntax="//import_statement[@source^=&quot;@cntxt-labs&quot;]">//import_statement[@source^="@cntxt-labs"]</button>
           </div>
         </div>
 
@@ -451,10 +451,7 @@
     <section id="view-status" class="view-section">
       <div class="status-monitor-container">
 
-        <div class="status-section" id="statusSourceBanner" style="display:none;">
-          <span class="badge badge-amber">DEMO DATA</span>
-          <span class="section-desc" id="statusSourceMessage">No index is connected, so this tab shows sample figures.</span>
-        </div>
+        <div class="status-section" id="statusSourceBanner" style="display:none;"></div>
 
         <!-- 4 Top Metrics -->
         <div class="telemetry-grid">
@@ -462,7 +459,7 @@
             <div class="card-header-row">
               <span class="card-label">Embedding Model</span>
               <div class="card-icon-badge">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M12 2a10 10 0 1 0 10 10H12V2z"></path>
                 </svg>
               </div>
@@ -479,7 +476,7 @@
             <div class="card-header-row">
               <span class="card-label">Indexed Symbols</span>
               <div class="card-icon-badge">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="16 18 22 12 16 6"></polyline>
                   <polyline points="8 6 2 12 8 18"></polyline>
                 </svg>
@@ -497,7 +494,7 @@
             <div class="card-header-row">
               <span class="card-label">Languages</span>
               <div class="card-icon-badge">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
                   <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
                 </svg>
@@ -514,7 +511,7 @@
             <div class="card-header-row">
               <span class="card-label">Quarantine</span>
               <div class="card-icon-badge">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
                 </svg>
               </div>
@@ -656,7 +653,7 @@
   <div class="modal-overlay" id="modalCommandPalette">
     <div class="modal-box">
       <div style="padding:1rem 1.25rem;border-bottom:1px solid var(--border-subtle);display:flex;align-items:center;gap:0.75rem;">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent-cyan);">
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--accent-cyan);">
           <circle cx="11" cy="11" r="8"></circle>
           <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
         </svg>
@@ -674,7 +671,6 @@
     </div>
   </div>
 
-  <script src="js/mock-data.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

@@ -5,6 +5,7 @@
 import { initGraphVisualizer } from './graph.js';
 import { initSearchStudio } from './search.js';
 import { initSettings } from './settings.js';
+import { stateOf } from './state-panel.js';
 import { initStatusAndWql } from './status.js';
 
 class ApiClient {
@@ -103,7 +104,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const api = new ApiClient();
   const state = {
     activeView: 'search',
-    projectRoot: 'anvesa',
   };
 
   // View Navigation
@@ -162,7 +162,9 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function closeAllModals() {
-    document.querySelectorAll('.modal-overlay').forEach((m) => m.classList.remove('open'));
+    document.querySelectorAll('.modal-overlay').forEach((m) => {
+      m.classList.remove('open');
+    });
   }
 
   if (btnCmdPalette) {
@@ -186,11 +188,11 @@ document.addEventListener('DOMContentLoaded', () => {
       },
     },
     {
-      title: 'Graph: Inspect Retriever.search Call Graph',
+      title: 'Graph: Callers and callees of a symbol',
       category: 'Code Graph',
       action: () => {
         switchView('graph');
-        window.navigateToGraphSymbol?.('Retriever.search');
+        document.getElementById('graphSymbolInput')?.focus();
       },
     },
     {
@@ -268,15 +270,28 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Check live connection
+  // The header pill says which state the project is in; the views explain it.
+  const setPill = (badge, text) => {
+    const statusPill = document.getElementById('connectionStatusPill');
+    if (!statusPill) return;
+    statusPill.className = `badge ${badge}`;
+    statusPill.innerHTML = `<span class="status-dot pulse"></span> ${text}`;
+  };
   api
     .getStatus()
-    .then((status) => {
-      const statusPill = document.getElementById('connectionStatusPill');
-      if (statusPill && status.live) {
-        statusPill.innerHTML = '<span class="status-dot pulse"></span> Live Index Connected';
-      }
+    .then((resp) => {
+      // The project's own folder name, with the full path on hover.
+      const root = typeof resp?.root === 'string' ? resp.root : '';
+      const rootText = document.getElementById('projectRootText');
+      if (rootText && root)
+        rootText.textContent = root.split(/[\\/]/).filter(Boolean).pop() ?? root;
+      document.getElementById('projectRootIndicator')?.setAttribute('title', root);
+      const panel = stateOf(resp);
+      if (!panel) setPill('badge-emerald', 'Live Index Connected');
+      else if (panel.state === 'not-indexed') setPill('badge-amber', 'Not indexed');
+      else setPill('badge-amber', 'No index open');
     })
-    .catch(() => {});
+    .catch(() => setPill('badge-rose', 'Server not answering'));
 
   // Initialize Subsystems
   initSearchStudio(state, api);
