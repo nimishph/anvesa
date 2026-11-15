@@ -1,4 +1,4 @@
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { InvalidArgumentError, toCodeLensError } from '@cntxt-labs/anvesa-core';
 import {
   type Embedder,
@@ -54,11 +54,13 @@ export const root = (ctx: Context): string =>
     ? findProjectRoot(ctx.environment.cwd, ctx.environment.env)
     : startDirectory(ctx);
 
+/** The models folder, with the project's `.anvesa/models/` configs looked at before the user's. */
 export function modelCache(ctx: Context): ModelCache {
   return new ModelCache(
     ctx.parsed.values.models
       ? resolve(ctx.environment.cwd, ctx.parsed.values.models)
       : modelsDirectory(ctx.environment.env),
+    { projectModels: join(root(ctx), '.anvesa', 'models') },
   );
 }
 

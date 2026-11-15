@@ -76,9 +76,6 @@ the previous default. Each comes with a learned ranker: symbol search scores eve
 penalty, then reorders the top 30 with the encoder's ranker, and shows that second order (see
 `docs/learned-ranker.md`). The 150m is what automatic choice and `init` propose: it indexes on a CPU at about 40 ms
 a symbol card. Choose a bigger one with `--model` (best on a GPU).
-Models that used to be built in (MiniLM, BGE, GTE, jina) are refused by name with what replaced them; a
-project configured with one needs the replacement installed and an index run.
-
 Bring your own model: an ONNX file with its Hugging Face `tokenizer.json` (WordPiece, byte-level
 BPE or SentencePiece unigram, each verified against the reference tokenizers):
 
@@ -92,6 +89,18 @@ Pooling and the input window are read from the model's own configuration (`1_Poo
 `sentence_bert_config.json`, `config.json`); if they are not there, pass `--pooling mean|cls` and
 `--max-tokens N`. The number of dimensions is read by running the model. Its files are pinned by
 checksum at the first install, and installing different files under the same name needs `--force`.
+
+Or describe a model in a config file, and anvesa fetches and pins it like a built-in one: put
+`<id>.json` in `~/.anvesa/models/` (yours, on this machine) or in the project's `.anvesa/models/`
+(committed, so everyone on the project gets the same encoder; it wins over yours). The format is
+[schemas/model.v1.json](schemas/model.v1.json), the one the built-in models use, without `family`
+and `tier`: the repository, an optional pinned `revision`, each file's path, size and SHA-256, the
+dimensions, window and pooling. Its id is the file's name and may not be a built-in one.
+
+```sh
+anvesa model list                                     # shows it under Configured
+anvesa model use team-encoder --download              # fetches the pinned files, then uses it
+```
 
 Models and grammars are checked against pinned checksums. Nothing touches the network unless you
 pass `--download`.

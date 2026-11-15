@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import type { InstalledModel } from './cache.ts';
 import { ModelCache } from './cache.ts';
 import { ModelUnavailableError } from './errors.ts';
@@ -70,12 +71,12 @@ describe('choosing a built-in model automatically', () => {
   });
 });
 
-describe('a model that is no longer built in', () => {
-  test('is refused by name with what replaced it', async () => {
+describe('a model anvesa does not know', () => {
+  test('is refused by name, listing what it does know', async () => {
     const failure = await resolveModel(new FakeCache(['medium']), {
       model: 'bge-base-en-v1.5',
     }).catch((e) => e);
+    expect(failure).toBeInstanceOf(InvalidArgumentError);
     expect(failure.message).toContain('anvesa-code-150m');
-    expect(failure.message).toContain('no longer built in');
   });
 });
