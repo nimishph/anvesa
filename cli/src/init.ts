@@ -264,7 +264,7 @@ async function chooseModel(
 }
 
 /** Record the choice so every teammate and every run uses the same model. */
-async function rememberModel(projectRoot: string, id: string): Promise<void> {
+export async function rememberModel(projectRoot: string, id: string): Promise<void> {
   const config = await loadProjectConfig(projectRoot);
   await writeProjectConfig(projectRoot, {
     ...config,

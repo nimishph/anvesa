@@ -45,6 +45,7 @@ import { agentTargets, applyAgentSection, renderAgentFiles } from './agent-instr
 import type { Environment } from './environment.ts';
 import { CommandFailedError } from './errors.ts';
 import { renderSetup, setupProject } from './init.ts';
+import { useModel } from './model-use.ts';
 import { integerOption, type Parsed } from './options.ts';
 import { getPrimer, renderPrimer } from './primer.ts';
 import { renderIndexBar } from './progress.ts';
@@ -1680,6 +1681,16 @@ export async function modelCommand(ctx: Context): Promise<void> {
       emit(ctx, models, () => show.renderModels(models));
       return;
     }
+    case 'use': {
+      const used = await useModel(ctx, root(ctx), cache, inner.parsed.positionals[0]);
+      emit(
+        ctx,
+        used,
+        () => `${used.note}
+`,
+      );
+      return;
+    }
     case 'doctor': {
       const config = await loadProjectConfig(root(ctx));
       const doctor = await doctorModels(cache, config);
@@ -1725,7 +1736,7 @@ export async function modelCommand(ctx: Context): Promise<void> {
       return;
     }
     default:
-      throw new InvalidArgumentError('model', 'list, install, verify or doctor', sub);
+      throw new InvalidArgumentError('model', 'list, use, install, verify or doctor', sub);
   }
 }
 

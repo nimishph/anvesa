@@ -798,14 +798,30 @@ const MODEL_COLUMNS: readonly Column<ModelRow>[] = [
   { header: 'Installed', cell: (m) => (m.installed ? '✓' : '') },
 ];
 
+const MODEL_GROUPS: readonly { readonly family: ModelRow['family']; readonly title: string }[] = [
+  { family: 'anvesa-code', title: "anvesa-code: anvesa's own code-search encoders" },
+  { family: 'open', title: 'Open models: open-licence encoders anvesa can fetch and pin' },
+  { family: 'custom', title: 'Brought in by you' },
+];
+
+/** One table, so the columns line up, with a heading row before each group that has models. */
 export function renderModels(models: readonly ModelRow[]): string {
+  const rows = table(MODEL_COLUMNS, models);
+  const [header, rule, ...body] = rows;
+  const out: string[] = [header ?? '', rule ?? ''];
+  for (const group of MODEL_GROUPS) {
+    const members = models.flatMap((m, i) => (m.family === group.family ? [body[i] ?? ''] : []));
+    if (members.length === 0) continue;
+    if (out.length > 2) out.push('');
+    out.push(group.title, ...members);
+  }
   return lines(
-    ...table(MODEL_COLUMNS, models),
+    ...out,
     '',
     'Window: input size in tokens. Memory: expected peak while embedding.',
     'Automatic choice takes anvesa-code-150m, which runs well on a CPU (anvesa model doctor says',
-    'what this machine suits); name a bigger one with --model.',
-    'Install: anvesa model install <model> --download',
+    'what this machine suits); open and custom models are used only when named.',
+    'Install: anvesa model install <model> --download   Choose: anvesa model use [model]',
   );
 }
 

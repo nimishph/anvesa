@@ -46,24 +46,36 @@ and `"` and checks the rendered card has no `hl-` text outside class attributes.
 
 ## Requirement: the encoder an index was built with is the one search uses {#req-model-recorded}
 
-Issue #26 item 1. `anvesa index --model X` records X in the index; plain `status`, `search` and
-`query` read it from there rather than re-choosing by hardware. A `--model` that differs from the
-recorded one is an error naming both. `init --model` and `model verify` accept installed custom
-models, not only the built-in list.
+Issue #26 item 1. `anvesa index --model X` records X in the project config; plain `status`,
+`search` and `query` use it rather than re-choosing by hardware. A model that differs from the one
+the index was embedded with is an error naming both. `init --model` and `model verify` accept
+installed custom models, not only the built-in list.
+
+Found already done in 0.8.0-alpha.3 (Wave B survey): `index` writes `"model"` to the config,
+`Retriever` raises `ModelMismatchError` (`RETRIEVER_MODEL_MISMATCH`), and the CLI tests "index
+records the model it embedded with" and "init --model takes a model the user installed" cover it.
 
 ```yojana:claim
 kind: text
-expression: /expected one of all-MiniLM/ in cli/src/**/*.ts
-expect: false
+expression: RETRIEVER_MODEL_MISMATCH in retriever/src/errors.ts
 ```
 
 ## Requirement: tokenizers with literal added tokens and a named pad token install {#req-tokenizer-accept}
 
 Issue #26 items 2–3. Non-special `added_tokens` (ModernBERT's `|||IP_ADDRESS|||` and whitespace
 runs) are matched literally before the model's pre-tokenizer, as Hugging Face does. A tokenizer
-with no `padding` block takes its pad token from `tokenizer_config.json`'s `pad_token`, or from
-`model install --pad-token <name>`. Acceptance: the unmodified `Alibaba-NLP/gte-modernbert-base`
-export installs and its token ids match the reference for a fixture of 50 code snippets.
+with no `padding` block still finds its pad token (ModernBERT's `<|padding|>`).
+
+Found already done in 0.8.0-alpha.3 (`addedTokenSplitter` and `PAD_NAMES` in
+`embedder/src/tokenizer-hf.ts`). Checked in Wave B: the unmodified gte-modernbert-base
+`tokenizer.json` (revision e7f32e3c) gives the same ids as Hugging Face `tokenizers` 0.22.2 on code,
+whitespace runs and the `|||…|||` tokens. The one difference is deliberate: text that spells a
+special token (`[CLS]`, `<|padding|>`) stays text, so a source file cannot inject one.
+
+```yojana:claim
+kind: text
+expression: export function addedTokenSplitter in embedder/src/tokenizer-hf.ts
+```
 
 ## Requirement: pattern parameters cannot change a query's shape {#req-pattern-escape}
 
@@ -97,12 +109,15 @@ expression: added \$schema in cli/src/commands.ts
 
 ## Requirement: `anvesa model use` picks the project's encoder interactively {#req-model-use}
 
-New. `anvesa model use` on a terminal shows a picker of the installed and installable models (from
-the catalog in req-model-catalog) with size, dimensions, licence and whether it is installed; arrow
-keys and Enter choose. `anvesa model use <id>` does the same without a prompt (scripts, CI, agents).
-The choice is written to `.anvesa/config.json`'s `model`, offers to install it if missing, and says
-that the next `anvesa index` re-embeds (and how long the current index will be unusable for dense
-search). Off a terminal with no id it errors, naming `model use <id>`.
+New. `anvesa model use` on a terminal shows a numbered list of the installed and installable
+models (from the catalog in req-model-catalog) with kind, size, licence and which is installed and
+in use; a number or a name chooses and Enter keeps the current one. It uses the same prompt `init`
+does, so it works on any terminal and in tests; an arrow-key menu would need raw-mode input the
+CLI does not have yet. `anvesa model use <id>` does the same without a prompt (scripts, CI,
+agents). The choice is written to `.anvesa/config.json`'s `model`. A model that is not installed is
+downloaded first after a yes (or with `--download`/`--yes`), so the config never names a model that
+cannot load. It says that `anvesa index` must re-embed when the model changed. Off a terminal with
+no id it errors, naming `model use <model>`.
 
 ```yojana:claim
 kind: text
@@ -114,9 +129,13 @@ expression: case 'use' in cli/src/commands.ts
 New. `model list` groups: **anvesa-code** (built in), **open models** (a curated, licence-checked
 catalog: gte-modernbert-base, Apache-2.0, first; each entry has repo, pooling, max tokens, licence
 and a pinned revision and checksums), and **installed custom** models. An open-model entry installs
-with `anvesa model install <id>`, no `--from` needed. Entries are added only with a measured MRR on
-anvesa-gen-lab's query set shown beside them, the same bar `RETIRED_MODELS` was judged by, so the
-list does not invite a model known to score below anvesa-code-150m.
+with `anvesa model install <id> --download`, no `--from` needed, and is never chosen automatically.
+
+Changed in Wave B: the bar of a measured MRR before listing is not met for gte-modernbert-base.
+anvesa-gen-lab's bench is not on the machine this was built on. The entry is listed anyway, as the
+maintainer asked, and its notes say it is a general-purpose encoder not scored on code and with no
+ranker. Scoring it is a follow-up in anvesa-gen-lab; if it scores below anvesa-code-150m, the notes
+say so.
 
 ```yojana:claim
 kind: text

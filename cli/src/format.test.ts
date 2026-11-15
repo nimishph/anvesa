@@ -210,10 +210,11 @@ describe('tables', () => {
     expect(rows).toEqual(['Name    Value', '──────  ─────', 'a           5', 'longer   1234']);
   });
 
-  it('lists models as a table, in the order given, marking what is installed', () => {
+  it('lists models as one table, grouped by family, marking what is installed', () => {
     const row = (over: Partial<ModelRow>): ModelRow => ({
       id: 'model',
       builtin: true,
+      family: 'anvesa-code',
       tier: undefined,
       dimensions: 384,
       maxTokens: 512,
@@ -227,19 +228,33 @@ describe('tables', () => {
     });
     const out = renderModels([
       row({ id: 'best-model', summary: 'code', installed: true }),
-      row({ id: 'good-model' }),
       row({
         id: 'mine',
         builtin: false,
+        family: 'custom',
         summary: 'custom model, brought in by you',
       }),
+      row({ id: 'good-model' }),
+      row({ id: 'open-model', family: 'open', license: 'Apache-2.0' }),
     ]).split('\n');
     expect(out[0]).toMatch(
       /^Model\s+Good for\s+Dims\s+Window\s+Disk\s+Memory\s+License\s+Installed$/,
     );
-    expect(out[2]).toMatch(/^best-model\s+code\s+384\s+512\s+32 MB\s+~166 MB\s+MIT\s+✓$/);
-    expect(out[3]).toMatch(/^good-model .*MIT$/);
-    expect(out[4]).toMatch(/^mine\s+custom model/);
+    // Each family under its heading, in the order given within it; one table, so columns align.
+    const footer = out.findIndex((line) => line.startsWith('Window:'));
+    expect(out.slice(2, footer + 1)).toEqual([
+      expect.stringMatching(/^anvesa-code:/),
+      expect.stringMatching(/^best-model\s+code\s+384\s+512\s+32 MB\s+~166 MB\s+MIT\s+✓$/),
+      expect.stringMatching(/^good-model .*MIT$/),
+      '',
+      expect.stringMatching(/^Open models:/),
+      expect.stringMatching(/^open-model .*Apache-2\.0$/),
+      '',
+      'Brought in by you',
+      expect.stringMatching(/^mine\s+custom model/),
+      '',
+      expect.stringMatching(/^Window:/),
+    ]);
     expect(out.join('\n')).toContain('anvesa model doctor');
   });
 });

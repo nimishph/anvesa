@@ -148,8 +148,15 @@ describe('the built-in catalog and what init proposes', () => {
   test('every model has a unique id, pinned files and a declared window', () => {
     const ids = MODEL_CATALOG.map((spec) => spec.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids).toHaveLength(3);
+    expect(ids).toEqual([
+      'anvesa-code-150m',
+      'anvesa-code-400m',
+      'anvesa-code-1b',
+      'gte-modernbert-base',
+    ]);
     for (const spec of MODEL_CATALOG) {
+      // A model from a repository anvesa does not publish is pinned to a commit.
+      if (!spec.repo.startsWith('nimishph/')) expect(spec.revision).toMatch(/^[0-9a-f]{40}$/);
       expect(spec.model.sha256).toMatch(/^[0-9a-f]{64}$/);
       expect(spec.tokenizer.sha256).toMatch(/^[0-9a-f]{64}$/);
       expect(weightBytes(spec)).toBeGreaterThan(1_000_000);
@@ -170,8 +177,10 @@ describe('the built-in catalog and what init proposes', () => {
     expect(offered[0]).toBe('anvesa-code-150m');
   });
 
-  test('the catalog is ordered smallest download first', () => {
-    const sizes = MODEL_CATALOG.map(weightBytes);
+  test("the catalog is anvesa's own models smallest download first, then the open ones", () => {
+    const own = MODEL_CATALOG.filter((spec) => spec.tier !== undefined);
+    expect(MODEL_CATALOG.slice(0, own.length)).toEqual(own);
+    const sizes = own.map(weightBytes);
     expect(sizes).toEqual([...sizes].sort((a, b) => a - b));
   });
 
