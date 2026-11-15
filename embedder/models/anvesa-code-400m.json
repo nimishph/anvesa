@@ -3,7 +3,6 @@
   "id": "anvesa-code-400m",
   "family": "anvesa-code",
   "tier": "medium",
-  "retired": ["bge-large-en-v1.5"],
   "repo": "nimishph/anvesa-code-400m",
   "model": {
     "path": "model.onnx",

@@ -80,6 +80,7 @@ export interface ModelUseResult {
 const FAMILY_LABEL: Readonly<Record<ModelRow['family'], string>> = {
   'anvesa-code': 'anvesa-code',
   open: 'open',
+  configured: 'configured',
   custom: 'yours',
 };
 

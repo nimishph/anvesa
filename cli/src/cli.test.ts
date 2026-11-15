@@ -814,6 +814,63 @@ describe('command line', () => {
     expect(kept.out).toContain('kept my-encoder');
   });
 
+  test('a model the project describes in .anvesa/models/<id>.json is listed, downloaded and used', async () => {
+    const root = makeProject();
+    const models = join(root, 'models');
+    const model = new TextEncoder().encode('a team encoder graph'.repeat(40));
+    const tokenizer = new TextEncoder().encode('{"team":"tokenizer"}');
+    const pin = (path: string, bytes: Uint8Array) => ({
+      path,
+      bytes: bytes.length,
+      sha256: new Bun.CryptoHasher('sha256').update(bytes).digest('hex'),
+    });
+    mkdirSync(join(root, '.anvesa', 'models'), { recursive: true });
+    writeFileSync(
+      join(root, '.anvesa', 'models', 'team-encoder.json'),
+      JSON.stringify({
+        id: 'team-encoder',
+        repo: 'acme/team-encoder',
+        model: pin('onnx/model.onnx', model),
+        tokenizer: pin('tokenizer.json', tokenizer),
+        dimensions: 8,
+        maxTokens: 128,
+        pooling: 'mean',
+        license: 'MIT',
+        notes: 'the encoder this team agreed on',
+      }),
+    );
+    const requested: string[] = [];
+    const fetch = (async (url: string) => {
+      requested.push(url);
+      const bytes = url.endsWith('model.onnx') ? model : tokenizer;
+      return new Response(bytes);
+    }) as unknown as typeof globalThis.fetch;
+
+    const listed = json(await cli(root, 'model', 'list', '--models', models, '--json'));
+    const row = listed.find((entry: { id: string }) => entry.id === 'team-encoder');
+    expect(row?.family).toBe('configured');
+    expect(row?.installed).toBe(false);
+
+    const used = await cliWith(
+      { fetch },
+      root,
+      'model',
+      'use',
+      'team-encoder',
+      '--download',
+      '--models',
+      models,
+    );
+    expect(used.code).toBe(0);
+    expect(requested).toEqual([
+      'https://huggingface.co/acme/team-encoder/resolve/main/tokenizer.json',
+      'https://huggingface.co/acme/team-encoder/resolve/main/onnx/model.onnx',
+    ]);
+    expect(JSON.parse(readFileSync(join(root, '.anvesa', 'config.json'), 'utf8')).model).toBe(
+      'team-encoder',
+    );
+  });
+
   test('search, retrieve and query share one layout: a header on a terminal, rows, cards on --expand', async () => {
     const root = makeProject();
     expect((await cli(root, 'index')).code).toBe(0);

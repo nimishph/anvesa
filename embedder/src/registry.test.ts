@@ -9,13 +9,7 @@ import {
 } from '../scripts/gen-model-index.ts';
 import { ModelConfigError } from './errors.ts';
 import { MODEL_CONFIGS } from './models.generated.ts';
-import {
-  BUILTIN_MODELS,
-  MODEL_CATALOG,
-  modelFamily,
-  OPEN_MODELS,
-  RETIRED_MODELS,
-} from './models.ts';
+import { BUILTIN_MODELS, MODEL_CATALOG, modelFamily, OPEN_MODELS } from './models.ts';
 import { buildRegistry, parseModelConfig, parseModelSpec } from './registry.ts';
 
 const schema = JSON.parse(
@@ -54,8 +48,6 @@ describe('model registry', () => {
     expect(modelFamily('anvesa-code-400m')).toBe('anvesa-code');
     expect(modelFamily('gte-modernbert-base')).toBe('open');
     expect(modelFamily('my-model')).toBe('custom');
-    expect(RETIRED_MODELS['all-MiniLM-L6-v2']).toBe('anvesa-code-150m');
-    expect(RETIRED_MODELS['bge-large-en-v1.5']).toBe('anvesa-code-400m');
   });
 
   test('a config with a wrong field names the file and the field', () => {
@@ -84,7 +76,7 @@ describe('model registry', () => {
     const first = entries[0];
     if (!first) throw new ModelConfigError('test', 'no configs');
     expect(() => buildRegistry([...entries, first])).toThrow(/is used twice/);
-    const twice = { ...config('anvesa-code-400m.json'), id: 'other', retired: [] };
+    const twice = { ...config('anvesa-code-400m.json'), id: 'other' };
     expect(() => buildRegistry([...entries, { source: 'o.json', config: twice }])).toThrow(
       /tier medium already has/,
     );

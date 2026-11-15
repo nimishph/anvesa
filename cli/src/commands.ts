@@ -98,11 +98,13 @@ const root = (ctx: Context): string =>
     ? findProjectRoot(ctx.environment.cwd, ctx.environment.env)
     : startDirectory(ctx);
 
+/** The models folder, with the project's `.anvesa/models/` configs looked at before the user's. */
 export function modelCache(ctx: Context): ModelCache {
   return new ModelCache(
     ctx.parsed.values.models
       ? resolve(ctx.environment.cwd, ctx.parsed.values.models)
       : modelsDirectory(ctx.environment.env),
+    { projectModels: join(root(ctx), '.anvesa', 'models') },
   );
 }
 

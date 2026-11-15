@@ -153,7 +153,14 @@ Proposal:
 - Models a person brings in (`anvesa model install --from`) keep their `custom.json` record in the
   models cache, unchanged so existing installs still load. The spec built from it goes through the
   same loader (`parseModelSpec`), so built-in and custom models share one set of checks.
-- Retired ids (`RETIRED_MODELS`) become a `retired` field in the replacement's config.
+- A person can describe a model in a config file of the same format, read at run time:
+  `~/.anvesa/models/<id>.json` (theirs, on this machine) or a project's `.anvesa/models/<id>.json`
+  (committed, so everyone on it gets the same encoder; it wins over theirs). It leaves out `family`
+  and `tier`, its id is the file name and may not be a built-in one, and `model list` shows it as
+  `configured`. `model install|use <id> --download` fetches and pins it like a built-in one.
+- No retired ids. anvesa does not retire third-party models; a project naming one it no longer
+  ships gets the ordinary unknown-model error, and can describe that model itself as above. If an
+  anvesa-code encoder is ever withdrawn, that is decided then, for anvesa's own models only.
 
 ```yojana:claim
 kind: path

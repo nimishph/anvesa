@@ -7,13 +7,15 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { type Deadline, toCodeLensError } from '@cntxt-labs/anvesa-core';
 import {
+  ModelConfigError,
   ModelInstallError,
   ModelIntegrityError,
   ModelUnavailableError,
   NetworkForbiddenError,
 } from './errors.ts';
 import type { CardForm, ModelFileSpec, ModelSpec, Pooling } from './model-spec.ts';
-import { parseModelSpec } from './registry.ts';
+import { builtinModel } from './models.ts';
+import { MODEL_ID, parseLocalModelConfig, parseModelSpec } from './registry.ts';
 
 /** A model on disk, ready to load. */
 export interface InstalledModel {
@@ -111,12 +113,76 @@ export interface DownloadOptions {
   readonly onProgress?: (file: string, received: number, expected: number) => void;
 }
 
+/** Where a model config a person wrote was found: the project's, or their own for this machine. */
+export type ConfigTier = 'project' | 'user';
+
+/** A model described by a config file (`<id>.json`) rather than built in or brought in. */
+export interface ConfiguredModel {
+  readonly spec: ModelSpec;
+  readonly tier: ConfigTier;
+  readonly path: string;
+}
+
+export interface ModelCacheOptions {
+  /**
+   * A project's `.anvesa/models/`: model configs it commits, so everyone on it gets the same
+   * encoder. Looked at before the user's own, which are `<id>.json` files in the cache's root.
+   */
+  readonly projectModels?: string;
+}
+
 /** The place models are kept. Every install is checked against pinned SHA-256s and is atomic. */
 export class ModelCache {
   readonly root: string;
+  /** Where model configs are looked for, first match wins: the project's, then the user's. */
+  readonly configDirectories: readonly { readonly tier: ConfigTier; readonly directory: string }[];
 
-  constructor(root: string = modelsDirectory()) {
+  constructor(root: string = modelsDirectory(), options: ModelCacheOptions = {}) {
     this.root = root;
+    this.configDirectories = [
+      ...(options.projectModels
+        ? [{ tier: 'project' as const, directory: options.projectModels }]
+        : []),
+      { tier: 'user' as const, directory: root },
+    ];
+  }
+
+  /**
+   * Whatever anvesa knows by this id: built in, described by a config file (the project's, then the
+   * user's), or brought in with `model install --from`. `undefined` if none.
+   */
+  async findSpec(id: string): Promise<ModelSpec | undefined> {
+    return builtinModel(id) ?? (await this.configured(id))?.spec ?? (await this.findCustom(id));
+  }
+
+  /**
+   * The model a config file describes under this id, if there is one. A file that is there but
+   * wrong is an error naming the file and the field, not a model quietly missing.
+   */
+  async configured(id: string): Promise<ConfiguredModel | undefined> {
+    if (!MODEL_ID.test(id)) return undefined;
+    for (const { tier, directory } of this.configDirectories) {
+      const path = join(directory, `${id}.json`);
+      if (existsSync(path)) return { spec: await readModelConfig(path, id), tier, path };
+    }
+    return undefined;
+  }
+
+  /** Every model a config file describes; a project's shadows a user's of the same id. */
+  async configuredModels(): Promise<readonly ConfiguredModel[]> {
+    const ids = new Set<string>();
+    for (const { directory } of this.configDirectories) {
+      if (!existsSync(directory)) continue;
+      for (const entry of await readdir(directory, { withFileTypes: true })) {
+        if (entry.isFile() && entry.name.endsWith('.json')) ids.add(entry.name.slice(0, -5));
+      }
+    }
+    const found: ConfiguredModel[] = [];
+    for (const id of [...ids].sort()) {
+      const model = await this.configured(id);
+      if (model) found.push(model);
+    }
+    return found;
   }
 
   directoryOf(id: string): string {
@@ -561,4 +627,22 @@ async function copyHashed(
     });
   }
   return { bytes, sha256: hash.digest('hex') };
+}
+
+/**
+ * Read a model config a person wrote. Its id must be its file name, and it may not take a built-in
+ * id: a file on one machine must not change what a built-in name means (its vectors, its telemetry).
+ */
+async function readModelConfig(path: string, id: string): Promise<ModelSpec> {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await readFile(path, 'utf8'));
+  } catch (failure) {
+    throw new ModelConfigError(path, 'it is not valid JSON', { cause: failure });
+  }
+  const spec = parseLocalModelConfig(raw, path, id);
+  if (builtinModel(spec.id)) {
+    throw new ModelConfigError(path, `${spec.id} is a built-in model; give yours another id`);
+  }
+  return spec;
 }

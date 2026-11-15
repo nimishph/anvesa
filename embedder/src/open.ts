@@ -5,14 +5,7 @@ import { ModelCache } from './cache.ts';
 import { batchTokensFor, LocalEmbedder } from './encoder.ts';
 import { ModelUnavailableError } from './errors.ts';
 import { chooseTier, type HardwareProbe, probeHardware } from './hardware.ts';
-import {
-  BUILTIN_MODELS,
-  builtinModel,
-  MODEL_CATALOG,
-  type ModelSpec,
-  RETIRED_MODELS,
-  TIERS,
-} from './models.ts';
+import { BUILTIN_MODELS, MODEL_CATALOG, type ModelSpec, TIERS } from './models.ts';
 import { tokenizerFromJson } from './tokenizer.ts';
 
 export interface OpenOptions {
@@ -79,18 +72,6 @@ export async function openLocalEmbedder(
   return embedder;
 }
 
-/** A model that was built in and is not any more: say what replaced it, rather than list every choice. */
-export function retired(id: string): void {
-  const replacement = RETIRED_MODELS[id];
-  if (replacement) {
-    throw new InvalidArgumentError(
-      'model',
-      `${replacement}: ${id} is no longer built in (install ${replacement} and index again)`,
-      id,
-    );
-  }
-}
-
 export interface Resolution {
   readonly spec: ModelSpec;
   /** How it was decided, for a `doctor` or `status` line. */
@@ -114,13 +95,14 @@ export async function resolveModel(
   } = {},
 ): Promise<Resolution> {
   if (options.model !== undefined) {
-    const spec = builtinModel(options.model) ?? (await cache.findCustom(options.model));
+    const spec = await cache.findSpec(options.model);
     if (!spec) {
-      retired(options.model);
       const custom = (await cache.customModels()).map((model) => model.id);
+      const configured = (await cache.configuredModels()).map((model) => model.spec.id);
+      const known = [...MODEL_CATALOG.map((spec) => spec.id), ...configured, ...custom];
       throw new InvalidArgumentError(
         'model',
-        `one of ${[...MODEL_CATALOG.map((spec) => spec.id), ...custom].join(', ')}`,
+        `one of ${known.join(', ')}, or a model you describe in ${cache.root}/<id>.json`,
         options.model,
       );
     }

@@ -175,6 +175,9 @@ anvesa model list                            # anvesa-code, open models (gte-mod
 anvesa model use anvesa-code-400m            # the model this project uses; asks when no name is given
 anvesa model install <id> --download         # fetch and pin a catalog model
 ```
+A model not in the catalog can be described in `.anvesa/models/<id>.json` (the project's) or
+`~/.anvesa/models/<id>.json` (the user's), in the format of `schemas/model.v1.json`; it is then
+listed as configured and fetched with `--download` like a catalog one.
 After `model use`, run `anvesa index`: search refuses an index embedded with another model
 (`RETRIEVER_MODEL_MISMATCH`). See `anvesa primer models`.
 

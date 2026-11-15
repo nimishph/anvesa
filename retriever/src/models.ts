@@ -3,6 +3,7 @@ import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import type { Embedder } from '@cntxt-labs/anvesa-dense';
 import {
   builtinModel,
+  type ConfiguredModel,
   chooseTier,
   estimatePeakRssMb,
   type HardwareProbe,
@@ -18,7 +19,6 @@ import {
   type Pooling,
   probeHardware,
   resolveModel,
-  retired,
   type Tier,
   type TierChoice,
   weightBytes,
@@ -43,10 +43,14 @@ export interface ModelRow {
   readonly summary: string;
 }
 
-const rowOf = async (cache: ModelCache, spec: ModelSpec): Promise<ModelRow> => ({
+const rowOf = async (
+  cache: ModelCache,
+  spec: ModelSpec,
+  configured?: ConfiguredModel,
+): Promise<ModelRow> => ({
   id: spec.id,
   builtin: builtinModel(spec.id) !== undefined,
-  family: modelFamily(spec.id),
+  family: configured ? 'configured' : modelFamily(spec.id),
   tier: spec.tier,
   dimensions: spec.dimensions,
   maxTokens: spec.maxTokens,
@@ -55,19 +59,29 @@ const rowOf = async (cache: ModelCache, spec: ModelSpec): Promise<ModelRow> => (
   estimatedMemoryMb: Math.round(estimatePeakRssMb(weightBytes(spec))),
   license: spec.license,
   notes: spec.notes,
-  summary: spec.summary ?? (builtinModel(spec.id) ? '' : 'custom model, brought in by you'),
+  summary:
+    spec.summary ??
+    (configured
+      ? `described in ${configured.path}`
+      : builtinModel(spec.id)
+        ? ''
+        : 'custom model, brought in by you'),
 });
 
 /**
- * The built-in models (smallest first, so the default leads), then the ones the user brought in,
- * with which are installed in this cache.
+ * The built-in models (smallest first, so the default leads), then the ones described by a config
+ * file (the project's, then the user's), then the ones the user brought in, with which are installed
+ * in this cache.
  */
 export async function listModels(cache: ModelCache): Promise<readonly ModelRow[]> {
   const rows: ModelRow[] = [];
   for (const spec of MODEL_CATALOG) rows.push(await rowOf(cache, spec));
-  // A model brought in under an id that is now built in is that built-in's row, not a second one.
+  const configured = await cache.configuredModels();
+  for (const model of configured) rows.push(await rowOf(cache, model.spec, model));
+  const described = new Set(configured.map((model) => model.spec.id));
+  // A model brought in under an id that is now built in or described is that row, not a second one.
   for (const spec of await cache.customModels()) {
-    if (!builtinModel(spec.id)) rows.push(await rowOf(cache, spec));
+    if (!builtinModel(spec.id) && !described.has(spec.id)) rows.push(await rowOf(cache, spec));
   }
   return rows;
 }
@@ -75,7 +89,7 @@ export async function listModels(cache: ModelCache): Promise<readonly ModelRow[]
 export interface InstallModelOptions {
   /** A directory (or, for a model brought in, the `.onnx` file) on this machine. */
   readonly from?: string;
-  /** Fetch a built-in model's pinned files. Never done unless asked for. */
+  /** Fetch a built-in or configured model's pinned files. Never done unless asked for. */
   readonly download?: boolean;
   /** For a model brought in: how it pools, when its own files do not say. */
   readonly pooling?: Pooling;
@@ -90,22 +104,22 @@ export interface InstallModelOptions {
 }
 
 /**
- * Install a model. A built-in id comes from a directory on this machine, or by downloading the
- * pinned files when `download` is set. Any other id is a model the user brings, from a directory
- * or an `.onnx` file with its `tokenizer.json`: its checksums are pinned at this first install.
+ * Install a model. A built-in id, or one a config file describes, comes from a directory on this
+ * machine, or by downloading the pinned files when `download` is set. Any other id is a model the
+ * user brings, from a directory or an `.onnx` file with its `tokenizer.json`: its checksums are
+ * pinned at this first install.
  */
 export async function installModel(
   cache: ModelCache,
   id: string,
   options: InstallModelOptions,
 ): Promise<InstalledModel> {
-  const spec = builtinModel(id);
+  const spec = builtinModel(id) ?? (await cache.configured(id))?.spec;
   if (!spec) {
     if (options.from === undefined) {
-      retired(id);
       throw new InvalidArgumentError(
         'model',
-        `a built-in model (${MODEL_CATALOG.map((spec) => spec.id).join(', ')}), or a new name with --from <dir|file.onnx> to bring in your own`,
+        `a built-in model (${MODEL_CATALOG.map((spec) => spec.id).join(', ')}), one described in ${cache.root}/<id>.json, or a new name with --from <dir|file.onnx> to bring in your own`,
         id,
       );
     }
@@ -140,7 +154,7 @@ export async function verifyModel(
   id: string,
   deadline?: Deadline,
 ): Promise<InstalledModel> {
-  const spec = builtinModel(id) ?? (await cache.findCustom(id));
+  const spec = await cache.findSpec(id);
   if (!spec) {
     throw new InvalidArgumentError(
       'model',

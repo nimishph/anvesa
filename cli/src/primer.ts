@@ -210,6 +210,9 @@ Embedding runs locally (ONNX). Nothing downloads without \`--download\` or a yes
 - **anvesa-code** (MIT): anvesa-code-150m (default, CPU), -400m, -1b. Each comes with a learned ranker.
 - **Open models**: open-licence encoders anvesa can fetch and pin to an upstream commit, e.g.
   gte-modernbert-base (Apache-2.0). Used only when named; not scored on code search.
+- **Configured**: a model described in \`.anvesa/models/<id>.json\` (the project's, which wins) or
+  \`~/.anvesa/models/<id>.json\` (yours): repository, pinned files and checksums, dimensions, pooling,
+  as in \`schemas/model.v1.json\`. Fetched with \`--download\` like a catalog model.
 - **Yours**: \`model install <name> --from <dir|file.onnx>\` (\`--pooling mean|cls\`, \`--max-tokens\`).
 
 ### Commands

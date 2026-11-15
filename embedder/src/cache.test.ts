@@ -347,3 +347,68 @@ describe('downloading', () => {
     expect(failure.cause).toBeDefined();
   });
 });
+
+describe('models described by a config file a person writes', () => {
+  /** The test model as a config file says it: no family, no tier, id as the file name. */
+  const described = (id: string, extra: Record<string, unknown> = {}): string =>
+    JSON.stringify({ ...spec, id, tier: undefined, ...extra });
+
+  test("the user's ~/.anvesa/models/<id>.json is found by id, and downloads like a built-in", async () => {
+    const root = scratch();
+    writeFileSync(join(root, 'my-encoder.json'), described('my-encoder'));
+    const cache = new ModelCache(root);
+    const found = await cache.configured('my-encoder');
+    expect(found?.tier).toBe('user');
+    expect((await cache.findSpec('my-encoder'))?.repo).toBe('acme/test-model');
+    const requested: string[] = [];
+    await cache.download(found?.spec ?? spec, {
+      allowNetwork: true,
+      fetch: serving(
+        { 'onnx/model.onnx': MODEL_BYTES, 'tokenizer.json': TOKENIZER_BYTES },
+        requested,
+      ),
+    });
+    expect(requested).toHaveLength(2);
+    expect(await cache.find(found?.spec ?? spec)).toBeDefined();
+  });
+
+  test("a project's .anvesa/models/<id>.json shadows the user's of the same id", async () => {
+    const root = scratch();
+    const project = scratch();
+    writeFileSync(join(root, 'shared.json'), described('shared', { notes: 'mine' }));
+    writeFileSync(join(project, 'shared.json'), described('shared', { notes: 'the project’s' }));
+    writeFileSync(join(root, 'only-mine.json'), described('only-mine'));
+    const cache = new ModelCache(root, { projectModels: project });
+    expect((await cache.configured('shared'))?.tier).toBe('project');
+    expect((await cache.findSpec('shared'))?.notes).toBe('the project’s');
+    const all = await cache.configuredModels();
+    expect(all.map((model) => `${model.spec.id}:${model.tier}`)).toEqual([
+      'only-mine:user',
+      'shared:project',
+    ]);
+  });
+
+  test('a file that is wrong names itself and the field, rather than the model going missing', async () => {
+    const root = scratch();
+    writeFileSync(join(root, 'broken.json'), described('broken', { pooling: 'max' }));
+    writeFileSync(join(root, 'named.json'), described('other-name'));
+    writeFileSync(join(root, 'tiered.json'), described('tiered', { tier: 'low' }));
+    writeFileSync(join(root, 'garbled.json'), '{ not json');
+    const cache = new ModelCache(root);
+    await expect(cache.configured('broken')).rejects.toThrow(
+      /broken\.json.*pooling must be one of/,
+    );
+    await expect(cache.configured('named')).rejects.toThrow(/must match the file name/);
+    await expect(cache.configured('tiered')).rejects.toThrow(/tier is for built-in models only/);
+    await expect(cache.configured('garbled')).rejects.toThrow(/not valid JSON/);
+  });
+
+  test('a config may not take a built-in id, and an id that is not a file name is never looked up', async () => {
+    const root = scratch();
+    writeFileSync(join(root, 'anvesa-code-150m.json'), described('anvesa-code-150m'));
+    const cache = new ModelCache(root);
+    await expect(cache.configured('anvesa-code-150m')).rejects.toThrow(/is a built-in model/);
+    expect((await cache.findSpec('anvesa-code-150m'))?.repo).toBe('nimishph/anvesa-code-150m');
+    expect(await cache.configured('../escape')).toBeUndefined();
+  });
+});

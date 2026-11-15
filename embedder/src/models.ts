@@ -40,20 +40,18 @@ export const OPEN_MODELS: readonly ModelSpec[] = REGISTRY.open;
 /** Built in beyond the tiers: the open models. */
 export const ADDITIONAL_MODELS: readonly ModelSpec[] = OPEN_MODELS;
 
-/** Where a model comes from, as `model list` groups them. */
-export type ModelFamily = 'anvesa-code' | 'open' | 'custom';
+/**
+ * Where a model comes from, as `model list` groups them: anvesa's own, an open one it ships a config
+ * for, one described by a config file a person wrote (`configured`), or one brought in from files
+ * (`custom`). `modelFamily` knows only the built-in ones; the cache knows the rest.
+ */
+export type ModelFamily = 'anvesa-code' | 'open' | 'configured' | 'custom';
 
 export function modelFamily(id: string): ModelFamily {
   return REGISTRY.configs.find((config) => config.spec.id === id)?.family ?? 'custom';
 }
 
 export const ANVESA_CODE_MODELS: readonly ModelSpec[] = REGISTRY.anvesaCode;
-
-/**
- * Models that were built in and are not any more, and what to use instead: each replacement's
- * config lists the ids it took over (`retired`).
- */
-export const RETIRED_MODELS: Readonly<Record<string, string>> = REGISTRY.retired;
 
 /** Every built-in model: anvesa's own smallest first (so the default leads), then the open ones. */
 export const MODEL_CATALOG: readonly ModelSpec[] = [

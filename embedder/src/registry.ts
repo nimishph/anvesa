@@ -1,7 +1,7 @@
 /**
  * The model registry: built-in encoders are described one JSON file each, in `embedder/models/`
- * (format: `schemas/model.v1.json`), and everything else (the catalog, the tiers, the open models,
- * the retired ids) is a view of those files.
+ * (format: `schemas/model.v1.json`), and everything else (the catalog, the tiers, the open models)
+ * is a view of those files.
  *
  * A compiled binary has no source folder to read at run time, so the files are imported by
  * `models.generated.ts`, which `embedder/scripts/gen-model-index.ts` writes. Adding a model is: add
@@ -18,8 +18,6 @@ export type BuiltinFamily = 'anvesa-code' | 'open';
 export interface ModelConfig {
   readonly family: BuiltinFamily;
   readonly spec: ModelSpec;
-  /** Ids that were built in and are not any more, for which this model is the replacement. */
-  readonly retired: readonly string[];
 }
 
 /** The views every caller uses, built once from the configs. */
@@ -29,8 +27,6 @@ export interface ModelRegistry {
   readonly byTier: Readonly<Record<Tier, ModelSpec>>;
   readonly anvesaCode: readonly ModelSpec[];
   readonly open: readonly ModelSpec[];
-  /** A retired id, and what to use instead. */
-  readonly retired: Readonly<Record<string, string>>;
 }
 
 const TIER_VALUES: readonly Tier[] = ['low', 'medium', 'high'];
@@ -43,7 +39,6 @@ const CONFIG_KEYS = new Set([
   'id',
   'family',
   'tier',
-  'retired',
   'repo',
   'revision',
   'model',
@@ -113,15 +108,6 @@ class Reader {
     return this.fields[key] === undefined ? undefined : this.oneOf(key, values);
   }
 
-  strings(key: string): readonly string[] {
-    const value = this.fields[key];
-    if (value === undefined) return [];
-    if (!Array.isArray(value) || value.some((item) => typeof item !== 'string' || item === '')) {
-      this.fail(`${key} must be a list of ids`);
-    }
-    return value;
-  }
-
   file(key: string): ModelFileSpec {
     const value = this.fields[key];
     if (!isFields(value)) this.fail(`${key} must be an object with path, bytes and sha256`);
@@ -187,7 +173,29 @@ export function parseModelConfig(raw: unknown, source: string): ModelConfig {
     read.fail('an anvesa-code model needs a tier');
   if (family === 'open' && spec.tier !== undefined) read.fail('an open model has no tier');
   if (spec.summary === undefined) read.fail('a built-in model needs a summary');
-  return { family, spec, retired: read.strings('retired') };
+  return { family, spec };
+}
+
+/** The id a model config file may have: also its file name, so nothing that reaches a path. */
+export const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/**
+ * Check a model config a person wrote: `~/.anvesa/models/<id>.json` or a project's
+ * `.anvesa/models/<id>.json`. The same format and checks as a built-in one, less what only anvesa's
+ * own catalog decides (`family`, `tier`), and its id must be the file's name.
+ */
+export function parseLocalModelConfig(raw: unknown, source: string, fileId: string): ModelSpec {
+  const spec = parseModelSpec(raw, source);
+  if (!isFields(raw)) throw new ModelConfigError(source, 'it must be a JSON object');
+  const read = new Reader(source, raw);
+  for (const key of Object.keys(raw)) {
+    if (!CONFIG_KEYS.has(key)) read.fail(`unknown field ${key}`);
+  }
+  if (raw.family !== undefined) read.fail('family is for built-in models only');
+  if (raw.tier !== undefined) read.fail('tier is for built-in models only');
+  if (!MODEL_ID.test(spec.id)) read.fail('id must be letters, digits, ".", "_" or "-"');
+  if (spec.id !== fileId) read.fail(`id ${spec.id} must match the file name (${fileId}.json)`);
+  return spec;
 }
 
 /** Build the registry from the configs, and refuse a catalog that does not hold together. */
@@ -196,7 +204,6 @@ export function buildRegistry(
 ): ModelRegistry {
   const configs = entries.map((entry) => parseModelConfig(entry.config, entry.source));
   const ids = new Set<string>();
-  const retired: Record<string, string> = {};
   const byTier: Partial<Record<Tier, ModelSpec>> = {};
   for (const [index, config] of configs.entries()) {
     const source = entries[index]?.source ?? config.spec.id;
@@ -209,14 +216,6 @@ export function buildRegistry(
         throw new ModelConfigError(source, `tier ${tier} already has ${byTier[tier].id}`);
       byTier[tier] = config.spec;
     }
-    for (const id of config.retired) {
-      if (retired[id])
-        throw new ModelConfigError(source, `${id} is already retired to ${retired[id]}`);
-      retired[id] = config.spec.id;
-    }
-  }
-  for (const id of Object.keys(retired)) {
-    if (ids.has(id)) throw new ModelConfigError(id, 'a retired id is also a built-in model');
   }
   const low = byTier.low;
   const medium = byTier.medium;
@@ -233,6 +232,5 @@ export function buildRegistry(
     byTier: { low, medium, high },
     anvesaCode: configs.filter((c) => c.family === 'anvesa-code').map((c) => c.spec),
     open: configs.filter((c) => c.family === 'open').map((c) => c.spec),
-    retired,
   };
 }
