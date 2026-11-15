@@ -1,0 +1,35 @@
+{
+  "$schema": "../../schemas/model.v1.json",
+  "id": "anvesa-code-1b",
+  "family": "anvesa-code",
+  "tier": "high",
+  "repo": "nimishph/anvesa-code-1b",
+  "model": {
+    "path": "model.onnx",
+    "bytes": 1034044,
+    "sha256": "df33320b7ea9a50823b04f5b189fa4077f72fa530274a36e9634d1e4e1cdeae1"
+  },
+  "modelData": {
+    "path": "model.onnx_data",
+    "bytes": 4112202752,
+    "sha256": "2bf8038ac17358a505091b27816beac37a32e64cf3d928212b36a634ef775805"
+  },
+  "tokenizer": {
+    "path": "tokenizer.json",
+    "bytes": 3583387,
+    "sha256": "657af518d877b6422fa44277c008870520894bffcaea6490504ee426c57aa548"
+  },
+  "ranker": {
+    "path": "ranker-noword.json",
+    "bytes": 244475,
+    "sha256": "7d49fa95580cb568be0bb1eb6105da9557bf91e3e4436dfbbc640d3efc2304ca"
+  },
+  "dimensions": 1792,
+  "maxTokens": 512,
+  "pooling": "mean",
+  "cardForm": "nopath",
+  "paramsM": 1000,
+  "license": "MIT",
+  "summary": "level with the 400m at 4x its CPU time; for a GPU",
+  "notes": "0.352 MRR on the corpus test set and 0.685 on the bench: no measurable gain over the 400m for four times its CPU time (373 ms a card) and about 4 GB. Index on a GPU (ANVESA_DEVICE=gpu) where there is one."
+}

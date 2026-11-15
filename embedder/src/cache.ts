@@ -12,7 +12,8 @@ import {
   ModelUnavailableError,
   NetworkForbiddenError,
 } from './errors.ts';
-import type { CardForm, ModelFileSpec, ModelSpec, Pooling } from './models.ts';
+import type { CardForm, ModelFileSpec, ModelSpec, Pooling } from './model-spec.ts';
+import { parseModelSpec } from './registry.ts';
 
 /** A model on disk, ready to load. */
 export interface InstalledModel {
@@ -351,7 +352,13 @@ export class ModelCache {
   /** A model the user brought, if one is installed under this id. */
   async findCustom(id: string): Promise<ModelSpec | undefined> {
     const record = await this.#customRecord(this.directoryOf(id));
-    return record ? customSpec(record) : undefined;
+    if (!record) return undefined;
+    try {
+      return customSpec(record);
+    } catch {
+      // A record that fails the checks every model config passes cannot be trusted: as good as absent.
+      return undefined;
+    }
   }
 
   /** Every model the user brought. */
@@ -492,8 +499,15 @@ async function hashFile(path: string, deadline?: Deadline): Promise<string> {
   return hash.digest('hex');
 }
 
-/** The spec of a custom model: the same shape as a built-in one, pinned by the first install. */
+/**
+ * The spec of a custom model: the same shape as a built-in one, pinned by the first install, and
+ * checked by the same loader as the built-in configs.
+ */
 function customSpec(record: CustomRecord): ModelSpec {
+  return parseModelSpec(customFields(record), `${record.id}/${CUSTOM_FILE}`);
+}
+
+function customFields(record: CustomRecord): Record<string, unknown> {
   return {
     id: record.id,
     tier: undefined,

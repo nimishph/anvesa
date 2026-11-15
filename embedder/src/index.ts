@@ -34,6 +34,8 @@ export {
 } from './models.ts';
 export type { OpenOptions, Resolution } from './open.ts';
 export { openLocalEmbedder, resolveModel, retired } from './open.ts';
+export type { BuiltinFamily, ModelConfig, ModelRegistry } from './registry.ts';
+export { buildRegistry, parseModelConfig, parseModelSpec } from './registry.ts';
 export type { Tokenizer, WordPieceOptions } from './tokenizer.ts';
 export { tokenizerFromJson, tokenizerFromVocabulary, WordPieceTokenizer } from './tokenizer.ts';
 export { ByteLevelBpeTokenizer } from './tokenizer-bpe.ts';

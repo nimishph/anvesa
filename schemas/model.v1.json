@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/nimishph/anvesa/main/schemas/model.v1.json",
+  "title": "Anvesa Model Configuration Schema (v1)",
+  "description": "One built-in encoder (embedder/models/<id>.json): where its files come from, pinned by size and SHA-256, and how to run it. After adding or changing a file, run: bun run embedder/scripts/gen-model-index.ts",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "family",
+    "repo",
+    "model",
+    "tokenizer",
+    "dimensions",
+    "maxTokens",
+    "pooling",
+    "license",
+    "summary",
+    "notes"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "description": "Stable id, used in config, on disk, and as the model key of stored vectors. Matches the file name."
+    },
+    "family": {
+      "enum": ["anvesa-code", "open"],
+      "description": "anvesa-code: anvesa's own encoders, one per tier. open: open-licence models used only when named."
+    },
+    "tier": {
+      "enum": ["low", "medium", "high"],
+      "description": "The compute tier an anvesa-code model fills. Open models have none."
+    },
+    "retired": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true,
+      "description": "Ids that were built in and are not any more, for which this model is the replacement."
+    },
+    "repo": { "type": "string", "description": "Upstream repository the files come from." },
+    "revision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "The upstream commit the files are fetched at. Absent: main, for repositories anvesa publishes."
+    },
+    "model": { "$ref": "#/$defs/file", "description": "The ONNX model." },
+    "modelData": {
+      "$ref": "#/$defs/file",
+      "description": "External weights of a model over 2 GB, kept under the name the model refers to them by."
+    },
+    "tokenizer": { "$ref": "#/$defs/file", "description": "tokenizer.json." },
+    "ranker": {
+      "$ref": "#/$defs/file",
+      "description": "The learned ranker fit on this encoder's scores (XGBoost JSON)."
+    },
+    "dimensions": { "type": "integer", "minimum": 1 },
+    "maxTokens": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Input window, in tokens, special tokens included."
+    },
+    "pooling": { "enum": ["mean", "cls"] },
+    "cardForm": {
+      "enum": ["nopath"],
+      "description": "How cards are reshaped before this model embeds them. Absent: as indexed."
+    },
+    "paramsM": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Parameters, in millions."
+    },
+    "license": { "type": "string" },
+    "summary": {
+      "type": "string",
+      "description": "What the model is good for, in a few words, for a table row."
+    },
+    "notes": { "type": "string" }
+  },
+  "$defs": {
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "bytes", "sha256"],
+      "properties": {
+        "path": { "type": "string", "description": "Path inside the upstream repository." },
+        "bytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    }
+  }
+}

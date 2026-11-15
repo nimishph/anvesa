@@ -1,0 +1,44 @@
+{
+  "$schema": "../../schemas/model.v1.json",
+  "id": "anvesa-code-150m",
+  "family": "anvesa-code",
+  "tier": "low",
+  "retired": [
+    "all-MiniLM-L6-v2",
+    "all-MiniLM-L12-v2",
+    "bge-small-en-v1.5",
+    "gte-small",
+    "gte-base",
+    "jina-embeddings-v2-base-code",
+    "bge-base-en-v1.5"
+  ],
+  "repo": "nimishph/anvesa-code-150m",
+  "model": {
+    "path": "model.onnx",
+    "bytes": 584370,
+    "sha256": "4e14bfb7b993bebe817e354559afe5d6971c4dbb4974f1168d847145b1c29de3"
+  },
+  "modelData": {
+    "path": "model.onnx_data",
+    "bytes": 596057088,
+    "sha256": "78c8202253b8d54565987e93a499e6c065be6d49018e0de2379876be6e975600"
+  },
+  "tokenizer": {
+    "path": "tokenizer.json",
+    "bytes": 3583387,
+    "sha256": "657af518d877b6422fa44277c008870520894bffcaea6490504ee426c57aa548"
+  },
+  "ranker": {
+    "path": "ranker-noword.json",
+    "bytes": 244225,
+    "sha256": "400012bb93db7c4a021e4a2ebd736d9a119532aa7b9a37126e09789063981e6e"
+  },
+  "dimensions": 768,
+  "maxTokens": 512,
+  "pooling": "mean",
+  "cardForm": "nopath",
+  "paramsM": 150,
+  "license": "MIT",
+  "summary": "the default; runs well on a CPU",
+  "notes": "For machines without a GPU: 40 ms a card on a CPU, about 0.6 GB. 0.301 MRR on the corpus test set and 0.626 on the bench: below the 400m (about -0.05 on both) but well above MiniLM on hand-written queries (0.547)."
+}

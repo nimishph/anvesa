@@ -146,13 +146,13 @@ Proposal:
   and summary. `schemas/model.v1.json` describes the format.
 - `embedder/src/registry.ts` builds the catalog from those files, so that `MODEL_CATALOG`,
   `BUILTIN_MODELS`, `OPEN_MODELS` and `builtinModel()` all become views of the registry.
-- A compiled binary cannot read a source folder at run time, so `scripts/gen-model-index.ts`
-  writes `embedder/src/models.generated.ts`. That file imports every config with `with { type:
-  'json' }`. A test fails when the folder and the generated index disagree, so adding a model is:
-  add a file, run the script.
-- Models a person brings in (`anvesa model install --from`) already keep a `model.json` in the
-  models cache. The registry reads those through the same loader, so built-in and custom models
-  share one format and one set of checks.
+- A compiled binary cannot read a source folder at run time, so
+  `embedder/scripts/gen-model-index.ts` writes `embedder/src/models.generated.ts`. That file
+  imports every config with `with { type: 'json' }`. A test fails when the folder and the
+  generated index disagree, so adding a model is: add a file, run the script.
+- Models a person brings in (`anvesa model install --from`) keep their `custom.json` record in the
+  models cache, unchanged so existing installs still load. The spec built from it goes through the
+  same loader (`parseModelSpec`), so built-in and custom models share one set of checks.
 - Retired ids (`RETIRED_MODELS`) become a `retired` field in the replacement's config.
 
 ```yojana:claim

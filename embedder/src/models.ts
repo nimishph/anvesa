@@ -6,235 +6,36 @@
  * by side.
  */
 
-import type { CardForm } from '@cntxt-labs/anvesa-dense';
+import type { ModelSpec, Tier } from './model-spec.ts';
+import { MODEL_CONFIGS } from './models.generated.ts';
+import { buildRegistry } from './registry.ts';
 
-export type { CardForm };
-
-export type Tier = 'low' | 'medium' | 'high';
+export type { CardForm, ModelFileSpec, ModelSpec, Pooling, Tier } from './model-spec.ts';
 
 export const TIERS: readonly Tier[] = ['low', 'medium', 'high'];
 
-export type Pooling =
-  /** Average of the token states over the real (unpadded) tokens. */
-  | 'mean'
-  /** The state of the first token, `[CLS]`. */
-  | 'cls';
-
-/** One file of a model, pinned by its exact size and SHA-256. */
-export interface ModelFileSpec {
-  /** Path inside the upstream repository. */
-  readonly path: string;
-  readonly bytes: number;
-  readonly sha256: string;
-}
-
-export interface ModelSpec {
-  /** Stable id, used in config, on disk, and as the model key of stored vectors. */
-  readonly id: string;
-  readonly tier: Tier | undefined;
-  /** Upstream repository the files come from. */
-  readonly repo: string;
-  /**
-   * The upstream commit the files are fetched at. Absent: `main`, for repositories anvesa
-   * publishes. A model from someone else's repository is pinned, so a later push there cannot turn
-   * an install into a checksum failure.
-   */
-  readonly revision?: string;
-  readonly model: ModelFileSpec;
-  /**
-   * The weights of a model too large for one ONNX file (over 2 GB), kept beside it under the name
-   * the model refers to them by. Absent for a model that is one file.
-   */
-  readonly modelData?: ModelFileSpec;
-  readonly tokenizer: ModelFileSpec;
-  /**
-   * The learned ranker fit on this encoder's scores (an XGBoost JSON model), which reorders the top
-   * of symbol search. Absent: symbols are ranked by the hub-penalised first stage alone.
-   */
-  readonly ranker?: ModelFileSpec;
-  /** Declared output size. The loader reads the real one from the model and refuses a mismatch. */
-  readonly dimensions: number;
-  /** Input window, in tokens, special tokens included. */
-  readonly maxTokens: number;
-  readonly pooling: Pooling;
-  /** How cards are reshaped before this model embeds them. Absent: as indexed. */
-  readonly cardForm?: CardForm;
-  /** Parameters, in millions: the honest proxy for compute cost. Unknown for a model brought in. */
-  readonly paramsM: number | undefined;
-  readonly license: string;
-  readonly notes: string;
-  /** What the model is good for, in a few words, for a table row. Built-in models have one. */
-  readonly summary?: string;
-}
-
-/** The tokenizer every Ettin size shares (anvesa-code-1b, -400m and -150m publish the same file). */
-const ETTIN_TOKENIZER: ModelFileSpec = {
-  path: 'tokenizer.json',
-  bytes: 3583387,
-  sha256: '657af518d877b6422fa44277c008870520894bffcaea6490504ee426c57aa548',
-};
-
 /**
- * The anvesa-code encoders: Ettin-encoder (jhu-clsp, MIT) fine-tuned by anvesa-gen-lab on 105
- * MIT-licensed repositories, the 400m and 150m also learning from the 1B as a teacher; exported to
- * ONNX in fp32 with the weights in model.onnx_data. Mean pooling, 512 tokens, and symbol cards
- * embedded without their WQL path line. Numbers are anvesa-gen-lab's (2026-10-29): first stage with
- * the hub penalty and no ranker, on the corpus test set (1,710 generated queries, 57 repos, 13
- * languages) and the 241 hand-written bench queries; CPU time is one card on 12 threads. Each comes
- * with the learned ranker fit on its scores (ranker-noword.json, 20 features, no word overlap).
+ * The built-in models, read from `embedder/models/<id>.json` through the registry (see
+ * `registry.ts`). The anvesa-code encoders are Ettin-encoder (jhu-clsp, MIT) fine-tuned by
+ * anvesa-gen-lab; each file's notes give the measurements behind its place in the catalog.
  */
-const CODE_400M: ModelSpec = {
-  id: 'anvesa-code-400m',
-  tier: 'medium',
-  repo: 'nimishph/anvesa-code-400m',
-  model: {
-    path: 'model.onnx',
-    bytes: 798633,
-    sha256: '018041c99d6572575a88330289dbab26d95b9514bb59625c731e6bf134e93310',
-  },
-  modelData: {
-    path: 'model.onnx_data',
-    bytes: 1579126784,
-    sha256: 'd4155cb27211ff1c90d3dc1c2bcb13887ddc8a1bc78f4c93fea258161a25c75e',
-  },
-  tokenizer: ETTIN_TOKENIZER,
-  ranker: {
-    path: 'ranker-noword.json',
-    bytes: 243592,
-    sha256: 'e81c135ca4ff4decf37c1348b37f01feafb9203aabcc88fd180a2ee0d3d30670',
-  },
-  dimensions: 1024,
-  maxTokens: 512,
-  pooling: 'mean',
-  cardForm: 'nopath',
-  paramsM: 400,
-  license: 'MIT',
-  notes:
-    'The recommended code model: 0.349 MRR on the corpus test set and 0.684 on the bench, level ' +
-    'with the 1B (paired differences -0.003 and -0.001, both intervals around 0) at a quarter of ' +
-    'its CPU time (98 ms a card) and about 1.6 GB. MiniLM scores 0.293 and 0.547.',
-  summary: 'as good as the 1B at a quarter of its time',
-};
-
-const CODE_150M: ModelSpec = {
-  id: 'anvesa-code-150m',
-  tier: 'low',
-  repo: 'nimishph/anvesa-code-150m',
-  model: {
-    path: 'model.onnx',
-    bytes: 584370,
-    sha256: '4e14bfb7b993bebe817e354559afe5d6971c4dbb4974f1168d847145b1c29de3',
-  },
-  modelData: {
-    path: 'model.onnx_data',
-    bytes: 596057088,
-    sha256: '78c8202253b8d54565987e93a499e6c065be6d49018e0de2379876be6e975600',
-  },
-  tokenizer: ETTIN_TOKENIZER,
-  ranker: {
-    path: 'ranker-noword.json',
-    bytes: 244225,
-    sha256: '400012bb93db7c4a021e4a2ebd736d9a119532aa7b9a37126e09789063981e6e',
-  },
-  dimensions: 768,
-  maxTokens: 512,
-  pooling: 'mean',
-  cardForm: 'nopath',
-  paramsM: 150,
-  license: 'MIT',
-  notes:
-    'For machines without a GPU: 40 ms a card on a CPU, about 0.6 GB. 0.301 MRR on the corpus ' +
-    'test set and 0.626 on the bench: below the 400m (about -0.05 on both) but well above MiniLM ' +
-    'on hand-written queries (0.547).',
-  summary: 'the default; runs well on a CPU',
-};
-
-const CODE_1B: ModelSpec = {
-  id: 'anvesa-code-1b',
-  tier: 'high',
-  repo: 'nimishph/anvesa-code-1b',
-  model: {
-    path: 'model.onnx',
-    bytes: 1034044,
-    sha256: 'df33320b7ea9a50823b04f5b189fa4077f72fa530274a36e9634d1e4e1cdeae1',
-  },
-  modelData: {
-    path: 'model.onnx_data',
-    bytes: 4112202752,
-    sha256: '2bf8038ac17358a505091b27816beac37a32e64cf3d928212b36a634ef775805',
-  },
-  tokenizer: ETTIN_TOKENIZER,
-  ranker: {
-    path: 'ranker-noword.json',
-    bytes: 244475,
-    sha256: '7d49fa95580cb568be0bb1eb6105da9557bf91e3e4436dfbbc640d3efc2304ca',
-  },
-  dimensions: 1792,
-  maxTokens: 512,
-  pooling: 'mean',
-  cardForm: 'nopath',
-  paramsM: 1000,
-  license: 'MIT',
-  notes:
-    '0.352 MRR on the corpus test set and 0.685 on the bench: no measurable gain over the 400m ' +
-    'for four times its CPU time (373 ms a card) and about 4 GB. Index on a GPU ' +
-    '(ANVESA_DEVICE=gpu) where there is one.',
-  summary: 'level with the 400m at 4x its CPU time; for a GPU',
-};
+const REGISTRY = buildRegistry(MODEL_CONFIGS);
 
 /**
  * The built-in models by cost. Automatic choice is the low tier, anvesa-code-150m: it runs well on a
  * CPU and scores 0.626 MRR on anvesa-gen-lab's hand-written queries (MiniLM, the old default: 0.547).
  * The 400m (0.684) and the 1B (0.685) are used when named, or when they are all that is installed.
  */
-export const BUILTIN_MODELS: Readonly<Record<Tier, ModelSpec>> = {
-  low: CODE_150M,
-  medium: CODE_400M,
-  high: CODE_1B,
-};
+export const BUILTIN_MODELS: Readonly<Record<Tier, ModelSpec>> = REGISTRY.byTier;
 
 /** The tier automatic choice uses. */
 export const DEFAULT_TIER: Tier = 'low';
 
 /**
- * gte-modernbert-base (Alibaba-NLP, Apache-2.0): a general-purpose English encoder on ModernBERT,
- * offered for people who want an open model that is not anvesa's own. Its ONNX export as published
- * upstream, fp32 in one file; [CLS] pooling. Its window is 8,192 tokens, but cards are cut at 512
- * like the anvesa-code models', so indexing costs the same per card. It comes with no learned
- * ranker, and has not been scored on anvesa-gen-lab's bench.
- */
-const GTE_MODERNBERT_BASE: ModelSpec = {
-  id: 'gte-modernbert-base',
-  tier: undefined,
-  repo: 'Alibaba-NLP/gte-modernbert-base',
-  revision: 'e7f32e3c00f91d699e8c43b53106206bcc72bb22',
-  model: {
-    path: 'onnx/model.onnx',
-    bytes: 596392315,
-    sha256: '947f31df7effaeec4edb57c50e4ed7e0f2034d9336063f92615b92e3e0d24d78',
-  },
-  tokenizer: {
-    path: 'tokenizer.json',
-    bytes: 3583228,
-    sha256: '6c8aaa9a542084f2457eab775d4eeb51f92a70c0fd9de28d5edb0ddec3c08d30',
-  },
-  dimensions: 768,
-  maxTokens: 512,
-  pooling: 'cls',
-  paramsM: 149,
-  license: 'Apache-2.0',
-  notes:
-    'An open, general-purpose English encoder (ModernBERT), not trained for code search. Not ' +
-    'scored on the anvesa-gen-lab bench, and it comes with no ranker, so symbol search ranks by ' +
-    'the first stage alone. Never chosen automatically: name it with --model or anvesa model use.',
-  summary: 'open general-purpose encoder; not scored on code',
-};
-
-/**
  * Open-licence models anvesa can fetch and pin besides its own: listed by `model list`, installed
  * with `model install <id> --download`, used only when named. Never chosen automatically.
  */
-export const OPEN_MODELS: readonly ModelSpec[] = [GTE_MODERNBERT_BASE];
+export const OPEN_MODELS: readonly ModelSpec[] = REGISTRY.open;
 
 /** Built in beyond the tiers: the open models. */
 export const ADDITIONAL_MODELS: readonly ModelSpec[] = OPEN_MODELS;
@@ -243,28 +44,16 @@ export const ADDITIONAL_MODELS: readonly ModelSpec[] = OPEN_MODELS;
 export type ModelFamily = 'anvesa-code' | 'open' | 'custom';
 
 export function modelFamily(id: string): ModelFamily {
-  if (ANVESA_CODE_MODELS.some((spec) => spec.id === id)) return 'anvesa-code';
-  if (OPEN_MODELS.some((spec) => spec.id === id)) return 'open';
-  return 'custom';
+  return REGISTRY.configs.find((config) => config.spec.id === id)?.family ?? 'custom';
 }
 
-export const ANVESA_CODE_MODELS: readonly ModelSpec[] = [CODE_400M, CODE_150M, CODE_1B];
+export const ANVESA_CODE_MODELS: readonly ModelSpec[] = REGISTRY.anvesaCode;
 
 /**
- * Models that were built in and are not any more, and what to use instead. On anvesa-gen-lab's 241
- * hand-written queries they scored at or below MiniLM (jina 0.533, gte-large 0.550, bge-m3 0.518,
- * MiniLM 0.547), against 0.626 for anvesa-code-150m and 0.684 for the 400m.
+ * Models that were built in and are not any more, and what to use instead: each replacement's
+ * config lists the ids it took over (`retired`).
  */
-export const RETIRED_MODELS: Readonly<Record<string, string>> = {
-  'all-MiniLM-L6-v2': 'anvesa-code-150m',
-  'all-MiniLM-L12-v2': 'anvesa-code-150m',
-  'bge-small-en-v1.5': 'anvesa-code-150m',
-  'gte-small': 'anvesa-code-150m',
-  'gte-base': 'anvesa-code-150m',
-  'jina-embeddings-v2-base-code': 'anvesa-code-150m',
-  'bge-base-en-v1.5': 'anvesa-code-150m',
-  'bge-large-en-v1.5': 'anvesa-code-400m',
-};
+export const RETIRED_MODELS: Readonly<Record<string, string>> = REGISTRY.retired;
 
 /** Every built-in model: anvesa's own smallest first (so the default leads), then the open ones. */
 export const MODEL_CATALOG: readonly ModelSpec[] = [

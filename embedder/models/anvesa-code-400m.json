@@ -1,0 +1,36 @@
+{
+  "$schema": "../../schemas/model.v1.json",
+  "id": "anvesa-code-400m",
+  "family": "anvesa-code",
+  "tier": "medium",
+  "retired": ["bge-large-en-v1.5"],
+  "repo": "nimishph/anvesa-code-400m",
+  "model": {
+    "path": "model.onnx",
+    "bytes": 798633,
+    "sha256": "018041c99d6572575a88330289dbab26d95b9514bb59625c731e6bf134e93310"
+  },
+  "modelData": {
+    "path": "model.onnx_data",
+    "bytes": 1579126784,
+    "sha256": "d4155cb27211ff1c90d3dc1c2bcb13887ddc8a1bc78f4c93fea258161a25c75e"
+  },
+  "tokenizer": {
+    "path": "tokenizer.json",
+    "bytes": 3583387,
+    "sha256": "657af518d877b6422fa44277c008870520894bffcaea6490504ee426c57aa548"
+  },
+  "ranker": {
+    "path": "ranker-noword.json",
+    "bytes": 243592,
+    "sha256": "e81c135ca4ff4decf37c1348b37f01feafb9203aabcc88fd180a2ee0d3d30670"
+  },
+  "dimensions": 1024,
+  "maxTokens": 512,
+  "pooling": "mean",
+  "cardForm": "nopath",
+  "paramsM": 400,
+  "license": "MIT",
+  "summary": "as good as the 1B at a quarter of its time",
+  "notes": "The recommended code model: 0.349 MRR on the corpus test set and 0.684 on the bench, level with the 1B (paired differences -0.003 and -0.001, both intervals around 0) at a quarter of its CPU time (98 ms a card) and about 1.6 GB. MiniLM scores 0.293 and 0.547."
+}
