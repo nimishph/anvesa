@@ -49,7 +49,7 @@ Primer and Skill say whether the guide names the command; MCP names the tool whe
 | --- | --- | --- | --- | --- | --- |
 | `init` | overview | — | — | an existing config never got `$schema` | fixed (Wave A) |
 | `status` | overview | — | `status` | — | ok |
-| `ui` | overview | — | `show_in_ui` | plain-language search fell back to demo data (#47); snippets showed markup (#48); no settings view | #47, #48 fixed (Wave A); settings: Wave D |
+| `ui` | overview | — | `show_in_ui` | plain-language search fell back to demo data (#47); snippets showed markup (#48); no settings view | #47, #48 fixed (Wave A); Settings view added (Wave D) |
 | `where` | overview | — | — | — | ok |
 | `index` | indexing | §1 | `index` | no progress per shard on a sharded project (#26.4) | open |
 | `fragments` | indexing | — | — | `disable` left `shards/` behind; settle's purpose misdocumented; `clusters` tier over-splits small repos | disable and docs fixed; over-split open |
@@ -69,8 +69,9 @@ Primer and Skill say whether the guide names the command; MCP names the tool whe
 | `mapping` | grammars | §8 | — | — | ok |
 | `model` | models | §10 | — | no `use`; open models not listed | fixed (Wave B) |
 | `redteam` | grammars | — | — | — | ok |
-| `primer` | (itself) | §12 | `primer` | 6 topics; most commands had none | 11 topics |
-| `telemetry` | telemetry | — | — | notice shown once only | Wave D |
+| `primer` | (itself) | §13 | `primer` | 6 topics; most commands had none | 11 topics |
+| `telemetry` | telemetry | — | — | notice shown once only | one line on every index, search and query; `quiet`/`notice` (Wave D) |
+| `skill` | overview | §12 | — | did not exist; the skill had to be copied by hand | `skill install`, `skill status`; `init` offers it (Wave D) |
 | `issue` | grammars | §7 | — | — | ok |
 | `mcp serve` | overview | MCP section | — | — | ok |
 

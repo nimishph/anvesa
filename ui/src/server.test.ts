@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { connect } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { EmbedderUnavailableError, TargetError } from '@cntxt-labs/anvesa-retriever';
 import { ASSETS } from './assets.ts';
 import { buildDashboardUrl, ensureUiRunning, type LiveRetriever, startUiServer } from './server.ts';
@@ -115,6 +117,90 @@ describe('anvesa-ui server', () => {
       expect(routesJson.success).toBe(true);
     } finally {
       await instance.close();
+    }
+  });
+
+  test('the Settings API reads the config, saves only from the dashboard, and names reindexes', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'anvesa-ui-settings-'));
+    mkdirSync(join(root, '.anvesa'), { recursive: true });
+    const file = join(root, '.anvesa', 'config.json');
+    writeFileSync(file, '{ "search": { "defaultLimit": 7 } }');
+    const retriever = { close: async () => undefined } as unknown as LiveRetriever;
+    const instance = await startUiServer({
+      port: 3896,
+      open: false,
+      root,
+      retriever,
+      models: join(root, 'models'),
+    });
+    const base = 'http://127.0.0.1:3896/api/config';
+    const json = { 'Content-Type': 'application/json' };
+    try {
+      const read = (await (
+        await fetch(base, { headers: { 'X-Anvesa-Token': instance.token } })
+      ).json()) as {
+        success: boolean;
+        revision: string;
+        models: { id: string; family: string }[];
+        channels: { name: string; builtin: boolean }[];
+      };
+      expect(read.success).toBe(true);
+      expect(read.models.some((m) => m.family === 'anvesa-code')).toBe(true);
+      expect(read.models.some((m) => m.id === 'gte-modernbert-base')).toBe(true);
+      expect(read.channels.map((c) => c.name)).toEqual(['symbols', 'docs']);
+
+      const body = JSON.stringify({
+        revision: read.revision,
+        edits: { model: 'gte-modernbert-base' },
+      });
+      // The token in the URL is enough to read; a change needs it in the header.
+      const viaUrl = await fetch(`${base}?token=${instance.token}`, {
+        method: 'PUT',
+        headers: json,
+        body,
+      });
+      expect(viaUrl.status).toBe(403);
+      const otherSite = await fetch(base, {
+        method: 'PUT',
+        headers: { ...json, 'X-Anvesa-Token': instance.token, Origin: 'https://evil.example' },
+        body,
+      });
+      expect(otherSite.status).toBe(403);
+      const notJson = await fetch(base, {
+        method: 'PUT',
+        headers: { 'X-Anvesa-Token': instance.token, 'Content-Type': 'text/plain' },
+        body,
+      });
+      expect(notJson.status).toBe(403);
+      expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ search: { defaultLimit: 7 } });
+
+      const saved = await fetch(base, {
+        method: 'PUT',
+        headers: { ...json, 'X-Anvesa-Token': instance.token },
+        body,
+      });
+      expect(saved.status).toBe(200);
+      expect(await saved.json()).toMatchObject({
+        success: true,
+        changed: ['model'],
+        reindex: ['model'],
+      });
+      expect(JSON.parse(readFileSync(file, 'utf8'))).toMatchObject({
+        search: { defaultLimit: 7 },
+        model: 'gte-modernbert-base',
+      });
+
+      // The same revision again: the file moved on, so nothing is written.
+      const stale = await fetch(base, {
+        method: 'PUT',
+        headers: { ...json, 'X-Anvesa-Token': instance.token },
+        body: JSON.stringify({ revision: read.revision, edits: { fusionK: 10 } }),
+      });
+      expect(stale.status).toBe(400);
+      expect(((await stale.json()) as { error: string }).error).toContain('changed since');
+    } finally {
+      await instance.close();
+      rmSync(root, { recursive: true, force: true });
     }
   });
 

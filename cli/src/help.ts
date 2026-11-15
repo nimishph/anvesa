@@ -34,7 +34,7 @@ export const COMMAND_HELP: readonly CommandHelp[] = [
     name: 'init',
     summary: 'set up a project: config files, an encoder and parsers',
     details:
-      '  init                      scaffold .anvesaignore, .anvesa/workspace.json, .anvesa/config.json\n                            (--force to overwrite files that already exist), then looks at this machine and\n                            project: proposes an encoder that suits the hardware and offers a parser for each\n                            language that lacks one, with a progress bar per download. Asks on a terminal;\n                            --yes accepts the proposals; --model <id> picks the encoder; --no-download only\n                            reports what it would fetch. Nothing downloads without a yes. Also keeps an\n                            anvesa section in AGENTS.md / CLAUDE.md (created as AGENTS.md if neither\n                            exists; --agents-file <path> names another file, --no-agents-file skips it).\n                            Re-run after an upgrade: kept files stay, the section is refreshed.',
+      '  init                      scaffold .anvesaignore, .anvesa/workspace.json, .anvesa/config.json\n                            (--force to overwrite files that already exist), then looks at this machine and\n                            project: proposes an encoder that suits the hardware and offers a parser for each\n                            language that lacks one, with a progress bar per download. Asks on a terminal;\n                            --yes accepts the proposals; --model <id> picks the encoder; --no-download only\n                            reports what it would fetch. Nothing downloads without a yes. Also keeps an\n                            anvesa section in AGENTS.md / CLAUDE.md (created as AGENTS.md if neither\n                            exists; --agents-file <path> names another file, --no-agents-file skips it).\n                            Re-run after an upgrade: kept files stay, the section is refreshed. Offers the\n                            anvesa skill for an agent (--agent claude|opencode|codex; --no-skill skips it).',
   },
   {
     section: 'Get started',
@@ -47,9 +47,9 @@ export const COMMAND_HELP: readonly CommandHelp[] = [
     section: 'Get started',
     keys: ['ui'],
     name: 'ui',
-    summary: 'launch the interactive visual web dashboard',
+    summary: "launch the interactive visual web dashboard, and edit the project's settings",
     details:
-      '  ui                        launch the visual web dashboard in browser\n                            (--port <number>, --no-open, --root <dir>, --search <q>,\n                            --mode <fused|semantic|structural>, --wql <expr>, --symbol <name>,\n                            --view <search|graph|wql|status>, --repomap, --routes)',
+      '  ui                        launch the visual web dashboard in browser\n                            (--port <number>, --no-open, --root <dir>, --search <q>,\n                            --mode <fused|semantic|structural>, --wql <expr>, --symbol <name>,\n                            --view <search|graph|wql|status|settings>, --repomap, --routes);\n                            its Settings view edits .anvesa/config.json',
   },
   {
     section: 'Get started',
@@ -209,10 +209,18 @@ export const COMMAND_HELP: readonly CommandHelp[] = [
   {
     section: 'Agents and help',
     keys: ['telemetry'],
-    name: 'telemetry [status|on|off]',
+    name: 'telemetry [status|on|off|quiet|notice]',
     summary: 'anonymous usage telemetry: what it is doing, and turning it on or off',
     details:
-      '  telemetry [status|on|off]  anonymous usage telemetry (see README.md#telemetry): status says whether\n                             this run would send and why; on and off are kept in ~/.anvesa/config.json',
+      '  telemetry [status|on|off]  anonymous usage telemetry (see README.md#telemetry): status says whether\n                             this run would send and why; on and off are kept in ~/.anvesa/config.json\n  telemetry quiet|notice     hide, or show again, the line index, search and query print while it is on',
+  },
+  {
+    section: 'Agents and help',
+    keys: ['skill'],
+    name: 'skill [status|install]',
+    summary: "install the anvesa skill into an agent's skill folder",
+    details:
+      "  skill install             copy the anvesa skill into an agent's skills folder: --agent claude (default),\n                            opencode or codex; --project (default) or --user. index and search keep an\n                            installed copy at this version, and never install one that is not there\n  skill status              where the skill is installed, and at which version",
   },
   {
     section: 'Agents and help',

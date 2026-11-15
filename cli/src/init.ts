@@ -21,6 +21,7 @@ import type { Environment } from './environment.ts';
 import type { Parsed } from './options.ts';
 import { DownloadProgress, formatBytes } from './progress.ts';
 import { table } from './render.ts';
+import { installSkill, parseSkillAgent, refreshInstalledSkills, skillCopies } from './skill.ts';
 
 /** What one step of setup did. `skipped` is a choice or a missing permission; `failed` is neither. */
 export type StepState = 'installed' | 'already' | 'skipped' | 'failed';
@@ -43,6 +44,8 @@ export interface SetupResult {
     readonly state: StepState;
     readonly note: string;
   }[];
+  /** The agent skill: offered beside the AGENTS.md section, installed only on a yes. */
+  readonly skill: { readonly state: StepState; readonly path?: string; readonly note: string };
 }
 
 /** What setup needs of a command's context: where it runs and how it was invoked. */
@@ -95,6 +98,7 @@ export async function setupProject(
 
   const model = await chooseModel(ctx, projectRoot, cache, advice, permitted, interactive, assume);
   const grammars = await chooseGrammars(ctx, projectRoot, permitted, interactive, assume);
+  const skill = await offerSkill(ctx, projectRoot, interactive, assume);
   return {
     hardware: {
       cores: probe.cores,
@@ -105,7 +109,43 @@ export async function setupProject(
     reason: advice.reason,
     model,
     grammars,
+    skill,
   };
+}
+
+/**
+ * Offer the anvesa skill for the agent `--agent` names (Claude Code unless it says otherwise), in
+ * this project. A copy already installed anywhere is kept current instead; `--no-skill` skips it.
+ */
+async function offerSkill(
+  ctx: SetupContext,
+  projectRoot: string,
+  interactive: boolean,
+  assume: boolean,
+): Promise<SetupResult['skill']> {
+  if (ctx.parsed.values['no-skill'] === true) {
+    return { state: 'skipped', note: 'skipped (--no-skill)' };
+  }
+  const env = ctx.environment.env;
+  const installed = skillCopies(projectRoot, env).filter((copy) => copy.installed);
+  if (installed.length > 0) {
+    refreshInstalledSkills(projectRoot, env);
+    const where = installed.map((copy) => copy.path).join(', ');
+    return { state: 'already', note: `installed at ${where}` };
+  }
+  const agent = parseSkillAgent(ctx.parsed.values.agent);
+  const later = `later: anvesa skill install --agent ${agent}`;
+  if (interactive) {
+    const answer = await ask(
+      ctx,
+      `Install the anvesa skill for ${agent} in this project, so the agent knows how to use anvesa? [Y/n] `,
+    );
+    if (!yes(answer)) return { state: 'skipped', note: `not installed; ${later}` };
+  } else if (!assume) {
+    return { state: 'skipped', note: `not installed; ${later}` };
+  }
+  const result = installSkill(agent, 'project', projectRoot, env);
+  return { state: 'installed', path: result.path, note: `installed at ${result.path}` };
 }
 
 /** The encoders on offer, numbered as the prompt takes them, the default first. */
@@ -388,5 +428,6 @@ export function renderSetup(setup: SetupResult): string {
   for (const grammar of setup.grammars) {
     lines.push(`parser ${grammar.language}: ${grammar.note}`);
   }
+  lines.push(`skill: ${setup.skill.note}`);
   return `${lines.join('\n')}\n`;
 }

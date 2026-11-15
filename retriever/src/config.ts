@@ -67,6 +67,8 @@ export interface RedTeamTuningConfig {
 
 export interface TelemetryTuningConfig {
   readonly enabled?: boolean;
+  /** `false`: no telemetry line on each index, search and query run. */
+  readonly show_notice?: boolean;
 }
 
 /**
@@ -452,15 +454,19 @@ export function validateProjectConfig(raw: unknown, path = PROJECT_CONFIG_PATH):
             'cannot be configured in project config; set ANVESA_TELEMETRY_LOG_FILE environment variable instead',
           );
         }
-        if (key !== 'enabled') {
+        if (key !== 'enabled' && key !== 'show_notice') {
           fail(`telemetry.${key}`, 'is not a known setting');
         }
       }
       if (tel.enabled !== undefined && typeof tel.enabled !== 'boolean') {
         fail('telemetry.enabled', 'must be a boolean');
       }
+      if (tel.show_notice !== undefined && typeof tel.show_notice !== 'boolean') {
+        fail('telemetry.show_notice', 'must be a boolean');
+      }
       telemetry = {
         ...(tel.enabled !== undefined ? { enabled: tel.enabled as boolean } : {}),
+        ...(tel.show_notice !== undefined ? { show_notice: tel.show_notice as boolean } : {}),
       };
     } else {
       fail('telemetry', 'must be a boolean or an object of telemetry settings');

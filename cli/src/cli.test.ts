@@ -152,6 +152,30 @@ describe('command line', () => {
     expect((await cli(root)).code).toBe(2);
   });
 
+  test('index, search and query print the telemetry line while it is on; never with --json or once quiet', async () => {
+    const root = makeProject();
+    const home = join(root, 'state');
+    mkdirSync(home, { recursive: true });
+    writeFileSync(
+      join(home, 'config.json'),
+      JSON.stringify({ preferences: { telemetry: { notice_shown: true } } }),
+    );
+    // Port 9 refuses at once: the day's batch fails fast, and is only queued again.
+    const env = { env: { ANVESA_HOME: home, ANVESA_TELEMETRY_ENDPOINT: 'http://127.0.0.1:9' } };
+    const line = 'anonymous usage telemetry is on';
+
+    const index = await cliWith(env, root, 'index');
+    expect(index.code).toBe(0);
+    expect(index.err).toContain(line);
+    expect((await cliWith(env, root, 'query', '//function')).err).toContain(line);
+    expect((await cliWith(env, root, 'search', 'add')).err).toContain(line);
+    expect((await cliWith(env, root, 'query', '//function', '--json')).err).not.toContain(line);
+    expect((await cliWith(env, root, 'status')).err).not.toContain(line);
+
+    expect((await cliWith(env, root, 'telemetry', 'quiet')).code).toBe(0);
+    expect((await cliWith(env, root, 'query', '//function')).err).not.toContain(line);
+  });
+
   test('help puts the commands this user ran lately first; failures do not rank, --help and an opt-out are not counted', async () => {
     const root = makeProject();
     const state = join(root, 'state');

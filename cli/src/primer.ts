@@ -48,7 +48,10 @@ Anvesa combines dense semantic search (local ONNX embeddings) with structural AS
 - \`anvesa diagnose <q> --expect <path>\` — Why an expected file did not rank.
 - \`anvesa status\` — Check index freshness, models, and channels.
 - \`anvesa where [config]\` — Which project is in use, how it was found, and its config, index and models paths.
-- \`anvesa ui\` — Interactive visual web dashboard (search, graph, repomap, health).
+- \`anvesa ui\` — Interactive visual web dashboard (search, graph, repomap, health), and a
+  Settings view that edits \`.anvesa/config.json\` (model, channels, fusion, ignore, telemetry).
+- \`anvesa skill install\` — Put the anvesa skill in an agent's skills folder (\`--agent
+  claude|opencode|codex\`, \`--user\`); \`anvesa skill status\` says where it is.
 - \`anvesa primer [topic]\` — Token-frugal concept guidance for agents.
 - \`anvesa mcp serve\` — Model Context Protocol server over stdio.
 
@@ -328,7 +331,10 @@ model, the language, error codes and the platform. Never code, queries or paths.
 - \`DO_NOT_TRACK=1\` (or \`ANVESA_NO_TELEMETRY=1\`) — Off for any process that sees it.
 - \`--no-network\` (or \`ANVESA_NO_NETWORK=1\`) — Blocks every outbound connection for a run.
 - Off in CI (when \`CI\` is set). The MCP server never shows the notice, so it sends nothing until
-  the notice has been seen once on a terminal.`,
+  the notice has been seen once on a terminal.
+- While it is on, \`index\`, \`search\` and \`query\` print one line saying so on stderr (not with
+  \`--json\`). \`anvesa telemetry quiet\` hides it, \`anvesa telemetry notice\` shows it again;
+  \`"telemetry": { "show_notice": false }\` in \`.anvesa/config.json\` hides it for the project.`,
   },
 };
 

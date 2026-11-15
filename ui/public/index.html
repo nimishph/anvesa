@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="css/search.css">
   <link rel="stylesheet" href="css/graph.css">
   <link rel="stylesheet" href="css/status.css">
+  <link rel="stylesheet" href="css/settings.css">
 </head>
 <body>
 
@@ -74,6 +75,14 @@
           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
         </svg>
         System Health
+      </button>
+
+      <button class="nav-tab" data-view="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        Settings
       </button>
     </nav>
 
@@ -575,6 +584,69 @@
           </div>
         </div>
 
+      </div>
+    </section>
+
+    <!-- ====================================================================
+         VIEW 5: Project Settings (.anvesa/config.json)
+         ==================================================================== -->
+    <section id="view-settings" class="view-section">
+      <div class="settings-container">
+        <div class="status-section">
+          <div class="section-title">Project settings</div>
+          <div class="section-desc">
+            Edits <code id="settingsPath">.anvesa/config.json</code>. Only the keys below change;
+            everything else in the file stays as written.
+          </div>
+          <div id="settingsMessage" class="settings-message" role="status" hidden></div>
+        </div>
+
+        <form id="settingsForm" class="settings-form" novalidate>
+          <fieldset class="settings-group">
+            <legend>Model</legend>
+            <label class="settings-field">
+              <span>Encoder for plain-language search</span>
+              <select id="settingsModel" class="search-mode-select"></select>
+            </label>
+            <p class="settings-hint" id="settingsModelHint">The same list as <code>anvesa model use</code>. A model that is not installed is fetched with <code>anvesa model install &lt;id&gt; --download</code>.</p>
+          </fieldset>
+
+          <fieldset class="settings-group">
+            <legend>Channels</legend>
+            <table class="settings-table">
+              <thead><tr><th>Channel</th><th>On</th><th>Weight</th></tr></thead>
+              <tbody id="settingsChannels"></tbody>
+            </table>
+            <p class="settings-hint">New channels are added with <code>anvesa channel add</code>.</p>
+          </fieldset>
+
+          <fieldset class="settings-group">
+            <legend>Fusion</legend>
+            <label class="settings-field">
+              <span>Rank constant k (empty: the default, 60)</span>
+              <input id="settingsFusionK" type="number" min="1" step="1" placeholder="60">
+            </label>
+          </fieldset>
+
+          <fieldset class="settings-group">
+            <legend>Ignore</legend>
+            <label class="settings-field">
+              <span>Extra globs to skip when indexing, one per line (beside .gitignore and .anvesaignore)</span>
+              <textarea id="settingsIgnore" rows="4" spellcheck="false"></textarea>
+            </label>
+          </fieldset>
+
+          <fieldset class="settings-group">
+            <legend>Telemetry (this project)</legend>
+            <label class="settings-check"><input id="settingsTelemetryOff" type="checkbox"> Off for everyone working in this project</label>
+            <label class="settings-check"><input id="settingsTelemetryQuiet" type="checkbox"> Hide the one-line notice on index, search and query</label>
+          </fieldset>
+
+          <div class="settings-actions">
+            <button type="submit" class="btn-primary" id="btnSaveSettings">Save</button>
+            <button type="button" class="btn-secondary" id="btnReloadSettings">Reload</button>
+          </div>
+        </form>
       </div>
     </section>
 

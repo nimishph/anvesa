@@ -8,10 +8,10 @@
 {"id":"req-model-use","revision":"r_0e86d266298b80b5"}
 {"id":"req-observed-rest","revision":"r_58e3ab9d81d7a781"}
 {"id":"req-pattern-escape","revision":"r_d93d5b18f3f007e9"}
-{"id":"req-skill-install","revision":"r_ba8f10567706babe"}
-{"id":"req-telemetry-notice","revision":"r_8881e9494fb75329"}
+{"id":"req-skill-install","revision":"r_48e63bfa15c9f24d"}
+{"id":"req-telemetry-notice","revision":"r_a1c86d6c2597be55"}
 {"id":"req-tokenizer-accept","revision":"r_3bad65877f3b454c"}
 {"id":"req-ui-embedder","revision":"r_1cb657e98e385597"}
 {"id":"req-ui-highlight","revision":"r_51c159f6046a3737"}
-{"id":"req-ui-settings","revision":"r_842bcc8d63451642"}
+{"id":"req-ui-settings","revision":"r_ca32bf0ac388a9c1"}
 {"id":"req-wql-docs","revision":"r_da1d3ff494168ca1"}

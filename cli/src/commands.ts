@@ -52,11 +52,20 @@ import { renderIndexBar } from './progress.ts';
 import { findProjectRoot, isProjectRoot } from './project-root.ts';
 import * as show from './render.ts';
 import {
+  installSkill,
+  parseSkillAgent,
+  refreshInstalledSkills,
+  SKILL_VERSION,
+  type SkillInstall,
+  skillCopies,
+} from './skill.ts';
+import {
   clearGlobalTelemetry,
   createTelemetryCollector,
   getGlobalTelemetry,
   readTelemetryChoice,
   recordRanking,
+  reminderQuieted,
   setGlobalTelemetry,
   telemetryModelId,
   telemetryQueueState,
@@ -105,6 +114,8 @@ export async function openSession(
     readonly monolith?: boolean;
     /** False where nobody reads stderr (the MCP server): the telemetry notice waits for a terminal. */
     readonly telemetryNotice?: boolean;
+    /** Print the one-line telemetry notice when telemetry is on (index, search, query). */
+    readonly telemetryReminder?: boolean;
   },
 ): Promise<Session> {
   const projectRoot = root(ctx);
@@ -145,6 +156,10 @@ export async function openSession(
       ...(options.telemetryNotice === false
         ? {}
         : { notice: (text: string) => ctx.environment.stderr(text) }),
+      // Not with --json: a script reading the output has nobody to tell.
+      ...(options.telemetryReminder && options.telemetryNotice !== false && !ctx.parsed.values.json
+        ? { reminder: (text: string) => ctx.environment.stderr(text) }
+        : {}),
     });
     setGlobalTelemetry(telemetry);
 
@@ -167,6 +182,28 @@ export async function openSession(
 
 function emit(ctx: Context, value: unknown, text: () => string): void {
   ctx.environment.stdout(ctx.parsed.values.json ? show.toJson(value) : text());
+}
+
+function describeSkillInstall(result: SkillInstall): string {
+  if (result.state === 'current') return `skill already current at ${result.path}`;
+  if (result.state === 'updated') {
+    return `updated the skill at ${result.path} (${result.from ?? 'unversioned'} -> ${result.version ?? 'this version'})`;
+  }
+  return `installed the skill at ${result.path}`;
+}
+
+/**
+ * An installed skill older than this anvesa is brought up to date, without a word: the person
+ * installed it to keep it. One that is not installed stays that way.
+ */
+function refreshSkills(ctx: Context): void {
+  try {
+    refreshInstalledSkills(root(ctx), ctx.environment.env);
+  } catch (failure) {
+    ctx.environment.stderr(
+      `note: the installed anvesa skill could not be refreshed: ${toCodeLensError(failure, 'refresh the skill').message}\n`,
+    );
+  }
 }
 
 /** The model a telemetry event may name: built in by id, brought in by the person as `custom`. */
@@ -270,7 +307,11 @@ function scopeOption(ctx: Context): { readonly scope?: string } {
 /** Run a command against an open project, and close it whatever happens. */
 async function withProject<T>(
   ctx: Context,
-  options: { readonly embed: boolean; readonly monolith?: boolean },
+  options: {
+    readonly embed: boolean;
+    readonly monolith?: boolean;
+    readonly telemetryReminder?: boolean;
+  },
   run: (session: Session) => Promise<T>,
 ): Promise<T> {
   const session = await openSession(ctx, options);
@@ -599,66 +640,71 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
   },
 
   index: (ctx) =>
-    withProject(ctx, { embed: true }, async ({ retriever, embedderReason }) => {
-      if (!retriever.embedder)
-        ctx.environment.stderr(
-          `note: no embedder (${embedderReason}); indexing facts and graph only\n`,
-        );
-      const inScope = pathScope(ctx.parsed.values.scope, '--scope');
-      const startedAt = performance.now();
-      const progress = indexProgress(ctx);
-      const result = await retriever
-        .index({
-          onEvent: progress.onEvent,
-          ...(ctx.parsed.values.force ? { force: true } : {}),
-          ...(ctx.parsed.values['retry-quarantined'] ? { retryQuarantined: true } : {}),
-          ...(inScope ? { scope: inScope } : {}),
-        })
-        .finally(progress.stop);
-      const elapsed = performance.now() - startedAt;
-      const embeddedCount =
-        result.report.dense?.ingested ?? result.report.files.added + result.report.files.modified;
-      getGlobalTelemetry().record({
-        type: 'index',
-        name: 'index',
-        durationMsBucket: durationBucket(elapsed),
-        ...modelField(retriever),
-        hasScope: Boolean(ctx.parsed.values.scope),
-        changedCountBucket: countBucket(embeddedCount),
-      });
-      const info = retriever.embedder?.info;
-      // The model the index was embedded with is recorded, so every later run, on any machine,
-      // searches with it instead of whatever that machine would pick.
-      if (info && result.report.dense) {
-        const onDisk = await loadProjectConfig(retriever.root);
-        if (onDisk.model !== info.id) {
-          await writeProjectConfig(retriever.root, {
-            ...onDisk,
-            $schema: onDisk.$schema ?? CONFIG_SCHEMA_URL,
-            model: info.id,
-          });
+    withProject(
+      ctx,
+      { embed: true, telemetryReminder: true },
+      async ({ retriever, embedderReason }) => {
+        refreshSkills(ctx);
+        if (!retriever.embedder)
           ctx.environment.stderr(
-            `note: recorded "model": "${info.id}" in ${PROJECT_CONFIG_PATH}, so later runs search with the model this index was embedded with\n`,
+            `note: no embedder (${embedderReason}); indexing facts and graph only\n`,
           );
-        }
-      }
-      const embedder = info
-        ? {
-            id: info.id,
-            dimensions: info.dimensions,
-            maxTokens: info.maxTokens,
-            ...(info.device ? { device: info.device } : {}),
+        const inScope = pathScope(ctx.parsed.values.scope, '--scope');
+        const startedAt = performance.now();
+        const progress = indexProgress(ctx);
+        const result = await retriever
+          .index({
+            onEvent: progress.onEvent,
+            ...(ctx.parsed.values.force ? { force: true } : {}),
+            ...(ctx.parsed.values['retry-quarantined'] ? { retryQuarantined: true } : {}),
+            ...(inScope ? { scope: inScope } : {}),
+          })
+          .finally(progress.stop);
+        const elapsed = performance.now() - startedAt;
+        const embeddedCount =
+          result.report.dense?.ingested ?? result.report.files.added + result.report.files.modified;
+        getGlobalTelemetry().record({
+          type: 'index',
+          name: 'index',
+          durationMsBucket: durationBucket(elapsed),
+          ...modelField(retriever),
+          hasScope: Boolean(ctx.parsed.values.scope),
+          changedCountBucket: countBucket(embeddedCount),
+        });
+        const info = retriever.embedder?.info;
+        // The model the index was embedded with is recorded, so every later run, on any machine,
+        // searches with it instead of whatever that machine would pick.
+        if (info && result.report.dense) {
+          const onDisk = await loadProjectConfig(retriever.root);
+          if (onDisk.model !== info.id) {
+            await writeProjectConfig(retriever.root, {
+              ...onDisk,
+              $schema: onDisk.$schema ?? CONFIG_SCHEMA_URL,
+              model: info.id,
+            });
+            ctx.environment.stderr(
+              `note: recorded "model": "${info.id}" in ${PROJECT_CONFIG_PATH}, so later runs search with the model this index was embedded with\n`,
+            );
           }
-        : null;
-      // What the index holds now, per channel: the run's report only counts what it changed.
-      const channels = (await retriever.channels())
-        // With no model, an empty channel only repeats what the `model: none` line says.
-        .filter((channel) => (channel.enabled && info !== undefined) || channel.cards > 0)
-        .map(({ name, cards, sources, quarantined }) => ({ name, cards, sources, quarantined }));
-      emit(ctx, { ...result, embedder, channels }, () =>
-        show.renderIndex({ ...result, embedder, embedderReason, channels }),
-      );
-    }),
+        }
+        const embedder = info
+          ? {
+              id: info.id,
+              dimensions: info.dimensions,
+              maxTokens: info.maxTokens,
+              ...(info.device ? { device: info.device } : {}),
+            }
+          : null;
+        // What the index holds now, per channel: the run's report only counts what it changed.
+        const channels = (await retriever.channels())
+          // With no model, an empty channel only repeats what the `model: none` line says.
+          .filter((channel) => (channel.enabled && info !== undefined) || channel.cards > 0)
+          .map(({ name, cards, sources, quarantined }) => ({ name, cards, sources, quarantined }));
+        emit(ctx, { ...result, embedder, channels }, () =>
+          show.renderIndex({ ...result, embedder, embedderReason, channels }),
+        );
+      },
+    ),
 
   // Paths only: nothing is opened, so it answers even where the index or the config is broken.
   where: async (ctx) => {
@@ -782,7 +828,8 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
   },
 
   search: (ctx) =>
-    withProject(ctx, { embed: true }, async ({ retriever }) => {
+    withProject(ctx, { embed: true, telemetryReminder: true }, async ({ retriever }) => {
+      refreshSkills(ctx);
       const channels = ctx.parsed.values.channel;
       const exclude = ctx.parsed.values.exclude;
       const weights = parseWeights(ctx.parsed.values.weight);
@@ -873,31 +920,35 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
     const semantic = ctx.parsed.values.semantic;
     const split = splitConjunction(rawWql, undefined, semantic);
     const needsEmbed = Boolean(split.semantic);
-    return withProject(ctx, { embed: needsEmbed }, async ({ retriever }) => {
-      const startedAt = performance.now();
-      const page = await retriever.query(rawWql, {
-        ...pageRequest(ctx),
-        ...(semantic ? { semantic } : {}),
-        ...scopeOption(ctx),
-      });
-      const elapsed = performance.now() - startedAt;
-      getGlobalTelemetry().record({
-        type: 'search',
-        name: 'query',
-        searchMode: semantic ? 'fused' : 'structural',
-        durationMsBucket: durationBucket(elapsed),
-        resultCountBucket: countBucket(page.items.length),
-        hasWqlFilter: true,
-        hasScope: Boolean(ctx.parsed.values.scope),
-      });
-      const facts = await searchFacts(
-        ctx,
-        retriever,
-        semantic ? `${rawWql} && ${semantic}` : rawWql,
-        startedAt,
-      );
-      emitResults(ctx, page, facts, (options) => show.renderStructural(page, options));
-    });
+    return withProject(
+      ctx,
+      { embed: needsEmbed, telemetryReminder: true },
+      async ({ retriever }) => {
+        const startedAt = performance.now();
+        const page = await retriever.query(rawWql, {
+          ...pageRequest(ctx),
+          ...(semantic ? { semantic } : {}),
+          ...scopeOption(ctx),
+        });
+        const elapsed = performance.now() - startedAt;
+        getGlobalTelemetry().record({
+          type: 'search',
+          name: 'query',
+          searchMode: semantic ? 'fused' : 'structural',
+          durationMsBucket: durationBucket(elapsed),
+          resultCountBucket: countBucket(page.items.length),
+          hasWqlFilter: true,
+          hasScope: Boolean(ctx.parsed.values.scope),
+        });
+        const facts = await searchFacts(
+          ctx,
+          retriever,
+          semantic ? `${rawWql} && ${semantic}` : rawWql,
+          startedAt,
+        );
+        emitResults(ctx, page, facts, (options) => show.renderStructural(page, options));
+      },
+    );
   },
 
   callers: (ctx) =>
@@ -1091,15 +1142,57 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
     );
   },
 
+  skill: async (ctx) => {
+    const sub = ctx.parsed.positionals[0] ?? 'status';
+    const projectRoot = root(ctx);
+    const env = ctx.environment.env;
+    if (sub === 'install') {
+      if (ctx.parsed.values.user && ctx.parsed.values.project) {
+        throw new InvalidArgumentError('--user', 'either --user or --project, not both', 'both');
+      }
+      const agent = parseSkillAgent(ctx.parsed.values.agent);
+      const scope = ctx.parsed.values.user ? 'user' : 'project';
+      const result = installSkill(agent, scope, projectRoot, env);
+      emit(ctx, { agent, scope, ...result }, () => `${describeSkillInstall(result)}\n`);
+      return;
+    }
+    if (sub !== 'status') throw new InvalidArgumentError('skill', 'status or install', sub);
+    const copies = skillCopies(projectRoot, env);
+    emit(ctx, { version: SKILL_VERSION, copies }, () => {
+      const installed = copies.filter((copy) => copy.installed);
+      return [
+        `anvesa skill ${SKILL_VERSION ?? '(unversioned)'}`,
+        ...(installed.length === 0
+          ? [
+              'not installed; install it with: anvesa skill install [--agent claude|opencode|codex] [--user]',
+            ]
+          : installed.map(
+              (copy) =>
+                `  ${copy.agent.padEnd(9)}${copy.scope.padEnd(8)}${(copy.version ?? 'no version').padEnd(16)}${copy.current ? '' : 'older (refreshed by the next index or search)  '}${copy.path}`,
+            )),
+        '',
+      ].join('\n');
+    });
+  },
+
   telemetry: async (ctx) => {
     const env = ctx.environment.env;
     const sub = ctx.parsed.positionals[0] ?? 'status';
-    if (sub === 'on' || sub === 'off') {
-      // Either answer is the person's own, so the notice is owed no more.
-      const problem = writeTelemetryChoice(env, { enabled: sub === 'on', notice_shown: true });
+    const kept = readTelemetryChoice(env);
+    const change =
+      sub === 'on' || sub === 'off'
+        ? // Either answer is the person's own, so the notice is owed no more.
+          { ...kept, enabled: sub === 'on', notice_shown: true }
+        : sub === 'quiet'
+          ? { ...kept, show_notice: false }
+          : sub === 'notice'
+            ? { ...kept, show_notice: true }
+            : undefined;
+    if (change) {
+      const problem = writeTelemetryChoice(env, change);
       if (problem !== undefined) throw new CommandFailedError(`telemetry ${sub}`, problem);
     } else if (sub !== 'status') {
-      throw new InvalidArgumentError('telemetry', 'status, on or off', sub);
+      throw new InvalidArgumentError('telemetry', 'status, on, off, quiet or notice', sub);
     }
     let config: ProjectConfig | undefined;
     try {
@@ -1117,11 +1210,13 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
       env,
     });
     const file = userConfigFile(env);
+    const quiet = reminderQuieted(env, config);
     const queue = status.queueFile ? telemetryQueueState(status.queueFile) : undefined;
     const value = {
       active: status.active,
       reason: status.reason,
       choice: readTelemetryChoice(env),
+      showNotice: !quiet,
       ...(status.endpoint ? { endpoint: status.endpoint } : {}),
       ...(status.logFile ? { logFile: status.logFile } : {}),
       ...(file ? { configFile: file } : {}),
@@ -1148,6 +1243,7 @@ export const COMMANDS: Readonly<Record<string, Handler>> = {
             ]
           : []),
         ...(status.logFile ? [`writes to: ${status.logFile}`] : []),
+        `notice:    ${quiet ? 'hidden (show it again: anvesa telemetry notice)' : 'one line on each index, search and query (hide it: anvesa telemetry quiet)'}`,
         ...(file ? [`kept in:   ${file} (preferences.telemetry)`] : []),
         'what is sent: README.md#telemetry; turn off: anvesa telemetry off, or DO_NOT_TRACK=1',
         '',

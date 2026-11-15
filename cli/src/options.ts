@@ -29,6 +29,9 @@ const OPTIONS = {
   model: { type: 'string' },
   scope: { type: 'string' },
   user: { type: 'boolean' },
+  project: { type: 'boolean' },
+  agent: { type: 'string' },
+  'no-skill': { type: 'boolean' },
   pooling: { type: 'string' },
   samples: { type: 'string', multiple: true },
   exclude: { type: 'string', multiple: true },
@@ -101,6 +104,9 @@ export interface Parsed {
     readonly model?: string;
     readonly scope?: string;
     readonly user?: boolean;
+    readonly project?: boolean;
+    readonly agent?: string;
+    readonly 'no-skill'?: boolean;
     readonly pooling?: string;
     readonly samples?: string[];
     readonly exclude?: string[];

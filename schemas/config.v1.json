@@ -216,6 +216,11 @@
               "type": "boolean",
               "default": true,
               "description": "Whether anonymous telemetry collection is active."
+            },
+            "show_notice": {
+              "type": "boolean",
+              "default": true,
+              "description": "false: index, search and query no longer print the one-line telemetry notice. Telemetry stays as it is."
             }
           }
         }
@@ -237,6 +242,10 @@
             "notice_shown": {
               "type": "boolean",
               "description": "Whether the telemetry notice has been shown, so the default may send."
+            },
+            "show_notice": {
+              "type": "boolean",
+              "description": "false: no one-line telemetry notice on each index, search and query run. Set by `anvesa telemetry quiet`."
             }
           }
         }
