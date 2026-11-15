@@ -1,3 +1,4 @@
+import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import type { IndexStore } from '../store/index.ts';
 import { CALL_EDGE_KINDS, IMPORT_EDGE_KINDS } from './edges.ts';
 
@@ -39,9 +40,22 @@ export interface RepoMapTreeNode {
   readonly importers?: number | undefined;
 }
 
+/** What a `budget` left out, so a cut map is never taken for the whole one. */
+export interface RepoMapBudget {
+  /** The budget asked for, in tokens (characters / 4). */
+  readonly tokens: number;
+  /** Tokens the files shown are estimated to take. */
+  readonly used: number;
+  readonly shownFiles: number;
+  /** Lower-ranked files left out to stay within the budget. */
+  readonly omittedFiles: number;
+}
+
 export interface RepoMapResult {
   readonly totalFiles: number;
   readonly totalSymbols: number;
+  /** Present when a budget was given. */
+  readonly budget?: RepoMapBudget | undefined;
   readonly files: readonly RepoMapFile[];
   readonly tree: RepoMapTreeNode;
 }
@@ -129,6 +143,10 @@ export async function generateRepoMap(
   const indexedFiles = filesPage.items.filter(
     (f) => f.status === 'indexed' && (!scope || f.path === scope || f.path.startsWith(`${scope}/`)),
   );
+  if (scope !== undefined && indexedFiles.length === 0) {
+    // An empty map for a mistyped directory reads as "nothing here" (#51).
+    throw new InvalidArgumentError('dir', 'a directory with indexed files in it', scope);
+  }
 
   const edgesPage = await store.findEdges({ limit: 200_000 });
   const allEdges = edgesPage.items;
@@ -196,15 +214,53 @@ export async function generateRepoMap(
     (a, b) => b.score - a.score || b.importers - a.importers || a.path.localeCompare(b.path),
   );
 
-  // 5. Build directory tree
-  const tree = buildTree(resultFiles, options.depth);
+  // 5. Fit the budget: the highest-ranked files, in rank order, while their lines fit (#51).
+  let shown: readonly RepoMapFile[] = resultFiles;
+  let budget: RepoMapBudget | undefined;
+  if (options.budget !== undefined) {
+    const kept: RepoMapFile[] = [];
+    let used = 0;
+    for (const file of resultFiles) {
+      const cost = estimatedTokens(file);
+      // The first file is always shown, so a tiny budget still says where to look.
+      if (kept.length > 0 && used + cost > options.budget) break;
+      kept.push(file);
+      used += cost;
+    }
+    shown = kept;
+    budget = {
+      tokens: options.budget,
+      used,
+      shownFiles: kept.length,
+      omittedFiles: resultFiles.length - kept.length,
+    };
+  }
+
+  // 6. Build directory tree; depth counts from the scope, not the repository root (#51).
+  const scopeDepth = scope === undefined || scope === '' ? 0 : scope.split('/').length;
+  const tree = buildTree(shown, options.depth, scopeDepth);
 
   return {
     totalFiles: indexedFiles.length,
     totalSymbols,
-    files: resultFiles,
+    ...(budget ? { budget } : {}),
+    files: shown,
     tree,
   };
+}
+
+/**
+ * What a file's lines in the rendered map take, in tokens (characters / 4): its own line and one
+ * per symbol, each with the tree drawing before it.
+ */
+function estimatedTokens(file: RepoMapFile): number {
+  const indent = 4 * file.path.split('/').length;
+  let chars = indent + file.path.length + 16;
+  for (const symbol of file.symbols) {
+    chars +=
+      indent + 8 + symbol.kind.length + symbol.name.length + (symbol.signature?.length ?? 0) + 14;
+  }
+  return Math.ceil(chars / 4);
 }
 
 interface MutableDirNode {
@@ -217,7 +273,11 @@ interface MutableDirNode {
   symbols?: readonly RepoMapSymbol[] | undefined;
 }
 
-function buildTree(files: readonly RepoMapFile[], maxDepth?: number): RepoMapTreeNode {
+function buildTree(
+  files: readonly RepoMapFile[],
+  maxDepth?: number,
+  scopeDepth = 0,
+): RepoMapTreeNode {
   const root: MutableDirNode = {
     name: '.',
     path: '',
@@ -235,7 +295,7 @@ function buildTree(files: readonly RepoMapFile[], maxDepth?: number): RepoMapTre
       const isFile = i === parts.length - 1;
       const currentPath = parts.slice(0, i + 1).join('/');
 
-      if (maxDepth !== undefined && i + 1 > maxDepth && !isFile) {
+      if (maxDepth !== undefined && i + 1 - scopeDepth > maxDepth && !isFile) {
         break;
       }
 

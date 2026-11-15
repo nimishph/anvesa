@@ -21,6 +21,7 @@ export type {
   TrainingIssue,
   TrainingReport,
 } from '@cntxt-labs/anvesa-structural';
+export { KNOWN_ATTRIBUTES, parseWql } from '@cntxt-labs/anvesa-structural';
 export { nativeLanguageKeys, npmPackageSource, SyntaxRuntime } from '@cntxt-labs/anvesa-syntax';
 export * from './assist.ts';
 export {

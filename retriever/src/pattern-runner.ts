@@ -127,7 +127,9 @@ export class PatternRunner {
     if (!found) {
       throw new InvalidArgumentError(
         'name',
-        `one of ${(await this.list()).map((p) => p.name).join(', ')}`,
+        list.length > 0
+          ? `one of ${list.map((p) => p.name).join(', ')}`
+          : 'a pattern in .anvesa/patterns/ (there are none yet; see: anvesa primer patterns)',
         name,
       );
     }

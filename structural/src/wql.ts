@@ -7,11 +7,11 @@ import { ATTR, type WNode } from './node.ts';
  *   //class                          every class, at any depth
  *   //*                              every node
  *   //class//method                 a method anywhere inside a class
- *   //class>method                  a method directly inside a class
+ *   //class>method                  a method directly inside a class (also //class/method)
  *   //method[@name="get"]           attribute equals
  *   //method[@name^="get"]          starts with        ($= ends with)
  *   //method[contains(@name,"et")]  contains
- *   //method[@name~="^get[A-Z]"]    regular expression
+ *   //method[@name~="^get[A-Z]"]    regular expression (=~ is the same operator)
  *   //method[@docs]                 attribute exists
  *   //method[@name^="get"][@returns="string"]   predicates combine with AND
  *
@@ -87,8 +87,9 @@ class Parser {
       this.#space();
       if (this.#pos >= this.source.length) return steps;
       if (this.#eat('//')) relation = 'descendant';
-      else if (this.#eat('>')) relation = 'child';
-      else this.#fail('"//", ">" or the end of the query');
+      // `/` reads as XPath's child axis; `>` as CSS's. Both mean directly inside.
+      else if (this.#eat('>') || this.#eat('/')) relation = 'child';
+      else this.#fail('"//", "/", ">" or the end of the query');
       this.#space();
     }
   }
@@ -307,6 +308,8 @@ class Parser {
 /** Longest first, so `^=` is never read as `=`. */
 const OPERATORS: readonly (readonly [string, Exclude<WqlOp, 'contains' | 'exists'>])[] = [
   ['~=', 'regex'],
+  // Perl's and Ruby's spelling, which people (and earlier docs) reach for; the same operator.
+  ['=~', 'regex'],
   ['^=', 'starts'],
   ['$=', 'ends'],
   ['=', 'eq'],

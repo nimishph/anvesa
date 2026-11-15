@@ -20,7 +20,7 @@ version: "0.8.0-alpha.3"
 | **Trace call graph / blast radius** | `anvesa callers <sym>`, `callees <sym>`, `dependents <path>` | Grep cannot resolve import paths or cross-package symbol references. |
 | **Inspect symbol surroundings** | `anvesa neighbors <sym>` | Returns enclosing class/interface, sibling methods, and outgoing calls. |
 | **Check non-code corpora** (runbooks, ADRs, past digests) | `anvesa retrieve <channel> "<query>"` | Scoped directly to the target domain channel. |
-| **Run team-defined architectural queries** | `anvesa pattern run <name> [--param=val]` | Pre-baked, validated structural patterns. |
+| **Run team-defined architectural queries** | `anvesa pattern run <name> key=value` | Pre-baked, validated structural patterns. |
 | **Read known file / local edit** | Standard file read / edit tools | Anvesa is for search and graph discovery, not file editing. |
 
 ---
@@ -54,17 +54,17 @@ anvesa query '//function[@name="parseConfig"]'
 anvesa query '//class//method[@name^="get"]'
 anvesa query '//callable[@name="save"]'
 anvesa query '//function[@declaration]'            # declarations only (ignores calls/references)
-anvesa query '//class[@name=~"^Payment.*Handler"]' # regex match on attribute
+anvesa query '//class[@name~="^Payment.*Handler"]' # regex match on attribute (=~ also works)
 
 # Boolean logic (and, or, not / !)
 anvesa query '//function[@name="find" or @name="findById"]'
 anvesa query '//method[not(@name^="test")]'
-anvesa query '//function[(@export=true or @async=true) and not(@deprecated)]'
+anvesa query '//callable[(@name^="get" or @name^="find") and not(@isMethod)]'
 ```
 
 #### Supported Selectors:
 - `//tag`: Descendant combinator (matches at any depth).
-- `//parent>child`: Direct child combinator.
+- `//parent>child` or `//parent/child`: Direct child combinator.
 - `//*`: Any node.
 - `//callable`: Virtual selector matching `function`, `method`, `arrow`, `lambda`, `closure`.
 - `[@attr="val"]`: Exact match.
@@ -77,6 +77,17 @@ anvesa query '//function[(@export=true or @async=true) and not(@deprecated)]'
 - `[expr1 or expr2]`: Logical OR.
 - `[not(expr)]` or `[!expr]`: Logical NOT.
 - `[(expr1 or expr2) and expr3]`: Parenthesized precedence.
+
+#### Attributes
+`name`, `declaration`, `kind`, `line`, `endLine`, `params`, `returns`, `signature`, `path`, `doc`,
+`callable`, `isMethod`, `baseName`, `assignedTo`, `aliasOf`, `hash`, `shape`, `bodyShape`,
+`bodyKind`, `bodyStmts`, `shapeNodes`, `startIndex`, `endIndex`. Any other attribute is an error
+that lists these. There is no `@visibility`, `@export` or `@async`. The tag is the normalized
+kind; `@kind` is the grammar's own node type (`function_declaration`), so `[@kind="function"]`
+matches nothing.
+
+A query lists result files that changed or were deleted since indexing; run `anvesa index` to
+refresh.
 
 ### 4. Semantic & Structural Conjunction (WQL + Dense)
 
@@ -105,9 +116,11 @@ anvesa callees <symbol-name-or-path:line>    # what does this symbol call
 anvesa neighbors <symbol-name-or-path:line>  # enclosing scope, siblings, and call targets
 anvesa dependents <path/to/file.ts>          # which files import this file
 anvesa map                                   # graph-weighted repo map (PageRank on call/import graph)
-anvesa map --budget 500 --depth 2            # budget-constrained dense ASCII tree
-anvesa map [directory]                       # repo map scoped to subdirectory
+anvesa map --budget 2000                     # the highest-ranked files that fit ~2000 tokens; says what it left out
+anvesa map src --depth 1                     # repo map of a subdirectory; depth counts from it
 ```
+Use `--budget` before putting a whole-repository map in a prompt: unbudgeted, a large repository's
+map runs to hundreds of KB.
 
 ### 6. HTTP Route & Endpoint Extraction
 
@@ -149,9 +162,38 @@ anvesa mapping train <language> --samples <dir> [dir...] # learn from code; exte
 ```bash
 anvesa channel list                          # list registered channels
 anvesa retrieve <channel> "<query>"          # retrieve from a specific channel (e.g. digests, runbooks)
-anvesa pattern list                          # list available query patterns
-anvesa pattern run <name> [--param=val]      # execute named parameterized pattern
+anvesa pattern list                          # list available query patterns, and rejected files
+anvesa pattern run <name> key=value          # execute a named pattern, e.g. pattern run by-prefix prefix=get
 ```
+Pattern files live in `.anvesa/patterns/` and need `name`, `description` and `target`; see
+`anvesa primer patterns`. Channels: `anvesa primer channels`.
+
+### 10. Models
+
+```bash
+anvesa model list                            # anvesa-code, open models (gte-modernbert-base) and your own
+anvesa model use anvesa-code-400m            # the model this project uses; asks when no name is given
+anvesa model install <id> --download         # fetch and pin a catalog model
+```
+After `model use`, run `anvesa index`: search refuses an index embedded with another model
+(`RETRIEVER_MODEL_MISMATCH`). See `anvesa primer models`.
+
+### 11. Several Repositories (Federation)
+
+```bash
+anvesa federation status                     # each configured repository: ready, unindexed, missing
+anvesa search "retry payment" --federated    # the host and every ready repository, fused
+anvesa search "retry payment" --repo payments
+anvesa dependents src/client.ts --federated  # importers across repositories
+```
+Configure in `.anvesa/workspace.json`:
+`{"federation": {"repositories": [{"name": "payments", "path": "../payments", "weight": 1.0}]}}`.
+Only search and dependents reach other repositories. See `anvesa primer federation`.
+
+### 12. Primer
+
+`anvesa primer` lists topics: overview, wql, fusion, graph, indexing, grammars, models, channels,
+patterns, federation, telemetry. `anvesa primer <topic>` prints one (25-50 lines).
 
 ---
 
@@ -167,16 +209,21 @@ When results exceed `--limit`:
 
 ## MCP Server Usage
 
-If `anvesa` is running as an MCP server:
-- `search`: parameters `{ "query": string, "wql"?: string, "exclude"?: string[], "limit"?: number, "cursor"?: string }`
-- `query`: parameters `{ "wql": string, "semantic"?: string, "limit"?: number, "cursor"?: string }`
-- `callers`: parameters `{ "target": string }`
-- `callees`: parameters `{ "target": string }`
-- `neighbors`: parameters `{ "target": string }`
+If `anvesa` is running as an MCP server (`anvesa mcp serve`):
+- `search`: parameters `{ "query": string, "wql"?: string, "channels"?: string[], "exclude"?: string[], "weights"?: Record<string, number>, "scope"?: string, "format"?: "compact" | "full" | "locations", "full"?: boolean, "limit"?: number, "cursor"?: string }`
+- `retrieve_<channel>` (one per channel, e.g. `retrieve_symbols`, `retrieve_docs`): parameters `{ "query": string, "scope"?: string, "limit"?: number, "cursor"?: string }`
+- `query`: parameters `{ "wql": string, "semantic"?: string, "scope"?: string, "limit"?: number, "cursor"?: string }`
+- `callers`: parameters `{ "target": string, "resolvedOnly"?: boolean, "limit"?: number, "cursor"?: string }`
+- `callees`: parameters `{ "target": string, "limit"?: number, "cursor"?: string }`
+- `neighbors`: parameters `{ "target": string, "limit"?: number, "cursor"?: string }`
 - `dependents`: parameters `{ "path": string, "depth"?: number, "limit"?: number, "includeTypeOnly"?: boolean }`
 - `repomap`: parameters `{ "depth"?: number, "budget"?: number, "scope"?: string }`
 - `routes`: parameters `{ "method"?: string, "path"?: string, "framework"?: string }`
-- `explain`: parameters `{}`
-- `diagnose`: parameters `{ "query": string, "expect": string }`
+- `explain`: parameters `{ "limit"?: number }`
+- `diagnose`: parameters `{ "query": string, "path": string, "depth"?: number }`
+- `status`: parameters `{}`
+- `index`: parameters `{ "force"?: boolean }`
 - `pattern_list`: parameters `{}`
-- `pattern_run`: parameters `{ "name": string, "params"?: Record<string, string> }`
+- `pattern_run`: parameters `{ "name": string, "args"?: Record<string, string>, "limit"?: number, "cursor"?: string }`
+- `primer`: parameters `{ "topic"?: string }`
+- `show_in_ui`: parameters `{ "query"?: string, "mode"?: "fused" | "semantic" | "structural", "wql"?: string, "scope"?: string, "symbol"?: string, "view"?: "search" | "graph" | "wql" | "status", "repomap"?: boolean, "routes"?: boolean, "open"?: boolean }`

@@ -152,9 +152,20 @@ today has topics overview, wql, fusion, graph, indexing and grammars; routes, pa
 models and telemetry have none. A test fails when a command in `COMMAND_HELP` is named in neither
 the primer nor the skill, and when the skill or primer shows WQL syntax the parser rejects.
 
+Done in Wave C. `cli/src/docs-drift.test.ts` covers the primer, the skill and the README: every
+command is named, every `anvesa <command>` in code is real, and every WQL example parses with real
+attributes. It also checks that every MCP tool is documented with its exact parameters (the skill
+had 12 of 18 tools, two with misnamed parameters). New primer topics: models, channels, patterns,
+federation, telemetry.
+
 ```yojana:claim
 kind: path
 expression: docs/command-audit.md
+```
+
+```yojana:claim
+kind: path
+expression: cli/src/docs-drift.test.ts
 ```
 
 ## Requirement: documented WQL forms work or are no longer documented {#req-wql-docs}
@@ -164,10 +175,27 @@ Issue #49. Decide per form: `@name=~` (accept as an alias of `~=`), `//class/met
 indexed), `*=` (document `contains()`), `[@kind="function"]` (fix or explain). `query` warns when a
 file it returns has changed since indexing; `--limit -1` reports a limit error.
 
+Done in Wave C. `=~` and `/` are accepted. The bad attributes are removed, and the real list is in
+both guides. `@kind` is explained: it holds the grammar's node type, and Ruby really has `method`
+and `class` node types, so rejecting `[@kind="function"]` outright would break valid queries.
+`QueryPage.stale` lists changed or deleted files, and the CLI warns for each.
+
+```yojana:claim
+kind: text
+expression: "['=~', 'regex'] in structural/src/wql.ts"
+```
+
 ## Requirement: channels cannot shadow or silently lose built-ins {#req-channel-gaps}
 
 Issue #50. `channel add` refuses a built-in name; `channel remove` of a built-in or an unknown name
 is an error; changing a module's claim triggers a reindex of that channel without a version bump.
+
+Done in Wave C: the recorded transformer version carries the module file's checksum.
+
+```yojana:claim
+kind: text
+expression: const moduleHash = await moduleChecksum in retriever/src/channel-module.ts
+```
 
 ## Requirement: the rest of the observed issues {#req-observed-rest}
 
@@ -178,6 +206,18 @@ output; `map <missing>` is an error and `--depth` counts from the named director
 settle` re-scans first; `fragments disable` removes `shards/` and `fragments.json`; cluster tier
 merges fragments under a minimum size. Progress per shard while indexing a sharded project (#26.4).
 Path/fragment filter for `search` (#26.5) is tracked here but may move to its own plan.
+
+Wave C status:
+- **Done:** federated scores (the fused lanes now carry each repository's `bestScore`); unknown
+  `--repo` is an error and an unready one is reported; `query`/`retrieve` refuse `--federated`;
+  `map --budget`, a missing directory, and relative `--depth`; `fragments disable` removes `shards/`.
+- **Changed:** `fragments disable` keeps `fragments.json`. It is the project's own committed
+  manifest, and the code already keeps it on purpose for a later enable. `settle` is not changed:
+  it acts on manifest changes, and a moved file is `index`'s job, so the primer was the bug.
+- **Already done:** `search --scope` is the path filter (#26.5); there is no fragment filter.
+- **Open:** the unreadable `.git` crash (not reproduced: no `chmod 000` on Windows, and WSL here
+  has only the Windows `bun`); the clusters tier over-split (needs a minimum-size decision);
+  per-shard progress (#26.4).
 
 ## Requirement: the telemetry notice shows on every index and search run {#req-telemetry-notice}
 

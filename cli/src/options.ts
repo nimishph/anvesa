@@ -145,10 +145,32 @@ export interface Parsed {
   };
 }
 
+/**
+ * `--limit -1` as `--limit=-1`: an option that takes a value takes a negative number as that value,
+ * so the option's own check can say what is wrong with it (#49), instead of `-1` reading as an
+ * unknown short option.
+ */
+function joinNegativeValues(argv: readonly string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const token = argv[i] as string;
+    const next = argv[i + 1];
+    const name = token.startsWith('--') ? token.slice(2) : undefined;
+    const option = name === undefined ? undefined : OPTIONS[name as keyof typeof OPTIONS];
+    if (option?.type === 'string' && next !== undefined && /^-\d/.test(next)) {
+      out.push(`${token}=${next}`);
+      i++;
+    } else {
+      out.push(token);
+    }
+  }
+  return out;
+}
+
 export function parseOptions(argv: readonly string[]): Parsed {
   try {
     const { values, positionals } = parseArgs({
-      args: [...argv],
+      args: joinNegativeValues(argv),
       options: OPTIONS,
       allowPositionals: true,
       strict: true,
@@ -157,9 +179,11 @@ export function parseOptions(argv: readonly string[]): Parsed {
     if (values.expand) values.full = true;
     return { values, positionals } as Parsed;
   } catch (failure) {
+    // Node says which option it could not read; the whole command line says nothing more.
+    const said = failure instanceof Error ? failure.message.split('. ')[0] : undefined;
     throw new InvalidArgumentError(
       'arguments',
-      'known options (see: anvesa --help)',
+      `known options (see: anvesa --help)${said ? `; ${said}` : ''}`,
       argv.join(' '),
       {
         cause: failure,
