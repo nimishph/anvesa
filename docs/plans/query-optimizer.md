@@ -328,7 +328,7 @@ Search output says what was searched when it differs from what was typed (`searc
 
 ```yojana:claim
 kind: text
-expression: literal in cli/src/commands.ts
+expression: literal in cli/src/cmd/commands/search/search.ts
 ```
 
 ## Requirement: predicted constraints reach the ranker as features {#req-qopt-ltr-features}

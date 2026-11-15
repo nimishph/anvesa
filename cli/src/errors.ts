@@ -16,3 +16,32 @@ export class CommandFailedError extends CodeLensError {
     });
   }
 }
+
+/**
+ * The command registry does not hold together: a malformed id, a word two commands claim, or an
+ * index that no longer matches the command modules. A bug in anvesa, found on load.
+ */
+export class CommandRegistryError extends CodeLensError {
+  readonly code = 'CLI_COMMAND_REGISTRY';
+  readonly subsystem = 'cli' as const;
+
+  constructor(command: string, problem: string, init: ErrorInit = {}) {
+    super(`command ${command}: ${problem}`, {
+      ...init,
+      context: { command, problem, ...init.context },
+    });
+  }
+}
+
+/**
+ * A command line that names no command anvesa has. The CLI answers it with the problem and the
+ * overview, exit 2, and does not count it as a run.
+ */
+export class UnknownCommandError extends CodeLensError {
+  readonly code = 'CLI_UNKNOWN_COMMAND';
+  readonly subsystem = 'cli' as const;
+
+  constructor(problem: string, init: ErrorInit = {}) {
+    super(problem, { ...init, context: { problem, ...init.context } });
+  }
+}

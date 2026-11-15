@@ -8,7 +8,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { KNOWN_ATTRIBUTES, parseWql, type Retriever } from '@cntxt-labs/anvesa-retriever';
-import { COMMAND_HELP } from './help.ts';
+import { COMMAND_HELP } from './cmd/registry.ts';
 import { createMcpServer } from './mcp.ts';
 import { PRIMER_TOPICS } from './primer.ts';
 
