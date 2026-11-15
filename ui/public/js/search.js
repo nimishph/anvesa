@@ -12,6 +12,27 @@ export function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+const HL_TOKEN =
+  /(\/\/.*$)|("(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|`(?:[^`\\]|\\.)*`?)|\b(export|import|from|async|function|const|let|var|return|await|interface|type|class|def|fn|pub|public|private|protected|static|new|if|else|for|while)\b|([A-Za-z_$][\w$]*)(?=\s*\()/g;
+
+/**
+ * One line of code as highlighted HTML. A single pass over the raw text: every piece is escaped
+ * exactly once and wrapped at most once, so a later rule never matches markup an earlier one added
+ * (#48: `"hl-keyword">export` showed as text).
+ */
+export function highlightLine(line) {
+  let out = '';
+  let last = 0;
+  for (const match of String(line).matchAll(HL_TOKEN)) {
+    out += escapeHtml(line.slice(last, match.index));
+    const [text, comment, string, keyword] = match;
+    const kind = comment ? 'hl-comment' : string ? 'hl-string' : keyword ? 'hl-keyword' : 'hl-fn';
+    out += `<span class="${kind}">${escapeHtml(text)}</span>`;
+    last = match.index + text.length;
+  }
+  return out + escapeHtml(line.slice(last));
+}
+
 function detectLanguage(path, cardLang) {
   if (cardLang && typeof cardLang === 'string') return cardLang;
   if (!path) return 'Text';
@@ -228,6 +249,9 @@ export function initSearchStudio(state, api) {
       const items = resp?.result?.items || resp?.result?.hits;
       if (resp && resp.success && resp.result && Array.isArray(items)) {
         renderResults(items, elapsed, false);
+      } else if (resp?.live) {
+        // A live project that could not answer says why; sample results would pass for real ones.
+        renderError(resp.error || 'the search failed');
       } else {
         // Fallback or filter mock items
         const hits = window.ANVESA_MOCK?.searchResults || [];
@@ -241,12 +265,54 @@ export function initSearchStudio(state, api) {
         renderResults(filtered.length ? filtered : hits, elapsed, true, resp?.error);
       }
     } catch (err) {
+      if (await isLive()) {
+        renderError(String(err));
+        return;
+      }
       const hits = window.ANVESA_MOCK?.searchResults || [];
       renderResults(hits, 12.4, true, String(err));
     }
   }
 
-  function renderDefaultResults() {
+  /** Whether an index answers: then the page never shows sample data in its place. */
+  let livePromise = null;
+  function isLive() {
+    livePromise ??= api
+      .getStatus()
+      .then((resp) => Boolean(resp?.success && resp.live))
+      .catch(() => false);
+    return livePromise;
+  }
+
+  function renderError(message) {
+    if (resultsMetaText) {
+      resultsMetaText.innerHTML = `<span class="badge badge-emerald">Live Index</span> · search failed`;
+    }
+    if (resultsContainer) {
+      resultsContainer.innerHTML = `
+        <div class="state-container" role="alert">
+          <div class="state-title">The index could not answer this search</div>
+          <div class="state-desc">${escapeHtml(message)}</div>
+        </div>
+      `;
+    }
+  }
+
+  async function renderDefaultResults() {
+    if (await isLive()) {
+      if (resultsMetaText) {
+        resultsMetaText.innerHTML = '<span class="badge badge-emerald">Live Index</span>';
+      }
+      if (resultsContainer) {
+        resultsContainer.innerHTML = `
+          <div class="state-container">
+            <div class="state-title">Search this project</div>
+            <div class="state-desc">Ask in plain language, or write WQL such as //function[@name~="auth"].</div>
+          </div>
+        `;
+      }
+      return;
+    }
     const hits = window.ANVESA_MOCK?.searchResults || [];
     renderResults(hits, 8.2, true);
   }
@@ -408,25 +474,12 @@ export function initSearchStudio(state, api) {
   }
 
   function syntaxHighlight(code) {
-    const lines = code.split('\n');
-    return lines
-      .map((line, idx) => {
-        const lineNum = idx + 1;
-        let escaped = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-        escaped = escaped.replace(
-          /\b(export|async|function|const|let|return|await|interface|type|class)\b/g,
-          '<span class="hl-keyword">$1</span>',
-        );
-        escaped = escaped.replace(
-          /\b(search|fuse|retrieveDense|parseWql|openSession|loadProjectConfig)\b/g,
-          '<span class="hl-fn">$1</span>',
-        );
-        escaped = escaped.replace(/(".*?"|'.*?'|`.*?`)/g, '<span class="hl-string">$1</span>');
-        escaped = escaped.replace(/(\/\/.*$)/g, '<span class="hl-comment">$1</span>');
-
-        return `<div class="code-line"><span class="line-number">${lineNum}</span><span class="line-content">${escaped}</span></div>`;
-      })
+    return String(code)
+      .split('\n')
+      .map(
+        (line, idx) =>
+          `<div class="code-line"><span class="line-number">${idx + 1}</span><span class="line-content">${highlightLine(line)}</span></div>`,
+      )
       .join('');
   }
 

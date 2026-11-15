@@ -48,6 +48,43 @@ describe('RouteEndpointCorpusAdapter', () => {
     expect(records[2]?.attrs.method).toBe('DELETE');
   });
 
+  test('Laravel routes carry the prefixes of every group they sit in (#46)', () => {
+    const content = `<?php
+Route::get('/health', [HealthController::class, 'index']);
+Route::prefix('cart')->group(function () {
+    Route::get('/', [CartController::class, 'index']);
+    Route::post('/add', [CartController::class, 'add']);
+    Route::prefix('items')->group(function () {
+        // a } in a comment, and in a string: '}'
+        Route::delete('/{id}', [CartController::class, 'remove']);
+    });
+});
+Route::group(['prefix' => 'profile'], function () {
+    Route::get('/', [ProfileController::class, 'index']);
+});
+Route::middleware('auth')->prefix('orders')->group(function () {
+    Route::get('/{number}', [OrderController::class, 'show']);
+});
+Route::name('admin.')->group(function () {
+    Route::get('/admin', [AdminController::class, 'index']);
+});
+Route::get('/after', [HealthController::class, 'after']);
+`;
+    const routes = routeEndpointAdapter
+      .extract({ path: 'routes/web.php', content })
+      .map((r) => `${r.attrs.method} ${r.attrs.route}`);
+    expect(routes).toEqual([
+      'GET /health',
+      'GET /cart',
+      'POST /cart/add',
+      'DELETE /cart/items/{id}',
+      'GET /profile',
+      'GET /orders/{number}',
+      'GET /admin',
+      'GET /after',
+    ]);
+  });
+
   test('extracts Lumen routes on the injected router', () => {
     const content = `
 $router->get('/', function () use ($router) { return $router->app->version(); });
@@ -67,7 +104,7 @@ $router->group(['prefix' => 'api'], function () use ($router) {
     expect(records[0]?.attrs.framework).toBe('laravel');
     expect(records[1]?.attrs.method).toBe('POST');
     expect(records[1]?.attrs.handler).toBe('AuthController@login');
-    expect(records[2]?.attrs.route).toBe('/users/{id}');
+    expect(records[2]?.attrs.route).toBe('/api/users/{id}');
   });
 
   test('claims a file with no path hint when it holds $router routes', () => {

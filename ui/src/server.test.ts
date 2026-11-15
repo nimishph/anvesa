@@ -2,8 +2,9 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { connect } from 'node:net';
+import { EmbedderUnavailableError, TargetError } from '@cntxt-labs/anvesa-retriever';
 import { ASSETS } from './assets.ts';
-import { buildDashboardUrl, ensureUiRunning, startUiServer } from './server.ts';
+import { buildDashboardUrl, ensureUiRunning, type LiveRetriever, startUiServer } from './server.ts';
 
 interface ApiResponse {
   readonly success: boolean;
@@ -112,6 +113,41 @@ describe('anvesa-ui server', () => {
       expect(resRoutes.status).toBe(200);
       const routesJson = (await resRoutes.json()) as ApiResponse;
       expect(routesJson.success).toBe(true);
+    } finally {
+      await instance.close();
+    }
+  });
+
+  test('a live index that cannot answer reports the error, never demo data', async () => {
+    const failing = new EmbedderUnavailableError('the query is not structural (WQL)');
+    const retriever = {
+      close: async () => undefined,
+      status: async () => ({}),
+      search: async () => {
+        throw failing;
+      },
+      neighbors: async () => {
+        throw new TargetError('Retriever.search', 'names nothing in this index', []);
+      },
+    } as unknown as LiveRetriever;
+    const instance = await startUiServer({ port: 3897, open: false, retriever });
+    const headers = { 'X-Anvesa-Token': instance.token, 'Content-Type': 'application/json' };
+    try {
+      const search = await fetch('http://127.0.0.1:3897/api/search', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ query: 'retry failed quote' }),
+      });
+      const body = (await search.json()) as Record<string, unknown>;
+      expect(body).toMatchObject({ success: false, live: true });
+      expect(String(body.error)).toContain('No embedder is available');
+      expect(body).not.toHaveProperty('fallback');
+
+      const graph = await fetch(
+        'http://127.0.0.1:3897/api/graph/neighbors?symbol=Retriever.search',
+        { headers },
+      );
+      expect(await graph.json()).toMatchObject({ success: false, live: true });
     } finally {
       await instance.close();
     }

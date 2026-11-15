@@ -168,6 +168,12 @@ export class RouteEndpointCorpusAdapter implements CorpusAdapter {
     }
 
     // 2. Line-by-line regex extraction for Laravel, Express, Python
+    const groups = laravelGroups(ctx.content);
+    const lineStarts: number[] = [];
+    for (let at = 0, i = 0; i < lines.length; i++) {
+      lineStarts.push(at);
+      at = ctx.content.indexOf('\n', at) + 1;
+    }
     let lineNum = 0;
     for (const line of lines) {
       lineNum += 1;
@@ -180,7 +186,9 @@ export class RouteEndpointCorpusAdapter implements CorpusAdapter {
       for (const pattern of [LARAVEL_ROUTE_REGEX, LUMEN_ROUTE_REGEX]) {
         for (const match of line.matchAll(pattern)) {
           const method = (match[1] as string).toUpperCase();
-          const routePath = match[2] as string;
+          // The prefixes of every group the route sits in, outermost first (#46).
+          const offset = (lineStarts[lineNum - 1] ?? 0) + (match.index ?? 0);
+          const routePath = joinRoute([...prefixesAt(groups, offset), match[2] as string]);
           const handlerRaw = (match[3] ?? '').trim().replace(/;$/, '');
           const handler = cleanHandler(handlerRaw) || 'closure';
           records.push({
@@ -189,7 +197,7 @@ export class RouteEndpointCorpusAdapter implements CorpusAdapter {
             attrs: {
               type: 'endpoint',
               method,
-              route: routePath.startsWith('/') ? routePath : `/${routePath}`,
+              route: routePath,
               handler,
               line: String(lineNum),
               framework: 'laravel',
@@ -265,6 +273,77 @@ export class RouteEndpointCorpusAdapter implements CorpusAdapter {
 
     return records;
   }
+}
+
+/** A Laravel/Lumen route group with a prefix: the prefix, and the span of its closure body. */
+interface RouteGroup {
+  readonly prefix: string;
+  readonly start: number;
+  readonly end: number;
+}
+
+/**
+ * Where a group call begins: `Route::` or `$router->`, then any chain of calls (`prefix('x')`,
+ * `middleware([...])`, `name('x.')`, `controller(X::class)`) ending in `group(`.
+ */
+const GROUP_CALL_REGEX = /(?:\bRoute::|\$router->)((?:\w+\([^;{}]*?\)\s*->\s*)*)group\s*\(/g;
+
+/**
+ * Every route group in a routes file that sets a prefix, in both the fluent form
+ * (`Route::prefix('cart')->group(function () {...})`) and the array form
+ * (`Route::group(['prefix' => 'cart'], function () {...})`). A group without a closure body
+ * (a file path) has nothing inside it to prefix and is skipped.
+ */
+function laravelGroups(content: string): RouteGroup[] {
+  const groups: RouteGroup[] = [];
+  for (const match of content.matchAll(GROUP_CALL_REGEX)) {
+    const open = (match.index ?? 0) + match[0].length;
+    const fluent = /\bprefix\(\s*['"]([^'"]*)['"]/.exec(match[1] ?? '')?.[1];
+    const bodyAt = content.indexOf('{', open);
+    if (bodyAt === -1) continue;
+    // The array form's options sit between `group(` and the closure.
+    const options = content.slice(open, bodyAt);
+    const arrayPrefix = /['"]prefix['"]\s*=>\s*['"]([^'"]*)['"]/.exec(options)?.[1];
+    if (!/\bfunction\b|\bfn\b/.test(options)) continue;
+    const end = closingBrace(content, bodyAt);
+    const prefix = fluent ?? arrayPrefix;
+    if (prefix !== undefined && end !== -1) groups.push({ prefix, start: bodyAt, end });
+  }
+  return groups;
+}
+
+/** The index of the `}` that closes the `{` at `open`, skipping quoted strings and comments. */
+function closingBrace(content: string, open: number): number {
+  let depth = 0;
+  for (let i = open; i < content.length; i++) {
+    const char = content[i];
+    if (char === "'" || char === '"') {
+      for (i++; i < content.length && content[i] !== char; i++) if (content[i] === '\\') i++;
+    } else if (char === '/' && content[i + 1] === '/') {
+      i = content.indexOf('\n', i);
+      if (i === -1) return -1;
+    } else if (char === '/' && content[i + 1] === '*') {
+      i = content.indexOf('*/', i + 2);
+      if (i === -1) return -1;
+      i++;
+    } else if (char === '{') depth++;
+    else if (char === '}' && --depth === 0) return i;
+  }
+  return -1;
+}
+
+/** The prefixes of the groups enclosing `offset`, outermost first. */
+function prefixesAt(groups: readonly RouteGroup[], offset: number): string[] {
+  return groups
+    .filter((group) => group.start < offset && offset < group.end)
+    .sort((a, b) => a.start - b.start)
+    .map((group) => group.prefix);
+}
+
+/** Path segments joined with single slashes, always starting with one: `['cart', '/']` is `/cart`. */
+function joinRoute(segments: readonly string[]): string {
+  const parts = segments.map((s) => s.replace(/^\/+|\/+$/g, '')).filter(Boolean);
+  return `/${parts.join('/')}`;
 }
 
 function cleanHandler(raw: string): string {

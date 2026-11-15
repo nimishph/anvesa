@@ -40,6 +40,11 @@ export class PatternCompileError extends StructuralSubsystemError {
   }
 }
 
+/** A value as the inside of a quoted WQL string: `\` and both quotes escaped (see wql.ts). */
+export function escapeWqlString(value: string): string {
+  return value.replace(/[\\"']/g, (char) => `\\${char}`);
+}
+
 /**
  * Compiles a Mode 2 PatternSpec AST into a Mode 1 WQL query template with parameter slots ($param).
  * Statically checks attributes, parameter bindings, and language compatibility.
@@ -213,8 +218,20 @@ export function compilePattern(spec: PatternSpec): CompiledPattern {
     parsedTemplate,
     diagnostics,
     bind(args: Record<string, string> = {}) {
-      let resolved = wql;
-      for (const param of spec.params ?? []) {
+      const declared = spec.params ?? [];
+      for (const given of Object.keys(args)) {
+        if (!declaredParams.has(given)) {
+          throw new InvalidArgumentError(
+            given,
+            declared.length > 0
+              ? `one of the parameters of pattern "${spec.name}": ${declared.map((p) => p.name).join(', ')}`
+              : `no parameters: pattern "${spec.name}" takes none`,
+            args[given],
+          );
+        }
+      }
+      const values = new Map<string, string>();
+      for (const param of declared) {
         const val = args[param.name] ?? param.default;
         if (val === undefined && param.required) {
           throw new InvalidArgumentError(
@@ -223,8 +240,14 @@ export function compilePattern(spec: PatternSpec): CompiledPattern {
             undefined,
           );
         }
-        resolved = resolved.replaceAll(`$${param.name}`, val ?? '');
+        values.set(param.name, val ?? '');
       }
+      // Every slot sits inside a quoted WQL value, so a value is escaped as one: it can only ever be
+      // matched against, never add a predicate (#51). One pass, so `$name` never eats `$names`.
+      const resolved = wql.replace(/\$([a-zA-Z0-9_-]+)/g, (slot, name: string) => {
+        const val = values.get(name);
+        return val === undefined ? slot : escapeWqlString(val);
+      });
       return {
         wql: resolved,
         ...(spec.corpus !== undefined ? { corpus: spec.corpus } : {}),
