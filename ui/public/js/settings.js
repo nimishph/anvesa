@@ -37,7 +37,9 @@ export function initSettings(api) {
     const select = byId('settingsModel');
     const chosen = typeof raw.model === 'string' ? raw.model : '';
     const groups = {};
-    for (const model of data.models) (groups[model.family] ??= []).push(model);
+    for (const model of data.models) {
+      groups[model.family] = [...(groups[model.family] ?? []), model];
+    }
     select.innerHTML = [
       `<option value="">The tier this machine suits (no model set)</option>`,
       ...Object.entries(groups).map(

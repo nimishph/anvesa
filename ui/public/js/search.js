@@ -2,6 +2,8 @@
  * ANVESA UI — Search Studio Controller
  */
 
+import { showStatePanel, stateOf, unreachable } from './state-panel.js';
+
 export function escapeHtml(str) {
   if (str === null || str === undefined) return '';
   return String(str)
@@ -71,7 +73,10 @@ function extractDocSummary(text) {
   if (!text) return '';
   const match = text.match(/\/\*\*[\s\S]*?\*\//);
   if (match) {
-    const cleaned = match[0].replace(/^\/\*\*|\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim();
+    const cleaned = match[0]
+      .replace(/^\/\*\*|\*\/$/g, '')
+      .replace(/^\s*\* ?/gm, '')
+      .trim();
     return cleaned.split('\n')[0]?.trim() || '';
   }
   const lineComment = text.match(/^\s*\/\/\s*(.+)$/m);
@@ -110,7 +115,7 @@ function normalizeHit(hit) {
   };
 }
 
-export function initSearchStudio(state, api) {
+export function initSearchStudio(_state, api) {
   const searchInput = document.getElementById('searchQueryInput');
   const searchModeSelect = document.getElementById('searchModeSelect');
   const weightCode = document.getElementById('weightCode');
@@ -245,85 +250,57 @@ export function initSearchStudio(state, api) {
     try {
       const resp = await api.search(payload);
       const elapsed = (performance.now() - startTime).toFixed(1);
-
       const items = resp?.result?.items || resp?.result?.hits;
-      if (resp && resp.success && resp.result && Array.isArray(items)) {
-        renderResults(items, elapsed, false);
-      } else if (resp?.live) {
-        // A live project that could not answer says why; sample results would pass for real ones.
-        renderError(resp.error || 'the search failed');
+      if (resp?.success && Array.isArray(items)) {
+        renderResults(items, elapsed);
       } else {
-        // Fallback or filter mock items
-        const hits = window.ANVESA_MOCK?.searchResults || [];
-        const filtered = hits.filter(
-          (h) =>
-            h.name.toLowerCase().includes(query.toLowerCase()) ||
-            h.docSummary.toLowerCase().includes(query.toLowerCase()) ||
-            h.path.toLowerCase().includes(query.toLowerCase()),
-        );
-        // Say why the index did not answer, so sample results are not taken for real ones.
-        renderResults(filtered.length ? filtered : hits, elapsed, true, resp?.error);
+        renderState(stateOf(resp) ?? { state: 'error', error: 'the search gave no results list' });
       }
     } catch (err) {
-      if (await isLive()) {
-        renderError(String(err));
-        return;
-      }
-      const hits = window.ANVESA_MOCK?.searchResults || [];
-      renderResults(hits, 12.4, true, String(err));
+      renderState(unreachable(err));
     }
   }
 
-  /** Whether an index answers: then the page never shows sample data in its place. */
-  let livePromise = null;
-  function isLive() {
-    livePromise ??= api
-      .getStatus()
-      .then((resp) => Boolean(resp?.success && resp.live))
-      .catch(() => false);
-    return livePromise;
+  /** No answer to draw: say which state the project is in, and what to do about it. */
+  function renderState(panel) {
+    if (resultsMetaText) resultsMetaText.textContent = '';
+    showStatePanel(resultsContainer, panel);
   }
 
-  function renderError(message) {
+  /** Before the first search: an invitation when the index answers, else why it does not. */
+  async function renderDefaultResults() {
+    let resp;
+    try {
+      resp = await api.getStatus();
+    } catch (err) {
+      renderState(unreachable(err));
+      return;
+    }
+    const panel = stateOf(resp);
+    if (panel) {
+      renderState(panel);
+      return;
+    }
     if (resultsMetaText) {
-      resultsMetaText.innerHTML = `<span class="badge badge-emerald">Live Index</span> · search failed`;
+      resultsMetaText.innerHTML = '<span class="badge badge-emerald">Live Index</span>';
     }
     if (resultsContainer) {
       resultsContainer.innerHTML = `
-        <div class="state-container" role="alert">
-          <div class="state-title">The index could not answer this search</div>
-          <div class="state-desc">${escapeHtml(message)}</div>
+        <div class="state-container">
+          <div class="state-title">Search this project</div>
+          <div class="state-desc">Ask in plain language, or write WQL such as //function[@name~="auth"].</div>
         </div>
       `;
     }
   }
 
-  async function renderDefaultResults() {
-    if (await isLive()) {
-      if (resultsMetaText) {
-        resultsMetaText.innerHTML = '<span class="badge badge-emerald">Live Index</span>';
-      }
-      if (resultsContainer) {
-        resultsContainer.innerHTML = `
-          <div class="state-container">
-            <div class="state-title">Search this project</div>
-            <div class="state-desc">Ask in plain language, or write WQL such as //function[@name~="auth"].</div>
-          </div>
-        `;
-      }
-      return;
-    }
-    const hits = window.ANVESA_MOCK?.searchResults || [];
-    renderResults(hits, 8.2, true);
-  }
-
-  function renderResults(rawHits, elapsedMs, isDemo, reason) {
+  function renderResults(rawHits, elapsedMs) {
     if (!resultsContainer) return;
 
     const hits = (rawHits || []).map(normalizeHit);
 
     if (resultsMetaText) {
-      resultsMetaText.innerHTML = `Found <strong>${hits.length}</strong> results in <strong>${escapeHtml(elapsedMs)}ms</strong> · Reciprocal Rank Fusion (k=60) ${isDemo ? `<span class="badge badge-amber" style="margin-left:8px;">Demo Data</span>${reason ? ` · ${escapeHtml(reason)}` : ''}` : '<span class="badge badge-emerald" style="margin-left:8px;">Live Index</span>'}`;
+      resultsMetaText.innerHTML = `Found <strong>${hits.length}</strong> results in <strong>${escapeHtml(elapsedMs)}ms</strong> · Reciprocal Rank Fusion <span class="badge badge-emerald" style="margin-left:8px;">Live Index</span>`;
     }
 
     if (hits.length === 0) {
@@ -344,11 +321,11 @@ export function initSearchStudio(state, api) {
       .map((hit, index) => {
         const bestScorePct =
           hit.bestScore !== undefined && hit.bestScore !== null
-            ? (hit.bestScore * 100).toFixed(1) + '%'
+            ? `${(hit.bestScore * 100).toFixed(1)}%`
             : 'N/A';
         const rrfScore =
-          hit.score !== undefined && hit.score !== null ? Number(hit.score).toFixed(3) : '0.850';
-        const lanesBadges = (hit.lanes || ['dense:symbols'])
+          hit.score !== undefined && hit.score !== null ? Number(hit.score).toFixed(3) : '—';
+        const lanesBadges = (hit.lanes || [])
           .map((lane) => {
             const safeLane = escapeHtml(lane);
             if (lane.includes('wql') || lane.includes('structural'))

@@ -3,8 +3,9 @@
  */
 
 import { escapeHtml } from './search.js';
+import { showStatePanel, stateOf, stateText, unreachable } from './state-panel.js';
 
-export function initStatusAndWql(state, api) {
+export function initStatusAndWql(_state, api) {
   const byId = (id) => document.getElementById(id);
   const setText = (id, text) => {
     const el = byId(id);
@@ -18,30 +19,25 @@ export function initStatusAndWql(state, api) {
   const wqlAstPreview = byId('wqlAstPreview');
 
   async function loadSystemHealth() {
-    let statusData = null;
-    let message = '';
+    let panel;
+    let statusData = {};
     try {
       const resp = await api.getStatus();
-      if (resp?.success && resp.live && resp.status) {
-        statusData = resp.status;
-      } else {
-        message = resp?.error || resp?.message || '';
+      panel = stateOf(resp);
+      if (!panel) statusData = resp.status ?? {};
+      // An index that opened but holds nothing yet is not indexed, whatever the server could open.
+      if (!panel && !(statusData.index?.files > 0)) {
+        panel = { state: 'not-indexed', error: '' };
       }
     } catch (err) {
-      message = String(err);
+      panel = unreachable(err);
     }
 
-    // Sample figures are shown only when no index answered, and the tab says so.
-    const live = statusData !== null;
-    if (!live) statusData = window.ANVESA_MOCK?.status ?? {};
     const banner = byId('statusSourceBanner');
     // `.status-section` sets `display`, which would override the `hidden` attribute.
-    if (banner) banner.style.display = live ? 'none' : '';
-    if (!live) {
-      setText(
-        'statusSourceMessage',
-        `No index is connected, so this tab shows sample figures.${message ? ` (${message})` : ''}`,
-      );
+    if (banner) {
+      banner.style.display = panel ? '' : 'none';
+      if (panel) showStatePanel(banner, panel);
     }
 
     const index = statusData.index ?? {};
@@ -54,7 +50,9 @@ export function initStatusAndWql(state, api) {
     setText('valActiveModel', statusData.embedder?.id ?? 'none loaded');
     setText(
       'valModelDims',
-      statusData.embedder ? `${count(statusData.embedder.dimensions)} dimensions` : 'structural search only',
+      statusData.embedder
+        ? `${count(statusData.embedder.dimensions)} dimensions`
+        : 'structural search only',
     );
     setText('valIndexedModels', count(models.length));
     setText('valInterrupted', statusData.interrupted ? 'interrupted' : 'complete');
@@ -73,7 +71,10 @@ export function initStatusAndWql(state, api) {
       'valQuarantinedCards',
       count(channels.reduce((sum, c) => sum + (Number(c.quarantined) || 0), 0)),
     );
-    setText('valPinnedChannels', `${count(channels.filter((c) => c.pinned).length)} of ${count(channels.length)}`);
+    setText(
+      'valPinnedChannels',
+      `${count(channels.filter((c) => c.pinned).length)} of ${count(channels.length)}`,
+    );
 
     const languagesBody = byId('languagesTableBody');
     if (languagesBody) {
@@ -133,68 +134,13 @@ export function initStatusAndWql(state, api) {
       wqlAstPreview.textContent = 'Evaluating AST query against workspace Tree-Sitter outline...';
     }
 
-    let failure = '';
     try {
       const resp = await api.queryWql({ wql });
-      if (resp?.live && resp.result) {
-        wqlAstPreview.textContent = JSON.stringify(resp.result, null, 2);
-        return;
-      }
-      failure = resp?.error ?? '';
+      const panel = resp?.result ? undefined : (stateOf(resp) ?? { state: 'error', error: '' });
+      wqlAstPreview.textContent = panel ? stateText(panel) : JSON.stringify(resp.result, null, 2);
     } catch (err) {
-      failure = String(err);
+      wqlAstPreview.textContent = stateText(unreachable(err));
     }
-
-    // A live index rejected the query: show why, rather than a sample that looks like an answer.
-    if (failure) {
-      wqlAstPreview.textContent = `Query failed: ${failure}`;
-      return;
-    }
-
-    // Simulated AST matching visualization
-    setTimeout(() => {
-      if (!wqlAstPreview) return;
-      const sampleAst = {
-        note: 'Sample output: no index is connected.',
-        query: wql,
-        parsedPredicate: {
-          tag: wql.includes('class') ? 'class' : 'function',
-          attributes: wql.includes('@name')
-            ? { name: wql.match(/@name\^?="([^"]+)"/)?.[1] || 'parse' }
-            : {},
-          scope: 'monorepo',
-        },
-        matchedNodes: [
-          {
-            symbol: 'search',
-            kind: 'function',
-            location: 'retriever/src/retriever.ts:142',
-            astNodeType: 'function_declaration',
-            parent: 'export_statement',
-          },
-          {
-            symbol: 'fuse',
-            kind: 'function',
-            location: 'retriever/src/fuse.ts:34',
-            astNodeType: 'function_declaration',
-            parent: 'export_statement',
-          },
-          {
-            symbol: 'parseWql',
-            kind: 'function',
-            location: 'structural/src/wql.ts:52',
-            astNodeType: 'function_declaration',
-            parent: 'export_statement',
-          },
-        ],
-        stats: {
-          syntaxNodesScanned: 18420,
-          matchedCount: 3,
-          elapsedMicros: 342,
-        },
-      };
-      wqlAstPreview.textContent = JSON.stringify(sampleAst, null, 2);
-    }, 150);
   }
 
   // Initial load

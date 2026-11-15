@@ -11,11 +11,11 @@ import appJs from '../public/js/app.js' with { type: 'file' };
 // @ts-expect-error a browser script, imported only for its path
 import graphJs from '../public/js/graph.js' with { type: 'file' };
 // @ts-expect-error a browser script, imported only for its path
-import mockDataJs from '../public/js/mock-data.js' with { type: 'file' };
-// @ts-expect-error a browser script, imported only for its path
 import searchJs from '../public/js/search.js' with { type: 'file' };
 // @ts-expect-error a browser script, imported only for its path
 import settingsJs from '../public/js/settings.js' with { type: 'file' };
+// @ts-expect-error a browser script, imported only for its path
+import statePanelJs from '../public/js/state-panel.js' with { type: 'file' };
 // @ts-expect-error a browser script, imported only for its path
 import statusJs from '../public/js/status.js' with { type: 'file' };
 
@@ -32,8 +32,8 @@ export const ASSETS: ReadonlyMap<string, string> = new Map([
   ['/css/status.css', statusCss],
   ['/js/app.js', appJs],
   ['/js/graph.js', graphJs],
-  ['/js/mock-data.js', mockDataJs],
   ['/js/search.js', searchJs],
   ['/js/settings.js', settingsJs],
+  ['/js/state-panel.js', statePanelJs],
   ['/js/status.js', statusJs],
 ]);

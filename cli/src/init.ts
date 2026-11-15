@@ -1,26 +1,17 @@
-import { statfs } from 'node:fs/promises';
-import { dirname } from 'node:path';
-import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
+import { InvalidArgumentError, toCodeLensError } from '@cntxt-labs/anvesa-core';
 import {
   adviseModels,
-  CONFIG_SCHEMA_URL,
   installGrammarFor,
-  installModel,
-  listModels,
   loadProjectConfig,
-  type ModelAdvice,
   type ModelCache,
-  modelsDirectory,
   type ProjectLanguage,
   probeHardware,
   projectLanguages,
-  weightBytes,
-  writeProjectConfig,
 } from '@cntxt-labs/anvesa-retriever';
 import type { Environment } from './environment.ts';
+import { useModel } from './model-use.ts';
 import type { Parsed } from './options.ts';
-import { DownloadProgress, formatBytes } from './progress.ts';
-import { table } from './render.ts';
+import { DownloadProgress } from './progress.ts';
 import { installSkill, parseSkillAgent, refreshInstalledSkills, skillCopies } from './skill.ts';
 
 /** What one step of setup did. `skipped` is a choice or a missing permission; `failed` is neither. */
@@ -54,8 +45,6 @@ export interface SetupContext {
   readonly parsed: Parsed;
 }
 
-const MB = 1024 * 1024;
-
 function networkBlocked(ctx: SetupContext): boolean {
   return ctx.parsed.values['no-network'] === true || ctx.environment.env.ANVESA_NO_NETWORK === '1';
 }
@@ -72,8 +61,9 @@ const yes = (answer: string | undefined): boolean =>
   answer === '' || /^y(es)?$/i.test(answer ?? '');
 
 /**
- * The part of `init` that looks at this machine and this project and offers what is missing: an
- * encoder that suits the hardware, and a parser for every language in the project that lacks one.
+ * The part of `init` that looks at this machine and this project and offers what is missing: a
+ * parser for every language in the project that lacks one, the agent skill, and last an encoder,
+ * chosen with `anvesa model use` and this machine's advice as the default.
  * It asks on a terminal, does everything with `--yes`, and otherwise only says what it would do, so
  * a script or CI run never downloads by surprise. Every download shows its progress.
  */
@@ -89,16 +79,16 @@ export async function setupProject(
   const interactive = ctx.environment.prompt !== undefined && !assume && values.json !== true;
   const permitted = !networkBlocked(ctx) && values['no-download'] !== true;
 
+  const grammars = await chooseGrammars(ctx, projectRoot, permitted, interactive, assume);
+  const skill = await offerSkill(ctx, projectRoot, interactive, assume);
+  // Last, once everything else is in place: the encoder, through `anvesa model use`.
   if (interactive) {
     say(
       ctx,
-      `\nThis machine: ${probe.cores} cores, ${(probe.availableMemoryMb / 1024).toFixed(1)} GB of ${(probe.totalMemoryMb / 1024).toFixed(1)} GB memory available.`,
+      `\nThis machine: ${probe.cores} cores, ${(probe.availableMemoryMb / 1024).toFixed(1)} GB of ${(probe.totalMemoryMb / 1024).toFixed(1)} GB memory available. ${advice.reason}.`,
     );
   }
-
   const model = await chooseModel(ctx, projectRoot, cache, advice, permitted, interactive, assume);
-  const grammars = await chooseGrammars(ctx, projectRoot, permitted, interactive, assume);
-  const skill = await offerSkill(ctx, projectRoot, interactive, assume);
   return {
     hardware: {
       cores: probe.cores,
@@ -148,40 +138,11 @@ async function offerSkill(
   return { state: 'installed', path: result.path, note: `installed at ${result.path}` };
 }
 
-/** The encoders on offer, numbered as the prompt takes them, the default first. */
-function choiceTable(models: readonly ModelAdvice[], installed: ReadonlySet<string>): string[] {
-  const numbered = models.map((advice, index) => ({ advice, number: index + 1 }));
-  return table<(typeof numbered)[number]>(
-    [
-      { header: '#', cell: (row) => String(row.number), align: 'right' },
-      { header: 'Model', cell: (row) => row.advice.spec.id },
-      { header: 'Good for', cell: (row) => row.advice.spec.summary ?? '' },
-      {
-        header: 'Download',
-        cell: (row) => formatBytes(row.advice.downloadMb * MB),
-        align: 'right',
-      },
-      {
-        header: 'Memory',
-        cell: (row) => `~${Math.round(row.advice.estimatedPeakMb)} MB`,
-        align: 'right',
-      },
-      {
-        header: 'Note',
-        cell: (row) =>
-          [
-            row.advice.recommended ? 'recommended' : undefined,
-            installed.has(row.advice.spec.id) ? 'installed' : undefined,
-            row.advice.fits ? undefined : 'too large for the memory available',
-          ]
-            .filter(Boolean)
-            .join(', '),
-      },
-    ],
-    numbered,
-  );
-}
-
+/**
+ * The encoder, through `anvesa model use`: the same list, the same Enter-keeps-current, the same
+ * download on a yes. This machine's recommendation is what Enter (and `--yes`) picks when the
+ * project names no model yet. Without a terminal or `--yes` it only says what it would do.
+ */
 async function chooseModel(
   ctx: SetupContext,
   projectRoot: string,
@@ -191,134 +152,63 @@ async function chooseModel(
   interactive: boolean,
   assume: boolean,
 ): Promise<SetupResult['model']> {
-  const rows = await listModels(cache);
-  const installed = new Set(rows.filter((row) => row.installed).map((row) => row.id));
   const explicit = ctx.parsed.values.model;
-  const known = new Map(advice.models.map((entry) => [entry.spec.id, entry]));
-
-  if (explicit !== undefined && !known.has(explicit)) {
-    // A model the user brought is not in the advice, but once installed it is as good a choice.
-    if (installed.has(explicit)) {
-      await rememberModel(projectRoot, explicit);
+  const fallback = advice.recommended.spec.id;
+  const later = `later: anvesa model use ${fallback} --download`;
+  if (explicit === undefined && !interactive && !assume) {
+    let current: string | undefined;
+    try {
+      current = (await loadProjectConfig(projectRoot)).model;
+    } catch (failure) {
+      // init leaves a config it cannot read as it is, and says so; the encoder waits for it.
       return {
-        id: explicit,
-        state: 'already',
-        note: `${explicit} is installed and set in .anvesa/config.json`,
+        id: undefined,
+        state: 'skipped',
+        note: `not chosen: ${toCodeLensError(failure, 'read .anvesa/config.json').message}`,
       };
     }
-    throw new InvalidArgumentError(
-      '--model',
-      `one of ${[...new Set([...known.keys(), ...installed])].join(', ')}, or a model installed with: anvesa model install <name> --from <dir>`,
-      explicit,
-    );
+    return current
+      ? { id: current, state: 'already', note: `${current} is set in .anvesa/config.json` }
+      : {
+          id: undefined,
+          state: 'skipped',
+          note: `not installed; ${fallback} is recommended for this machine: anvesa model use ${fallback} --download`,
+        };
   }
-  if (explicit === undefined && installed.size > 0) {
-    const [first] = [...installed];
+  const notes = new Map<string, string>();
+  for (const entry of advice.models) {
+    if (entry.recommended) notes.set(entry.spec.id, 'recommended');
+    else if (!entry.fits) notes.set(entry.spec.id, 'too large for the memory available');
+  }
+  try {
+    const result = await useModel(ctx, projectRoot, cache, explicit, {
+      fallback,
+      notes,
+      assume,
+      mayDownload: permitted,
+      declineSkips: true,
+    });
+    if (result.state === 'cancelled') {
+      return {
+        id: undefined,
+        state: 'skipped',
+        note: result.note.includes('later:') ? result.note : `${result.note}; ${later}`,
+      };
+    }
     return {
-      id: first,
-      state: 'already',
-      note: `${[...installed].join(', ')} is installed`,
+      id: result.model,
+      state: result.downloaded ? 'installed' : 'already',
+      note: result.note,
     };
-  }
-
-  let chosen: ModelAdvice | undefined = explicit === undefined ? undefined : known.get(explicit);
-  if (chosen === undefined && interactive) {
-    say(ctx, `\nEncoder for meaning-based search. ${advice.reason}.\n`);
-    for (const line of choiceTable(advice.models, installed)) say(ctx, `  ${line}`);
-    const answer = await ask(
-      ctx,
-      `\nInstall which? [Enter = ${advice.recommended.spec.id}, a number or name, s = skip] `,
-    );
-    if (answer === undefined || /^(s|skip|n|no)$/i.test(answer)) {
-      return skipped(advice, 'skipped at your request');
-    }
-    chosen = advice.recommended;
-    if (answer !== '') {
-      const byNumber = advice.models[Number(answer) - 1];
-      chosen = byNumber ?? known.get(answer);
-      if (chosen === undefined) {
-        say(ctx, `"${answer}" is not one of the encoders listed.`);
-        return skipped(advice, `"${answer}" is not a built-in encoder`);
-      }
-    }
-  } else if (chosen === undefined && assume) {
-    chosen = advice.recommended;
-  }
-
-  if (chosen === undefined) {
+  } catch (failure) {
+    // A model named outright that does not exist is the caller's mistake: init stops on it.
+    if (explicit !== undefined && failure instanceof InvalidArgumentError) throw failure;
     return {
       id: undefined,
-      state: 'skipped',
-      note: `not installed; ${advice.recommended.spec.id} is recommended: anvesa model install ${advice.recommended.spec.id} --download`,
-    };
-  }
-  const id = chosen.spec.id;
-  if (installed.has(id)) {
-    // Named outright, it is a choice for the project, so it is recorded like a download is.
-    if (explicit === undefined) return { id, state: 'already', note: `${id} is installed` };
-    await rememberModel(projectRoot, id);
-    return { id, state: 'already', note: `${id} is installed and set in .anvesa/config.json` };
-  }
-  if (!permitted) {
-    return {
-      id,
-      state: 'skipped',
-      note: `not downloaded (network use is off); later: anvesa model install ${id} --download`,
-    };
-  }
-
-  const free = await freeBytes(modelsDirectory(ctx.environment.env));
-  const needed = weightBytes(chosen.spec) + chosen.spec.tokenizer.bytes;
-  if (free !== undefined && free < needed * 1.5) {
-    return {
-      id,
       state: 'failed',
-      note: `not enough disk space for ${id}: ${formatBytes(needed)} needed, ${formatBytes(free)} free`,
+      note: toCodeLensError(failure, 'choose a model').message,
     };
   }
-
-  const progress = new DownloadProgress(ctx.environment);
-  try {
-    say(ctx, `\nDownloading encoder ${id} (${formatBytes(needed)})`);
-    let current = '';
-    await installModel(cache, id, {
-      download: true,
-      ...(ctx.environment.fetch ? { fetch: ctx.environment.fetch } : {}),
-      onProgress: (file, received, expected) => {
-        if (file !== current) {
-          progress.done();
-          current = file;
-          progress.start(file);
-        }
-        progress.update(received, expected);
-      },
-    });
-    progress.done();
-  } catch (failure) {
-    progress.done();
-    return { id, state: 'failed', note: `download of ${id} failed: ${(failure as Error).message}` };
-  }
-
-  await rememberModel(projectRoot, id);
-  return { id, state: 'installed', note: `${id} installed and set in .anvesa/config.json` };
-}
-
-/** Record the choice so every teammate and every run uses the same model. */
-export async function rememberModel(projectRoot: string, id: string): Promise<void> {
-  const config = await loadProjectConfig(projectRoot);
-  await writeProjectConfig(projectRoot, {
-    ...config,
-    $schema: config.$schema ?? CONFIG_SCHEMA_URL,
-    model: id,
-  });
-}
-
-function skipped(advice: ReturnType<typeof adviseModels>, why: string): SetupResult['model'] {
-  return {
-    id: undefined,
-    state: 'skipped',
-    note: `${why}; later: anvesa model install ${advice.recommended.spec.id} --download`,
-  };
 }
 
 async function chooseGrammars(
@@ -408,18 +298,6 @@ async function chooseGrammars(
     }
   }
   return results;
-}
-
-async function freeBytes(directory: string): Promise<number | undefined> {
-  for (let path = directory; ; path = dirname(path)) {
-    try {
-      const info = await statfs(path);
-      return info.bavail * info.bsize;
-    } catch (failure) {
-      if ((failure as { code?: unknown } | null)?.code !== 'ENOENT') return undefined;
-      if (dirname(path) === path) return undefined;
-    }
-  }
 }
 
 /** The summary lines of a setup, for the text output of `init`. */

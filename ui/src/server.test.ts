@@ -4,13 +4,22 @@ import { createServer } from 'node:http';
 import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EmbedderUnavailableError, TargetError } from '@cntxt-labs/anvesa-retriever';
+import {
+  EmbedderUnavailableError,
+  NotIndexedError,
+  TargetError,
+} from '@cntxt-labs/anvesa-retriever';
 import { ASSETS } from './assets.ts';
 import { buildDashboardUrl, ensureUiRunning, type LiveRetriever, startUiServer } from './server.ts';
 
 interface ApiResponse {
   readonly success: boolean;
+  /** Why there is no answer (this checkout may have no index), when there is none. */
+  readonly state?: string;
 }
+
+/** Past the token check: an answer, or a named reason there is none. */
+const authorized = (body: ApiResponse): boolean => body.success || typeof body.state === 'string';
 
 /** The status of a GET whose path is sent exactly as given. */
 function rawStatus(port: number, path: string): Promise<number> {
@@ -98,8 +107,7 @@ describe('anvesa-ui server', () => {
         headers: { 'X-Anvesa-Token': instance.token },
       });
       expect(resStatus.status).toBe(200);
-      const statusJson = (await resStatus.json()) as ApiResponse;
-      expect(statusJson.success).toBe(true);
+      expect(authorized((await resStatus.json()) as ApiResponse)).toBe(true);
 
       // API calls with valid token in query param succeed
       const resSearch = await fetch(`http://127.0.0.1:3898/api/search?token=${instance.token}`, {
@@ -108,13 +116,11 @@ describe('anvesa-ui server', () => {
         body: JSON.stringify({ query: 'parse' }),
       });
       expect(resSearch.status).toBe(200);
-      const searchJson = (await resSearch.json()) as ApiResponse;
-      expect(searchJson.success).toBe(true);
+      expect(authorized((await resSearch.json()) as ApiResponse)).toBe(true);
 
       const resRoutes = await fetch(`http://127.0.0.1:3898/api/routes?token=${instance.token}`);
       expect(resRoutes.status).toBe(200);
-      const routesJson = (await resRoutes.json()) as ApiResponse;
-      expect(routesJson.success).toBe(true);
+      expect(authorized((await resRoutes.json()) as ApiResponse)).toBe(true);
     } finally {
       await instance.close();
     }
@@ -204,7 +210,7 @@ describe('anvesa-ui server', () => {
     }
   });
 
-  test('a live index that cannot answer reports the error, never demo data', async () => {
+  test('a live index that cannot answer names its state, never demo data', async () => {
     const failing = new EmbedderUnavailableError('the query is not structural (WQL)');
     const retriever = {
       close: async () => undefined,
@@ -225,7 +231,7 @@ describe('anvesa-ui server', () => {
         body: JSON.stringify({ query: 'retry failed quote' }),
       });
       const body = (await search.json()) as Record<string, unknown>;
-      expect(body).toMatchObject({ success: false, live: true });
+      expect(body).toMatchObject({ success: false, live: true, state: 'no-encoder' });
       expect(String(body.error)).toContain('No embedder is available');
       expect(body).not.toHaveProperty('fallback');
 
@@ -233,10 +239,44 @@ describe('anvesa-ui server', () => {
         'http://127.0.0.1:3897/api/graph/neighbors?symbol=Retriever.search',
         { headers },
       );
-      expect(await graph.json()).toMatchObject({ success: false, live: true });
+      expect(await graph.json()).toMatchObject({ success: false, live: true, state: 'error' });
+
+      // A request that names nothing is the caller's to fix, not an index failure.
+      const nothing = await fetch('http://127.0.0.1:3897/api/graph/neighbors', { headers });
+      expect(await nothing.json()).toMatchObject({ success: false, state: 'invalid' });
     } finally {
       await instance.close();
     }
+  });
+
+  test('a project with no index says so, and nothing answers with demo data', async () => {
+    const notIndexed = new NotIndexedError('/project');
+    const retriever = {
+      close: async () => undefined,
+      status: async () => ({ index: { files: 0 } }),
+      routes: async () => {
+        throw notIndexed;
+      },
+    } as unknown as LiveRetriever;
+    const instance = await startUiServer({ port: 3894, open: false, retriever });
+    try {
+      const routes = await fetch(`http://127.0.0.1:3894/api/routes?token=${instance.token}`);
+      // An index that opened with nothing in it is not indexed either.
+      const status = await fetch(`http://127.0.0.1:3894/api/status?token=${instance.token}`);
+      expect(await status.json()).toMatchObject({ success: false, state: 'not-indexed' });
+      expect(await routes.json()).toMatchObject({
+        success: false,
+        live: false,
+        state: 'not-indexed',
+      });
+    } finally {
+      await instance.close();
+    }
+    for (const [path, script] of ASSETS) {
+      if (!path.endsWith('.js')) continue;
+      expect(readFileSync(script, 'utf8')).not.toContain('ANVESA_MOCK');
+    }
+    expect(ASSETS.has('/js/mock-data.js')).toBe(false);
   });
 
   test('rejects requests with invalid Host header and blocks path traversal', async () => {

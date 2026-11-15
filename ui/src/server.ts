@@ -30,20 +30,26 @@ interface SearchPayload {
 }
 
 /**
- * The answer when a live retriever throws. A project with no index yet is not live, so the page may
- * show its sample data and say so; any other failure is reported as it is, never hidden behind
- * sample data (#47).
+ * Why the dashboard cannot show what was asked, for its status panel. The page never shows sample
+ * data in place of an answer; it shows one of these and what to do about it.
  */
+export type UnansweredState = 'not-indexed' | 'unavailable' | 'no-encoder' | 'invalid' | 'error';
+
+/** The answer when a live retriever throws: the failure, as a state the page can explain. */
 function failure(
   err: unknown,
   what: string,
   extra: Readonly<Record<string, unknown>> = {},
 ): Record<string, unknown> {
   const error = toCodeLensError(err, what);
-  if ((err as { code?: unknown } | null)?.code === 'RETRIEVER_NOT_INDEXED') {
-    return { success: true, live: false, demo: true, message: error.message, ...extra };
-  }
-  return { success: false, live: true, error: error.message, ...extra };
+  const code = (err as { code?: unknown } | null)?.code;
+  const state: UnansweredState =
+    code === 'RETRIEVER_NOT_INDEXED'
+      ? 'not-indexed'
+      : code === 'RETRIEVER_EMBEDDER_UNAVAILABLE'
+        ? 'no-encoder'
+        : 'error';
+  return { success: false, live: state !== 'not-indexed', state, error: error.message, ...extra };
 }
 
 /** What the dashboard asks of a retriever. */
@@ -248,6 +254,25 @@ export async function startUiServer(options: ServerOptions = {}) {
   // Set once listening; no request arrives before then.
   let port = 0;
 
+  /**
+   * No answer to give: no index is open (it failed to open, and says why), or the request left out
+   * what it asks about.
+   */
+  const unanswered = (
+    live: LiveRetriever | null,
+    missing: string,
+    extra: Readonly<Record<string, unknown>> = {},
+  ): Record<string, unknown> =>
+    live
+      ? { success: false, live: true, state: 'invalid', error: `name a ${missing}`, ...extra }
+      : {
+          success: false,
+          live: false,
+          state: 'unavailable',
+          error: retrieverLoadError ?? 'no index is open for this project',
+          ...extra,
+        };
+
   const server = createServer(async (req, res) => {
     // 1. Host header validation to prevent DNS rebinding attacks
     const host = req.headers.host;
@@ -281,6 +306,16 @@ export async function startUiServer(options: ServerOptions = {}) {
           if (live) {
             try {
               const status = await live.status();
+              // The index opens before anything is in it: no files read yet is not indexed.
+              if (!(status.index?.files > 0)) {
+                return sendJson(res, {
+                  success: false,
+                  live: false,
+                  state: 'not-indexed',
+                  error: `${projectRoot} has no index yet`,
+                  root: projectRoot,
+                });
+              }
               return sendJson(res, {
                 success: true,
                 live: true,
@@ -289,22 +324,10 @@ export async function startUiServer(options: ServerOptions = {}) {
                 ...(embedderNote ? { embedder: { available: false, reason: embedderNote } } : {}),
               });
             } catch (err) {
-              const error = toCodeLensError(err, 'get status');
-              return sendJson(res, {
-                success: false,
-                live: false,
-                error: error.message,
-                root: projectRoot,
-              });
+              return sendJson(res, failure(err, 'get status', { root: projectRoot }));
             }
           }
-          return sendJson(res, {
-            success: true,
-            live: false,
-            root: projectRoot,
-            message:
-              retrieverLoadError ?? 'Project not yet indexed. Running in demo / inspection mode.',
-          });
+          return sendJson(res, unanswered(null, 'project', { root: projectRoot }));
         }
 
         if (pathname === '/api/config' && req.method === 'GET') {
@@ -363,7 +386,7 @@ export async function startUiServer(options: ServerOptions = {}) {
               return sendJson(res, failure(err, 'search', { query }));
             }
           }
-          return sendJson(res, { success: true, live: false, demo: true, query });
+          return sendJson(res, unanswered(live, 'query', { query }));
         }
 
         if (pathname === '/api/query' && req.method === 'POST') {
@@ -384,7 +407,7 @@ export async function startUiServer(options: ServerOptions = {}) {
               return sendJson(res, failure(err, 'query wql', { wql }));
             }
           }
-          return sendJson(res, { success: true, live: false, demo: true, wql });
+          return sendJson(res, unanswered(live, 'WQL query', { wql }));
         }
 
         if (pathname === '/api/graph/callers' && req.method === 'GET') {
@@ -397,7 +420,7 @@ export async function startUiServer(options: ServerOptions = {}) {
               return sendJson(res, failure(err, 'get callers', { symbol }));
             }
           }
-          return sendJson(res, { success: true, live: false, demo: true, symbol });
+          return sendJson(res, unanswered(live, 'symbol', { symbol }));
         }
 
         if (pathname === '/api/graph/callees' && req.method === 'GET') {
@@ -410,7 +433,7 @@ export async function startUiServer(options: ServerOptions = {}) {
               return sendJson(res, failure(err, 'get callees', { symbol }));
             }
           }
-          return sendJson(res, { success: true, live: false, demo: true, symbol });
+          return sendJson(res, unanswered(live, 'symbol', { symbol }));
         }
 
         if (pathname === '/api/graph/neighbors' && req.method === 'GET') {
@@ -423,7 +446,7 @@ export async function startUiServer(options: ServerOptions = {}) {
               return sendJson(res, failure(err, 'get neighbors', { symbol }));
             }
           }
-          return sendJson(res, { success: true, live: false, demo: true, symbol });
+          return sendJson(res, unanswered(live, 'symbol', { symbol }));
         }
 
         if (pathname === '/api/graph/dependents' && req.method === 'GET') {
@@ -436,7 +459,7 @@ export async function startUiServer(options: ServerOptions = {}) {
               return sendJson(res, failure(err, 'get dependents', { path }));
             }
           }
-          return sendJson(res, { success: true, live: false, demo: true, path });
+          return sendJson(res, unanswered(live, 'path', { path }));
         }
 
         if (pathname === '/api/repomap' && req.method === 'GET') {
@@ -452,7 +475,7 @@ export async function startUiServer(options: ServerOptions = {}) {
               return sendJson(res, failure(err, 'get repomap'));
             }
           }
-          return sendJson(res, { success: true, live: false, demo: true });
+          return sendJson(res, unanswered(live, 'project'));
         }
 
         if (pathname === '/api/routes' && req.method === 'GET') {
@@ -466,7 +489,7 @@ export async function startUiServer(options: ServerOptions = {}) {
               return sendJson(res, failure(err, 'get routes'));
             }
           }
-          return sendJson(res, { success: true, live: false, demo: true });
+          return sendJson(res, unanswered(live, 'project'));
         }
 
         return sendJson(res, { error: 'Not found' }, 404);

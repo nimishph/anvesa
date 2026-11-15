@@ -12,7 +12,6 @@
       "!.beads",
       "!**/.anvesa",
       "!site",
-      "!ui/public",
       "!eval/fixtures",
       "!retriever/src/__fixtures__/learned-ranker"
     ]
