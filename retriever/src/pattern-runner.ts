@@ -1,15 +1,26 @@
-import { existsSync, readdirSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { InvalidArgumentError, toCodeLensError } from '@cntxt-labs/anvesa-core';
 import {
   compilePattern,
   type Diagnostic,
   type PatternSpec,
   type WqlHit,
 } from '@cntxt-labs/anvesa-structural';
+import {
+  type PatternInventory,
+  type PatternResolver,
+  projectPatterns,
+} from './patterns/resolver.ts';
 
 export type { Diagnostic, PatternSpec } from '@cntxt-labs/anvesa-structural';
+export {
+  DirectoryPatternSource,
+  type InvalidPatternFile,
+  type LoadedPattern,
+  PATTERN_NAME,
+  type PatternSource,
+  type PatternTier,
+  parsePatternFile,
+} from './patterns/loader.ts';
+export { type PatternInventory, PatternResolver, projectPatterns } from './patterns/resolver.ts';
 
 export interface PatternRunResult {
   readonly pattern: string;
@@ -18,18 +29,6 @@ export interface PatternRunResult {
   readonly total: number | null;
   readonly nextCursor: string | null;
   readonly diagnostic?: Diagnostic | undefined;
-}
-
-/** A pattern file that could not be used, and why. Never dropped silently. */
-export interface InvalidPatternFile {
-  readonly file: string;
-  readonly code: string;
-  readonly message: string;
-}
-
-export interface PatternInventory {
-  readonly patterns: readonly PatternSpec[];
-  readonly invalid: readonly InvalidPatternFile[];
 }
 
 export interface PatternRetrieverHost {
@@ -52,11 +51,15 @@ export interface PatternRetrieverHost {
   }>;
 }
 
+/** Runs patterns. Finding them, and which tier wins, is the resolver's job. */
 export class PatternRunner {
-  constructor(private readonly retriever: PatternRetrieverHost) {}
+  readonly resolver: PatternResolver;
 
-  patternsDirectory(): string {
-    return join(this.retriever.workspace.root, '.anvesa', 'patterns');
+  constructor(
+    private readonly retriever: PatternRetrieverHost,
+    resolver?: PatternResolver,
+  ) {
+    this.resolver = resolver ?? projectPatterns(retriever.workspace.root);
   }
 
   /** The usable patterns. Use `inspect` to also learn which files were rejected. */
@@ -64,76 +67,14 @@ export class PatternRunner {
     return (await this.inspect()).patterns;
   }
 
-  /** Every file in the patterns directory: the ones that compile, and the ones that do not. */
-  async inspect(): Promise<PatternInventory> {
-    const dir = this.patternsDirectory();
-    if (!existsSync(dir)) return { patterns: [], invalid: [] };
-    const files = readdirSync(dir)
-      .filter((f) => f.endsWith('.json'))
-      .sort();
-    const loaded: { readonly file: string; readonly spec: PatternSpec }[] = [];
-    const invalid: InvalidPatternFile[] = [];
-    for (const f of files) {
-      try {
-        const text = await readFile(join(dir, f), 'utf8');
-        let parsed: PatternSpec;
-        try {
-          parsed = JSON.parse(text) as PatternSpec;
-        } catch (failure) {
-          throw new InvalidArgumentError('pattern file', 'valid JSON', f, { cause: failure });
-        }
-        if (!parsed || typeof parsed.name !== 'string' || !parsed.name || !parsed.target) {
-          throw new InvalidArgumentError('pattern', 'an object with "name" and "target"', f);
-        }
-        if (typeof parsed.description !== 'string' || !parsed.description.trim()) {
-          throw new InvalidArgumentError('pattern', 'a "description" saying what it finds', f);
-        }
-        compilePattern(parsed);
-        loaded.push({ file: f, spec: parsed });
-      } catch (failure) {
-        const typed = toCodeLensError(failure, `load pattern ${f}`);
-        invalid.push({ file: f, code: typed.code, message: typed.message });
-      }
-    }
-    // Two files with one name: neither runs, since which one `run` picked would be an accident.
-    const byName = new Map<string, string[]>();
-    for (const { file, spec } of loaded)
-      byName.set(spec.name, [...(byName.get(spec.name) ?? []), file]);
-    const patterns: PatternSpec[] = [];
-    for (const { file, spec } of loaded) {
-      const sharing = byName.get(spec.name) ?? [];
-      if (sharing.length === 1) {
-        patterns.push(spec);
-        continue;
-      }
-      const typed = toCodeLensError(
-        new InvalidArgumentError(
-          'pattern',
-          `a name no other pattern uses ("${spec.name}" is also in ${sharing.filter((other) => other !== file).join(', ')})`,
-          file,
-        ),
-        `load pattern ${file}`,
-      );
-      invalid.push({ file, code: typed.code, message: typed.message });
-    }
-    patterns.sort((a, b) => a.name.localeCompare(b.name));
-    invalid.sort((a, b) => a.file.localeCompare(b.file));
-    return { patterns, invalid };
+  /** Every pattern file: the ones that can run, and the ones that cannot, with why. */
+  inspect(): Promise<PatternInventory> {
+    return this.resolver.inventory();
   }
 
+  /** The pattern called `name`: one file read per tier, not the whole folder. */
   async get(name: string): Promise<PatternSpec> {
-    const list = await this.list();
-    const found = list.find((p) => p.name === name);
-    if (!found) {
-      throw new InvalidArgumentError(
-        'name',
-        list.length > 0
-          ? `one of ${list.map((p) => p.name).join(', ')}`
-          : 'a pattern in .anvesa/patterns/ (there are none yet; see: anvesa primer patterns)',
-        name,
-      );
-    }
-    return found;
+    return (await this.resolver.find(name)).spec;
   }
 
   async run(

@@ -261,7 +261,7 @@ A channel is a dense lane: a transformer turns files (or records) into cards, wh
     description: 'Named, parameterized WQL patterns a team keeps in .anvesa/patterns/.',
     content: `# Patterns (\`anvesa pattern\`)
 
-A pattern is a JSON file in \`.anvesa/patterns/\` that compiles to WQL.
+A pattern is a JSON file, \`.anvesa/patterns/<name>.json\`, that compiles to WQL.
 
 \`\`\`json
 {
@@ -279,7 +279,9 @@ A pattern is a JSON file in \`.anvesa/patterns/\` that compiles to WQL.
 - MCP: \`pattern_list()\`, \`pattern_run({ name, args: { prefix: "get" } })\`.
 
 ### Rules
-- \`name\`, \`description\` and \`target\` are required; two files with one name are both rejected.
+- \`name\`, \`description\` and \`target\` are required.
+- The file is named after the pattern (\`functions-by-prefix.json\`); names are lowercase letters,
+  digits and \`-\`. \`run\` reads only that file.
 - Values are escaped as quoted WQL strings: a value is only ever matched against.
 - An argument the pattern does not declare is an error listing the ones it does.
 - \`target.kind\`: callable, function, method, class, interface, struct, type, or custom (\`customTag\`).`,

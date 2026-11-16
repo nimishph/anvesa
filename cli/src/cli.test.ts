@@ -2475,7 +2475,7 @@ describe('declarative patterns', () => {
     expect(listed.out).toContain('STRUCTURAL_INVALID_ARGUMENT');
   });
 
-  test('a pattern needs a description and a name of its own; run takes only declared arguments', async () => {
+  test('a pattern needs a description and its file name as its name; run takes only declared arguments', async () => {
     const root = makeProject();
     await cli(root, 'index');
     const patternsDir = join(root, '.anvesa', 'patterns');
@@ -2489,7 +2489,7 @@ describe('declarative patterns', () => {
       });
     writeFileSync(join(patternsDir, 'undescribed.json'), fn('undescribed'));
     writeFileSync(join(patternsDir, 'twin-a.json'), fn('twin', { description: 'a' }));
-    writeFileSync(join(patternsDir, 'twin-b.json'), fn('twin', { description: 'b' }));
+    writeFileSync(join(patternsDir, 'Shouty.json'), fn('Shouty', { description: 'b' }));
     writeFileSync(join(patternsDir, 'fine.json'), fn('fine', { description: 'by name' }));
 
     const listed = json(await cli(root, 'pattern', 'list', '--json'));
@@ -2499,12 +2499,20 @@ describe('declarative patterns', () => {
       i.message,
     ]);
     expect(invalid.map(([file]: string[]) => file)).toEqual([
+      'Shouty.json',
       'twin-a.json',
-      'twin-b.json',
       'undescribed.json',
     ]);
-    expect(invalid[0][1]).toContain('twin-b.json');
+    expect(invalid[0][1]).toContain('lowercase');
+    expect(invalid[1][1]).toContain('rename it to twin.json');
     expect(invalid[2][1]).toContain('description');
+
+    // run reads only the named file: a broken neighbour does not stop it.
+    const ran = json(await cli(root, 'pattern', 'run', 'fine', 'name=parseConfig', '--json'));
+    expect(ran.items).toHaveLength(1);
+    const missing = await cli(root, 'pattern', 'run', 'twin');
+    expect(missing.code).not.toBe(0);
+    expect(missing.err).toContain('one of fine');
 
     const bogus = await cli(root, 'pattern', 'run', 'fine', 'name=parseConfig', 'bogus=1');
     expect(bogus.code).not.toBe(0);
