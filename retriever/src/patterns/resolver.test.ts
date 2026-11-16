@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DirectoryPatternSource, parsePatternFile } from './loader.ts';
-import { PatternResolver, projectPatterns } from './resolver.ts';
+import { PatternResolver, projectPatterns, standardPatterns } from './resolver.ts';
 
 const roots: string[] = [];
 afterEach(() => {
@@ -70,23 +70,54 @@ describe('pattern loader', () => {
 });
 
 describe('pattern resolver', () => {
-  test('the first tier that has a name wins, and inventory lists each name once', async () => {
-    const first = folder({ 'shared.json': pattern('shared', 'from the first') });
-    const second = folder({
-      'shared.json': pattern('shared', 'from the second'),
-      'only.json': pattern('only'),
+  const tiered = () => {
+    const project = folder({
+      'shared.json': pattern('shared', 'from the project'),
+      'broken.json': '{',
     });
-    const resolver = new PatternResolver([
-      new DirectoryPatternSource('project', first, 'first/'),
-      new DirectoryPatternSource('project', second, 'second/'),
+    const user = folder({
+      'shared.json': pattern('shared', 'from the user'),
+      'only.json': pattern('only'),
+      'broken.json': '{',
+    });
+    return new PatternResolver([
+      new DirectoryPatternSource('project', project, 'project/'),
+      new DirectoryPatternSource('user', user, 'user/'),
     ]);
-    expect((await resolver.find('shared')).spec.description).toBe('from the first');
-    expect((await resolver.find('only')).spec.name).toBe('only');
-    const { patterns } = await resolver.inventory();
-    expect(patterns.map((p) => [p.name, p.description])).toEqual([
-      ['only', 'finds only'],
-      ['shared', 'from the first'],
+  };
+
+  test('the project tier shadows the user tier, and inventory says so', async () => {
+    const resolver = tiered();
+    expect((await resolver.find('shared')).spec.description).toBe('from the project');
+    expect((await resolver.find('only')).tier).toBe('user');
+    const { patterns, invalid } = await resolver.inventory();
+    expect(patterns.map((p) => [p.name, p.tier, p.description, p.shadows])).toEqual([
+      ['only', 'user', 'finds only', undefined],
+      ['shared', 'project', 'from the project', ['user']],
     ]);
+    expect(invalid.map((i) => [i.tier, i.file])).toEqual([
+      ['project', 'broken.json'],
+      ['user', 'broken.json'],
+    ]);
+  });
+
+  test('tier:name asks only that tier', async () => {
+    const resolver = tiered();
+    expect((await resolver.find('user:shared')).spec.description).toBe('from the user');
+    expect((await resolver.find('project:shared')).spec.description).toBe('from the project');
+    await expect(resolver.find('project:only')).rejects.toThrow('one of project:shared');
+    await expect(resolver.find('team:shared')).rejects.toThrow('one of project, user');
+  });
+
+  test('standardPatterns reads the project, then <home>/patterns', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'anvesa-project-'));
+    const home = mkdtempSync(join(tmpdir(), 'anvesa-home-'));
+    roots.push(root, home);
+    mkdirSync(join(home, 'patterns'));
+    writeFileSync(join(home, 'patterns', 'mine.json'), pattern('mine'));
+    const found = await standardPatterns(root, home).find('mine');
+    expect(found.tier).toBe('user');
+    await expect(standardPatterns(root, home).find('absent')).rejects.toThrow('one of mine');
   });
 
   test('an unknown name lists the known ones, or says where to put the first', async () => {

@@ -10,7 +10,7 @@ import {
 } from '@cntxt-labs/anvesa-retriever';
 import type { Environment } from '../../environment.ts';
 import type { Parsed } from '../../options.ts';
-import { findProjectRoot } from '../../project-root.ts';
+import { findProjectRoot, userStateDirectory } from '../../project-root.ts';
 import { refreshInstalledSkills } from '../../skill.ts';
 import {
   clearGlobalTelemetry,
@@ -88,6 +88,7 @@ export async function openSession(ctx: Context, options: SessionOptions): Promis
       ...(embedder ? { embedder } : {}),
       ...(ctx.environment.runtime ? { runtime: ctx.environment.runtime } : {}),
       ...(ctx.environment.grammars ? { grammars: ctx.environment.grammars } : {}),
+      home: ctx.environment.grammars?.home ?? userStateDirectory(ctx.environment.env),
       onRanking: recordRanking,
     });
     // An upgrade is worth a line of its own: it says the index changed under the user's feet, and

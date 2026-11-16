@@ -385,7 +385,7 @@ export function createMcpServer(retriever: Retriever): McpServer {
     'pattern_list',
     {
       description:
-        'List all available declarative structural patterns configured in .anvesa/patterns/.',
+        "List the declarative structural patterns: the project's (.anvesa/patterns/) and the user's (~/.anvesa/patterns/), each with its tier and the tiers it shadows, and every file that could not be used.",
       inputSchema: {},
     },
     () => respond(() => retriever.patterns.inspect(), 'pattern_list'),
@@ -397,7 +397,11 @@ export function createMcpServer(retriever: Retriever): McpServer {
       description:
         'Run a named structural pattern with bound parameters against the project index.',
       inputSchema: {
-        name: z.string().describe('The name of the pattern to run.'),
+        name: z
+          .string()
+          .describe(
+            'The name of the pattern to run. A project pattern wins over a user one of the same name; "user:<name>" runs the user\'s anyway.',
+          ),
         args: z
           .record(z.string(), z.string())
           .optional()
