@@ -251,9 +251,10 @@ module. Channels are listed in `.anvesa/config.json`, where each can be given a 
 
 ### Declarative patterns
 
-A pattern is a reusable structural query saved as a JSON file in `.anvesa/patterns/`. `anvesa
-pattern list` shows the usable ones and, for every file it cannot use, the file, the reason and a
-typed error code. `anvesa pattern run <name> key=value ...` runs one.
+A pattern is a reusable structural query saved as `.anvesa/patterns/<name>.json`: the file is named
+after the pattern, and names are lowercase letters, digits and `-`. `anvesa pattern list` shows the
+usable ones and, for every file it cannot use, the file, the reason and a typed error code. `anvesa
+pattern run <name> key=value ...` runs one, reading only that file.
 
 ```json
 {

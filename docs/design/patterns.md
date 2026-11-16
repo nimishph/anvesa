@@ -58,6 +58,14 @@ Three things follow:
    goes stale the moment someone edits a file in their editor, which is exactly how patterns are
    written.
 
+After step 1 (below), measured the same way:
+
+| patterns | `list` | `run` (before the query) |
+| ---: | ---: | ---: |
+| 10 | 1.6 ms | 0.3 ms |
+| 100 | 5.2 ms | 0.3 ms |
+| 1000 | 38 ms | 0.3 ms |
+
 So this proposal **does not** include the `patterns.lock.json` the plan sketched. It gets the same
 result more simply: `run` reads one file, and `list` reads all of them in parallel.
 
