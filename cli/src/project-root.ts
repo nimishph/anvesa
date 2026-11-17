@@ -32,7 +32,8 @@ function realHome(): string {
   return fromEnv || homedir();
 }
 
-function userStateDirectory(env: Readonly<Record<string, string | undefined>>): string {
+/** The person's anvesa folder: `ANVESA_HOME`, else `~/.anvesa`. */
+export function userStateDirectory(env: Readonly<Record<string, string | undefined>>): string {
   return resolve(env.ANVESA_HOME ?? join(env.HOME ?? homedir(), '.anvesa'));
 }
 

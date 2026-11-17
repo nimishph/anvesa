@@ -258,10 +258,12 @@ A channel is a dense lane: a transformer turns files (or records) into cards, wh
   patterns: {
     name: 'patterns',
     title: 'Declarative Query Patterns',
-    description: 'Named, parameterized WQL patterns a team keeps in .anvesa/patterns/.',
+    description:
+      "Named, parameterized WQL patterns: the project's in .anvesa/patterns/, yours in ~/.anvesa/patterns/.",
     content: `# Patterns (\`anvesa pattern\`)
 
-A pattern is a JSON file, \`.anvesa/patterns/<name>.json\`, that compiles to WQL.
+A pattern is a JSON file that compiles to WQL: \`.anvesa/patterns/<name>.json\` for the project
+(committed, so the team shares it), or \`~/.anvesa/patterns/<name>.json\` for every project you open.
 
 \`\`\`json
 {
@@ -273,7 +275,9 @@ A pattern is a JSON file, \`.anvesa/patterns/<name>.json\`, that compiles to WQL
 \`\`\`
 
 ### Commands
-- \`pattern list\` — Usable patterns with their parameters, and every file that was rejected and why.
+- \`pattern list\` — Usable patterns with their tier and parameters, and every file that was rejected
+  and why. A project pattern shadows your own of the same name, and the list says so.
+- \`pattern run user:<name>\` — Runs your own even when the project shadows it.
 - \`pattern run <name> key=value ...\` — e.g. \`anvesa pattern run functions-by-prefix prefix=get\`.
   Prints the WQL it ran.
 - MCP: \`pattern_list()\`, \`pattern_run({ name, args: { prefix: "get" } })\`.

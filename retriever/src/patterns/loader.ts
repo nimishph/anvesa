@@ -9,8 +9,9 @@ import { join } from 'node:path';
 import { InvalidArgumentError, toCodeLensError } from '@cntxt-labs/anvesa-core';
 import { compilePattern, type PatternSpec } from '@cntxt-labs/anvesa-structural';
 
-/** Where a pattern comes from. Only the project tier is read today. */
-export type PatternTier = 'project';
+/** Where a pattern comes from, first tier first: a project's own, then the person's. */
+export const PATTERN_TIERS = ['project', 'user'] as const;
+export type PatternTier = (typeof PATTERN_TIERS)[number];
 
 /**
  * A pattern's name, which is also its file's name (`<name>.json`): lowercase, so two files never
@@ -20,6 +21,7 @@ export const PATTERN_NAME = /^[a-z0-9][a-z0-9-]*$/;
 
 /** A pattern file that could not be used, and why. Never dropped silently. */
 export interface InvalidPatternFile {
+  readonly tier: PatternTier;
   readonly file: string;
   readonly code: string;
   readonly message: string;
@@ -83,9 +85,9 @@ export function parsePatternFile(text: string, file: string): PatternSpec {
   return parsed;
 }
 
-function invalidFile(file: string, failure: unknown): InvalidPatternFile {
+function invalidFile(tier: PatternTier, file: string, failure: unknown): InvalidPatternFile {
   const typed = toCodeLensError(failure, `load pattern ${file}`);
-  return { file, code: typed.code, message: typed.message };
+  return { tier, file, code: typed.code, message: typed.message };
 }
 
 function isMissing(failure: unknown): boolean {
@@ -139,7 +141,7 @@ export class DirectoryPatternSource implements PatternSource {
     for (const outcome of outcomes) {
       if ('spec' in outcome)
         patterns.push({ tier: this.tier, file: outcome.file, spec: outcome.spec });
-      else invalid.push(invalidFile(outcome.file, outcome.failure));
+      else invalid.push(invalidFile(this.tier, outcome.file, outcome.failure));
     }
     return { patterns, invalid };
   }

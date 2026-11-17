@@ -88,7 +88,7 @@ function checkPredicateAttributes(predicate: WqlPredicate, wql: string): void {
   if (predicate.inner) checkPredicateAttributes(predicate.inner, wql);
 }
 
-import type { SyntaxRuntime } from '@cntxt-labs/anvesa-syntax';
+import { codeLensHome, type SyntaxRuntime } from '@cntxt-labs/anvesa-syntax';
 import { loadChannelModule } from './channel-module.ts';
 import {
   type ChannelConfig,
@@ -130,7 +130,7 @@ import {
   type TreeRanker,
 } from './learned-ranker.ts';
 import { mappingStoreFor } from './mappings.ts';
-import { PatternRunner } from './pattern-runner.ts';
+import { PatternRunner, standardPatterns } from './pattern-runner.ts';
 import { gateForProject, loadPolicies } from './redteam.ts';
 import { bothScopes, pathScope } from './scope.ts';
 import { type StructuralCoverage, StructuralLane } from './structural-lane.ts';
@@ -197,6 +197,8 @@ export interface RetrieverOptions {
   readonly runtime?: SyntaxRuntime;
   /** Where grammars come from when no `runtime` is given. */
   readonly grammars?: GrammarHost;
+  /** The person's anvesa folder, which holds their patterns. Defaults to `grammars.home`, then `ANVESA_HOME` or `~/.anvesa`. */
+  readonly home?: string;
   /** The mappings that decide what an outline holds. Defaults to the bundled ones with the project's and user's over them. */
   readonly mappings?: MappingRegistry;
   /** Defaults to `<root>/.anvesa/index.db`. */
@@ -378,6 +380,7 @@ export class Retriever {
     ownsRuntime: boolean;
     only: readonly string[] | undefined;
     onRanking: ((event: RankingEvent) => void) | undefined;
+    home: string;
   }) {
     this.#onRanking = parts.onRanking;
     this.root = parts.root;
@@ -385,7 +388,7 @@ export class Retriever {
     this.store = parts.store;
     this.vectors = parts.vectors;
     this.registry = parts.registry;
-    this.patterns = new PatternRunner(this);
+    this.patterns = new PatternRunner(this, standardPatterns(parts.root, parts.home));
     this.embedder = parts.embedder;
     this.config = parts.config;
     this.engine = parts.engine;
@@ -470,6 +473,7 @@ export class Retriever {
       ownsRuntime,
       only: options.only,
       onRanking: options.onRanking,
+      home: options.home ?? options.grammars?.home ?? codeLensHome(),
     });
     try {
       await retriever.#registerChannels();

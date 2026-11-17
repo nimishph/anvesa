@@ -2181,14 +2181,14 @@ describe('red-team rules a project brings', () => {
   });
 });
 
-async function connect(root: string) {
+async function connect(root: string, env: Environment['env'] = {}) {
   const [serverSide, clientSide] = InMemoryTransport.createLinkedPair();
   let err = '';
   const served = serveMcp(
     {
       environment: {
         cwd: root,
-        env: {},
+        env,
         embedder,
         runtime,
         stdout: () => undefined,
@@ -2377,8 +2377,17 @@ describe('mcp server', () => {
 });
 
 describe('declarative patterns', () => {
+  // Each test gets a home of its own, so the person's ~/.anvesa/patterns is never read.
+  const homeFor = () => {
+    const home = mkdtempSync(join(tmpdir(), 'anvesa-home-'));
+    roots.push(home);
+    return home;
+  };
+  const inHome = (home: string) => ({ env: { ANVESA_HOME: home } });
+
   test('--limit overrides the limit a pattern file sets, and a cut page does not claim a total', async () => {
     const root = makeProject();
+    const env = inHome(homeFor());
     await cli(root, 'index');
     const patternsDir = join(root, '.anvesa', 'patterns');
     mkdirSync(patternsDir, { recursive: true });
@@ -2391,20 +2400,21 @@ describe('declarative patterns', () => {
         limit: 1,
       }),
     );
-    const byFile = await cli(root, 'pattern', 'run', 'every-function');
+    const byFile = await cliWith(env, root, 'pattern', 'run', 'every-function');
     expect(byFile.out).toContain('1 matches, more after these (next cursor:');
     const byFlag = json(
-      await cli(root, 'pattern', 'run', 'every-function', '--limit', '2', '--json'),
+      await cliWith(env, root, 'pattern', 'run', 'every-function', '--limit', '2', '--json'),
     );
     expect(byFlag.items).toHaveLength(2);
   });
 
   test('lists patterns, runs parameterized patterns via CLI and MCP', async () => {
     const root = makeProject();
+    const env = inHome(homeFor());
     await cli(root, 'index');
 
     // Initially no patterns
-    const emptyList = await cli(root, 'pattern', 'list');
+    const emptyList = await cliWith(env, root, 'pattern', 'list');
     expect(emptyList.code).toBe(0);
     expect(emptyList.out).toContain('no patterns found');
 
@@ -2425,19 +2435,19 @@ describe('declarative patterns', () => {
     );
 
     // List patterns
-    const listed = await cli(root, 'pattern', 'list');
+    const listed = await cliWith(env, root, 'pattern', 'list');
     expect(listed.code).toBe(0);
     expect(listed.out).toContain('functions-by-name');
     expect(listed.out).toContain('params: $name (required)');
 
     // Run pattern with parameter
-    const ran = await cli(root, 'pattern', 'run', 'functions-by-name', 'name=parseConfig');
+    const ran = await cliWith(env, root, 'pattern', 'run', 'functions-by-name', 'name=parseConfig');
     expect(ran.code).toBe(0);
     expect(ran.out).toContain('pattern: functions-by-name -> wql: //function[@name="parseConfig"]');
     expect(ran.out).toContain('parseConfig  src/config.ts:2');
 
     // MCP tools test
-    const session = await connect(root);
+    const session = await connect(root, env.env);
     try {
       const { client } = session;
       const mcpList = await call(client, 'pattern_list', {});
@@ -2460,6 +2470,7 @@ describe('declarative patterns', () => {
   });
   test('pattern list reports invalid files with a reason and a typed code', async () => {
     const root = makeProject();
+    const env = inHome(homeFor());
     const patternsDir = join(root, '.anvesa', 'patterns');
     mkdirSync(patternsDir, { recursive: true });
     writeFileSync(join(patternsDir, 'broken.json'), '{ not json');
@@ -2467,7 +2478,7 @@ describe('declarative patterns', () => {
       join(patternsDir, 'bad-kind.json'),
       JSON.stringify({ name: 'bad-kind', description: 'x', target: { kind: 'no-such-kind' } }),
     );
-    const listed = await cli(root, 'pattern', 'list');
+    const listed = await cliWith(env, root, 'pattern', 'list');
     expect(listed.code).toBe(0);
     expect(listed.out).toContain('invalid broken.json');
     expect(listed.out).toContain('CORE_INVALID_ARGUMENT');
@@ -2477,6 +2488,7 @@ describe('declarative patterns', () => {
 
   test('a pattern needs a description and its file name as its name; run takes only declared arguments', async () => {
     const root = makeProject();
+    const env = inHome(homeFor());
     await cli(root, 'index');
     const patternsDir = join(root, '.anvesa', 'patterns');
     mkdirSync(patternsDir, { recursive: true });
@@ -2492,7 +2504,7 @@ describe('declarative patterns', () => {
     writeFileSync(join(patternsDir, 'Shouty.json'), fn('Shouty', { description: 'b' }));
     writeFileSync(join(patternsDir, 'fine.json'), fn('fine', { description: 'by name' }));
 
-    const listed = json(await cli(root, 'pattern', 'list', '--json'));
+    const listed = json(await cliWith(env, root, 'pattern', 'list', '--json'));
     expect(listed.patterns.map((p: { name: string }) => p.name)).toEqual(['fine']);
     const invalid = listed.invalid.map((i: { file: string; message: string }) => [
       i.file,
@@ -2508,15 +2520,74 @@ describe('declarative patterns', () => {
     expect(invalid[2][1]).toContain('description');
 
     // run reads only the named file: a broken neighbour does not stop it.
-    const ran = json(await cli(root, 'pattern', 'run', 'fine', 'name=parseConfig', '--json'));
+    const ran = json(
+      await cliWith(env, root, 'pattern', 'run', 'fine', 'name=parseConfig', '--json'),
+    );
     expect(ran.items).toHaveLength(1);
-    const missing = await cli(root, 'pattern', 'run', 'twin');
+    const missing = await cliWith(env, root, 'pattern', 'run', 'twin');
     expect(missing.code).not.toBe(0);
     expect(missing.err).toContain('one of fine');
 
-    const bogus = await cli(root, 'pattern', 'run', 'fine', 'name=parseConfig', 'bogus=1');
+    const bogus = await cliWith(env, root, 'pattern', 'run', 'fine', 'name=parseConfig', 'bogus=1');
     expect(bogus.code).not.toBe(0);
     expect(bogus.err).toContain('bogus');
+  });
+
+  test('a user pattern runs in any project; a project one shadows it, and user: still reaches it', async () => {
+    const root = makeProject();
+    await cli(root, 'index');
+    const home = homeFor();
+    const env = inHome(home);
+    const write = (dir: string, description: string, name: string) => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, 'by-name.json'),
+        JSON.stringify({
+          name: 'by-name',
+          description,
+          target: { kind: 'function', name },
+        }),
+      );
+    };
+    write(join(home, 'patterns'), 'the user one', 'validate');
+
+    const fromUser = json(await cliWith(env, root, 'pattern', 'run', 'by-name', '--json'));
+    expect(fromUser.wql).toBe('//function[@name="validate"]');
+    const listedUser = json(await cliWith(env, root, 'pattern', 'list', '--json'));
+    expect(listedUser.patterns).toEqual([
+      expect.objectContaining({ name: 'by-name', tier: 'user' }),
+    ]);
+
+    write(join(root, '.anvesa', 'patterns'), 'the project one', 'parseConfig');
+    const listed = await cliWith(env, root, 'pattern', 'list');
+    expect(listed.out).toMatch(/by-name\s+project \(shadows user\)/);
+    const bare = json(await cliWith(env, root, 'pattern', 'run', 'by-name', '--json'));
+    expect(bare.wql).toBe('//function[@name="parseConfig"]');
+    const reached = json(await cliWith(env, root, 'pattern', 'run', 'user:by-name', '--json'));
+    expect(reached.wql).toBe('//function[@name="validate"]');
+
+    const session = await connect(root, env.env);
+    try {
+      const viaMcp = await call(session.client, 'pattern_run', { name: 'user:by-name' });
+      expect(viaMcp.body.wql).toBe('//function[@name="validate"]');
+      const mcpList = await call(session.client, 'pattern_list', {});
+      expect(mcpList.body.patterns[0]).toMatchObject({ tier: 'project', shadows: ['user'] });
+    } finally {
+      await session.close();
+    }
+
+    const badTier = await cliWith(env, root, 'pattern', 'run', 'team:by-name');
+    expect(badTier.code).not.toBe(0);
+    expect(badTier.err).toContain('project, user');
+  });
+
+  test('an invalid user pattern is listed under its tier', async () => {
+    const root = makeProject();
+    const home = homeFor();
+    mkdirSync(join(home, 'patterns'), { recursive: true });
+    writeFileSync(join(home, 'patterns', 'broken.json'), '{ nope');
+    const listed = await cliWith(inHome(home), root, 'pattern', 'list');
+    expect(listed.out).toContain('invalid broken.json (user)');
   });
 
   test('status on an unindexed directory does not create .anvesa/ directory', async () => {

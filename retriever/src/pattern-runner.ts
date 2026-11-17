@@ -16,11 +16,18 @@ export {
   type InvalidPatternFile,
   type LoadedPattern,
   PATTERN_NAME,
+  PATTERN_TIERS,
   type PatternSource,
   type PatternTier,
   parsePatternFile,
 } from './patterns/loader.ts';
-export { type PatternInventory, PatternResolver, projectPatterns } from './patterns/resolver.ts';
+export {
+  type ListedPattern,
+  type PatternInventory,
+  PatternResolver,
+  projectPatterns,
+  standardPatterns,
+} from './patterns/resolver.ts';
 
 export interface PatternRunResult {
   readonly pattern: string;

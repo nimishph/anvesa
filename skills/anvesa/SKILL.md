@@ -165,8 +165,9 @@ anvesa retrieve <channel> "<query>"          # retrieve from a specific channel 
 anvesa pattern list                          # list available query patterns, and rejected files
 anvesa pattern run <name> key=value          # execute a named pattern, e.g. pattern run by-prefix prefix=get
 ```
-Pattern files live in `.anvesa/patterns/<name>.json`, named after the pattern, and need `name`,
-`description` and `target`; see
+Pattern files are named after the pattern and need `name`, `description` and `target`. The
+project's live in `.anvesa/patterns/<name>.json`, the user's in `~/.anvesa/patterns/<name>.json`; a
+project pattern shadows a user one, and `pattern run user:<name>` reaches it. See
 `anvesa primer patterns`. Channels: `anvesa primer channels`.
 
 ### 10. Models
