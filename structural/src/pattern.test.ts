@@ -157,4 +157,22 @@ describe('PatternCompiler (Mode 2 -> Mode 1 WQL)', () => {
     expect(hint).toBeDefined();
     expect(hint?.hint).toContain('callable');
   });
+
+  test('warns about a field no part of a pattern knows, and allows $schema', () => {
+    const spec = {
+      $schema: 'https://example.test/pattern.v1.json',
+      name: 'typo',
+      description: 'A misspelt prefix would match every function',
+      target: { kind: 'function', nameStartWith: 'handle' },
+      filters: [{ attr: 'path', op: 'contains', value: 'src', negate: true }],
+      tags: ['x'],
+    } as unknown as PatternSpec;
+    const compiled = compilePattern(spec);
+    expect(compiled.diagnostics.map((d) => [d.severity, d.field])).toEqual([
+      ['warning', 'tags'],
+      ['warning', 'target.nameStartWith'],
+      ['warning', 'filters[0].negate'],
+    ]);
+    expect(compiled.diagnostics[1]?.hint).toContain('nameStartsWith');
+  });
 });

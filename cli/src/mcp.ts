@@ -421,6 +421,31 @@ export function createMcpServer(retriever: Retriever): McpServer {
   );
 
   server.registerTool(
+    'pattern_check',
+    {
+      description:
+        'Check a pattern while writing it: runs it like pattern_run and also returns its tier, file, WQL before binding, and every compiler warning (such as an unknown, ignored field), even when it has hits. Fails when the file is invalid.',
+      inputSchema: {
+        name: z.string().describe('The pattern to check; "user:<name>" picks the user\'s.'),
+        args: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe('Key-value arguments to bind into pattern parameters.'),
+        ...page,
+      },
+    },
+    ({ name, args, limit, cursor }) =>
+      respond(
+        () =>
+          retriever.patterns.check(name, args ?? {}, {
+            ...(limit ? { limit } : {}),
+            ...(cursor ? { cursor } : {}),
+          }),
+        'pattern_check',
+      ),
+  );
+
+  server.registerTool(
     'primer',
     {
       description: `Token-frugal guidance on Anvesa concepts (${PRIMER_TOPIC_NAMES.join(', ')}). Returns table of contents if topic is omitted.`,
