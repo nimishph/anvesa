@@ -19,6 +19,10 @@ export type PatternTier = (typeof PATTERN_TIERS)[number];
  */
 export const PATTERN_NAME = /^[a-z0-9][a-z0-9-]*$/;
 
+/** A pattern file's `$schema`, for completion and errors in an editor. */
+export const PATTERN_SCHEMA_URL =
+  'https://raw.githubusercontent.com/nimishph/anvesa/main/schemas/pattern.v1.json';
+
 /** A pattern file that could not be used, and why. Never dropped silently. */
 export interface InvalidPatternFile {
   readonly tier: PatternTier;
@@ -30,6 +34,8 @@ export interface InvalidPatternFile {
 export interface LoadedPattern {
   readonly tier: PatternTier;
   readonly file: string;
+  /** Where the file is, as a person would open it. */
+  readonly path: string;
   readonly spec: PatternSpec;
 }
 
@@ -113,7 +119,12 @@ export class DirectoryPatternSource implements PatternSource {
       if (isMissing(failure)) return undefined;
       throw toCodeLensError(failure, `load pattern ${file}`);
     }
-    return { tier: this.tier, file, spec: parsePatternFile(text, file) };
+    return {
+      tier: this.tier,
+      file,
+      path: join(this.directory, file),
+      spec: parsePatternFile(text, file),
+    };
   }
 
   async all(): Promise<TierInventory> {
@@ -140,7 +151,12 @@ export class DirectoryPatternSource implements PatternSource {
     const invalid: InvalidPatternFile[] = [];
     for (const outcome of outcomes) {
       if ('spec' in outcome)
-        patterns.push({ tier: this.tier, file: outcome.file, spec: outcome.spec });
+        patterns.push({
+          tier: this.tier,
+          file: outcome.file,
+          path: join(this.directory, outcome.file),
+          spec: outcome.spec,
+        });
       else invalid.push(invalidFile(this.tier, outcome.file, outcome.failure));
     }
     return { patterns, invalid };

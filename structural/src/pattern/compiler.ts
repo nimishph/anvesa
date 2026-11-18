@@ -2,7 +2,7 @@ import { InvalidArgumentError } from '@cntxt-labs/anvesa-core';
 import { StructuralSubsystemError } from '../errors.ts';
 import { KNOWN_ATTRIBUTES } from '../node.ts';
 import { parseWql, type WqlQuery } from '../wql.ts';
-import type { PatternSpec } from './schema.ts';
+import { PATTERN_FIELDS, type PatternSpec } from './schema.ts';
 
 export interface Diagnostic {
   readonly severity: 'error' | 'warning' | 'hint';
@@ -40,6 +40,33 @@ export class PatternCompileError extends StructuralSubsystemError {
   }
 }
 
+/** A warning for each field the spec has that no part of a pattern knows: most are typos. */
+function unknownFields(spec: PatternSpec): Diagnostic[] {
+  const found: Diagnostic[] = [];
+  const check = (value: unknown, known: readonly string[], at: string) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+    for (const key of Object.keys(value)) {
+      if (known.includes(key)) continue;
+      found.push({
+        severity: 'warning',
+        field: at ? `${at}.${key}` : key,
+        message: `Unknown field "${key}"${at ? ` in ${at}` : ''}; it is ignored`,
+        hint: `Known fields: ${known.filter((k) => k !== '$schema').join(', ')}.`,
+      });
+    }
+  };
+  check(spec, PATTERN_FIELDS.spec, '');
+  check(spec.target, PATTERN_FIELDS.target, 'target');
+  check(spec.scope, PATTERN_FIELDS.scope, 'scope');
+  (spec.filters ?? []).forEach((f, i) => {
+    check(f, PATTERN_FIELDS.filter, `filters[${i}]`);
+  });
+  (spec.params ?? []).forEach((p, i) => {
+    check(p, PATTERN_FIELDS.param, `params[${i}]`);
+  });
+  return found;
+}
+
 /** A value as the inside of a quoted WQL string: `\` and both quotes escaped (see wql.ts). */
 export function escapeWqlString(value: string): string {
   return value.replace(/[\\"']/g, (char) => `\\${char}`);
@@ -50,7 +77,7 @@ export function escapeWqlString(value: string): string {
  * Statically checks attributes, parameter bindings, and language compatibility.
  */
 export function compilePattern(spec: PatternSpec): CompiledPattern {
-  const diagnostics: Diagnostic[] = [];
+  const diagnostics: Diagnostic[] = unknownFields(spec);
   const declaredParams = new Set((spec.params ?? []).map((p) => p.name));
   const usedParams = new Set<string>();
 

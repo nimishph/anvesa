@@ -53,6 +53,11 @@ kind: path
 expression: schemas/pattern.v1.json
 ```
 
+```yojana:claim
+kind: text
+expression: /async check\(/ in retriever/src/pattern-runner.ts
+```
+
 ## Requirement: bundled patterns {#req-pattern-bundled}
 
 `retriever/patterns/*.json`, imported by a generated index that a test compares to the folder, is
@@ -69,5 +74,5 @@ A read-only list (name, tier, description, shadowing) and a box to run one.
 
 ```yojana:claim
 kind: text
-expression: /api/patterns in ui/src/server.ts
+expression: api/patterns in ui/src/server.ts
 ```

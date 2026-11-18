@@ -259,7 +259,11 @@ if set) and work in every project. A project pattern shadows yours of the same n
 `anvesa pattern list` shows the usable ones with their tier, says which shadow another, and, for
 every file it cannot use, gives the file, the reason and a typed error code. `anvesa pattern run
 <name> key=value ...` runs one, reading only its file; `anvesa pattern run user:<name>` runs yours
-even when the project shadows it.
+even when the project shadows it. `anvesa pattern check <name> key=value ...` runs it too, and also
+shows its file, its WQL before and after binding, and every warning, such as a misspelt field that
+would otherwise be ignored. Give a file `"$schema":
+"https://raw.githubusercontent.com/nimishph/anvesa/main/schemas/pattern.v1.json"` and an editor
+completes and checks it as you type.
 
 ```json
 {

@@ -280,10 +280,13 @@ A pattern is a JSON file that compiles to WQL: \`.anvesa/patterns/<name>.json\` 
 - \`pattern run user:<name>\` — Runs your own even when the project shadows it.
 - \`pattern run <name> key=value ...\` — e.g. \`anvesa pattern run functions-by-prefix prefix=get\`.
   Prints the WQL it ran.
-- MCP: \`pattern_list()\`, \`pattern_run({ name, args: { prefix: "get" } })\`.
+- \`pattern check <name> key=value ...\` — Runs it and also shows its file, its WQL before and after
+  binding, and every warning (an unknown field is ignored, so a typo only shows here).
+- MCP: \`pattern_list()\`, \`pattern_run({ name, args: { prefix: "get" } })\`, \`pattern_check(...)\`.
 
 ### Rules
-- \`name\`, \`description\` and \`target\` are required.
+- \`name\`, \`description\` and \`target\` are required. The format is \`schemas/pattern.v1.json\`;
+  give it as \`"$schema"\` for completion in an editor.
 - The file is named after the pattern (\`functions-by-prefix.json\`); names are lowercase letters,
   digits and \`-\`. \`run\` reads only that file.
 - Values are escaped as quoted WQL strings: a value is only ever matched against.

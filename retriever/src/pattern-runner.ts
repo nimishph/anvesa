@@ -1,9 +1,11 @@
 import {
+  type CompiledPattern,
   compilePattern,
   type Diagnostic,
   type PatternSpec,
   type WqlHit,
 } from '@cntxt-labs/anvesa-structural';
+import type { PatternTier } from './patterns/loader.ts';
 import {
   type PatternInventory,
   type PatternResolver,
@@ -16,6 +18,7 @@ export {
   type InvalidPatternFile,
   type LoadedPattern,
   PATTERN_NAME,
+  PATTERN_SCHEMA_URL,
   PATTERN_TIERS,
   type PatternSource,
   type PatternTier,
@@ -36,6 +39,17 @@ export interface PatternRunResult {
   readonly total: number | null;
   readonly nextCursor: string | null;
   readonly diagnostic?: Diagnostic | undefined;
+}
+
+/** A run that also says what the pattern is and everything the compiler noticed. */
+export interface PatternCheckResult extends PatternRunResult {
+  readonly tier: PatternTier;
+  /** The pattern file. */
+  readonly path: string;
+  /** The WQL before its parameters are bound. */
+  readonly template: string;
+  /** Every warning from compiling, then the run's own diagnostic, if any. */
+  readonly diagnostics: readonly Diagnostic[];
 }
 
 export interface PatternRetrieverHost {
@@ -90,7 +104,36 @@ export class PatternRunner {
     options: { limit?: number; cursor?: string } = {},
   ): Promise<PatternRunResult> {
     const spec = typeof nameOrSpec === 'string' ? await this.get(nameOrSpec) : nameOrSpec;
-    const compiled = compilePattern(spec);
+    return this.execute(compilePattern(spec), args, options);
+  }
+
+  /**
+   * `run`, saying more: where the pattern is, its WQL before binding, and every compiler warning,
+   * even when there are hits. Throws, as `run` does, when the file is invalid.
+   */
+  async check(
+    reference: string,
+    args: Record<string, string> = {},
+    options: { limit?: number; cursor?: string } = {},
+  ): Promise<PatternCheckResult> {
+    const found = await this.resolver.find(reference);
+    const compiled = compilePattern(found.spec);
+    const result = await this.execute(compiled, args, options);
+    return {
+      ...result,
+      tier: found.tier,
+      path: found.path,
+      template: compiled.templateWql,
+      diagnostics: [...compiled.diagnostics, ...(result.diagnostic ? [result.diagnostic] : [])],
+    };
+  }
+
+  private async execute(
+    compiled: CompiledPattern,
+    args: Record<string, string>,
+    options: { limit?: number; cursor?: string },
+  ): Promise<PatternRunResult> {
+    const { spec } = compiled;
     const bound = compiled.bind(args);
 
     let include: ((path: string) => boolean) | undefined;

@@ -164,10 +164,12 @@ anvesa channel list                          # list registered channels
 anvesa retrieve <channel> "<query>"          # retrieve from a specific channel (e.g. digests, runbooks)
 anvesa pattern list                          # list available query patterns, and rejected files
 anvesa pattern run <name> key=value          # execute a named pattern, e.g. pattern run by-prefix prefix=get
+anvesa pattern check <name> key=value        # run it and show its file, WQL and every warning
 ```
 Pattern files are named after the pattern and need `name`, `description` and `target`. The
 project's live in `.anvesa/patterns/<name>.json`, the user's in `~/.anvesa/patterns/<name>.json`; a
-project pattern shadows a user one, and `pattern run user:<name>` reaches it. See
+project pattern shadows a user one, and `pattern run user:<name>` reaches it. After writing or
+editing one, run `pattern check` on it: an unknown field is ignored, so a typo only shows there. See
 `anvesa primer patterns`. Channels: `anvesa primer channels`.
 
 ### 10. Models
@@ -241,5 +243,6 @@ If `anvesa` is running as an MCP server (`anvesa mcp serve`):
 - `index`: parameters `{ "force"?: boolean }`
 - `pattern_list`: parameters `{}`
 - `pattern_run`: parameters `{ "name": string, "args"?: Record<string, string>, "limit"?: number, "cursor"?: string }`
+- `pattern_check`: parameters `{ "name": string, "args"?: Record<string, string>, "limit"?: number, "cursor"?: string }`
 - `primer`: parameters `{ "topic"?: string }`
 - `show_in_ui`: parameters `{ "query"?: string, "mode"?: "fused" | "semantic" | "structural", "wql"?: string, "scope"?: string, "symbol"?: string, "view"?: "search" | "graph" | "wql" | "status", "repomap"?: boolean, "routes"?: boolean, "open"?: boolean }`

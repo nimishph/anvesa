@@ -126,7 +126,9 @@ Notes:
   compiles to, and the person compares it with the query they had.
 - **`check` is `run` with more said.** It is the same code path, and it reports the compiled WQL
   and the diagnostic even when there are hits, so an author sees what the pattern does before
-  relying on it.
+  relying on it. Among those warnings is every field the compiler does not know: a misspelt
+  `nameStartWith` is otherwise ignored, and the pattern quietly matches more than it should. It is
+  a warning, not a rejection, so a file written for a later version still loads.
 - **A JSON schema, `schemas/pattern.v1.json`,** gives editors completion and errors as the person
   types, the way `config.v1.json` and `model.v1.json` do. `pattern new` writes its `$schema`.
 - **The dashboard** gets a read-only list (name, tier, description, shadowing) and a run box. It

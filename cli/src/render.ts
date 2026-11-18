@@ -16,6 +16,7 @@ import {
   type MappingCheck,
   type ModelDoctor,
   type ModelRow,
+  type PatternCheckResult,
   type PatternInventory,
   type PatternRunResult,
   type RedTeamRuleInfo,
@@ -1121,6 +1122,29 @@ export function renderPatternResult(result: PatternRunResult): string {
     ...rows,
     `${count}${result.nextCursor ? ` (next cursor: ${result.nextCursor})` : ''}`,
     ...diagRows,
+  );
+}
+
+export function renderPatternCheck(result: PatternCheckResult): string {
+  const rows = result.items.map((hit) => {
+    const at = place({ path: hit.path ?? '', line: hit.startLine, endLine: hit.endLine });
+    return `  ${hit.tag} ${hit.name ?? ''}  ${at}`;
+  });
+  const count =
+    result.total !== null
+      ? `${result.items.length} of ${result.total} matches`
+      : `${result.items.length} matches, more after these`;
+  const said = result.diagnostics.flatMap((d) => [
+    `${d.severity}${d.field ? ` ${d.field}` : ''}: ${d.message}`,
+    ...(d.hint ? [`  hint: ${d.hint}`] : []),
+  ]);
+  return lines(
+    `pattern:  ${result.pattern} (${result.tier}, ${result.path})`,
+    `template: ${result.template}`,
+    `wql:      ${result.wql}`,
+    `${count}${result.nextCursor ? ` (next cursor: ${result.nextCursor})` : ''}`,
+    ...rows,
+    ...(said.length > 0 ? said : ['no warnings']),
   );
 }
 

@@ -2590,6 +2590,62 @@ describe('declarative patterns', () => {
     expect(listed.out).toContain('invalid broken.json (user)');
   });
 
+  test('pattern check shows where a pattern is, its WQL before and after binding, and every warning', async () => {
+    const root = makeProject();
+    await cli(root, 'index');
+    const env = inHome(homeFor());
+    const dir = join(root, '.anvesa', 'patterns');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'by-name.json'),
+      JSON.stringify({
+        name: 'by-name',
+        description: 'Functions by name',
+        target: { kind: 'function', name: '$name', nameEndWith: 'x' },
+        params: [{ name: 'name', required: true }],
+      }),
+    );
+
+    const checked = await cliWith(env, root, 'pattern', 'check', 'by-name', 'name=parseConfig');
+    expect(checked.code).toBe(0);
+    expect(checked.out).toContain('pattern:  by-name (project, ');
+    expect(checked.out).toContain('template: //function[@name="$name"]');
+    expect(checked.out).toContain('wql:      //function[@name="parseConfig"]');
+    expect(checked.out).toContain('parseConfig  src/config.ts:2');
+    expect(checked.out).toContain('warning target.nameEndWith: Unknown field "nameEndWith"');
+
+    const asJson = json(
+      await cliWith(env, root, 'pattern', 'check', 'by-name', 'name=validate', '--json'),
+    );
+    expect(asJson).toMatchObject({
+      pattern: 'by-name',
+      tier: 'project',
+      template: '//function[@name="$name"]',
+    });
+    expect(asJson.path).toEndWith('by-name.json');
+    expect(asJson.diagnostics).toEqual([expect.objectContaining({ field: 'target.nameEndWith' })]);
+
+    const session = await connect(root, env.env);
+    try {
+      const viaMcp = await call(session.client, 'pattern_check', {
+        name: 'by-name',
+        args: { name: 'validate' },
+      });
+      expect(viaMcp.isError).toBe(false);
+      expect(viaMcp.body.items[0].name).toBe('validate');
+      expect(viaMcp.body.diagnostics).toHaveLength(1);
+    } finally {
+      await session.close();
+    }
+
+    const missingArg = await cliWith(env, root, 'pattern', 'check', 'by-name');
+    expect(missingArg.code).not.toBe(0);
+    writeFileSync(join(dir, 'broken.json'), '{ nope');
+    const broken = await cliWith(env, root, 'pattern', 'check', 'broken');
+    expect(broken.code).not.toBe(0);
+    expect(broken.err).toContain('valid JSON');
+  });
+
   test('status on an unindexed directory does not create .anvesa/ directory', async () => {
     const emptyRoot = mkdtempSync(join(tmpdir(), 'anvesa-unindexed-'));
     roots.push(emptyRoot);

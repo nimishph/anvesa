@@ -6,15 +6,18 @@
  * the PatternCompiler compiles it deterministically into Mode 1 WQL.
  */
 
-export type TargetKind =
-  | 'function'
-  | 'method'
-  | 'callable'
-  | 'class'
-  | 'interface'
-  | 'struct'
-  | 'type'
-  | 'custom';
+/** What a pattern finds. `schemas/pattern.v1.json` lists the same, and a test keeps them equal. */
+export const TARGET_KINDS = [
+  'function',
+  'method',
+  'callable',
+  'class',
+  'interface',
+  'struct',
+  'type',
+  'custom',
+] as const;
+export type TargetKind = (typeof TARGET_KINDS)[number];
 
 export interface PatternTarget {
   readonly kind: TargetKind;
@@ -27,7 +30,8 @@ export interface PatternTarget {
   readonly isDeclaration?: boolean;
 }
 
-export type FilterOp = 'eq' | 'contains' | 'starts' | 'ends' | 'regex' | 'exists';
+export const FILTER_OPS = ['eq', 'contains', 'starts', 'ends', 'regex', 'exists'] as const;
+export type FilterOp = (typeof FILTER_OPS)[number];
 
 export interface PatternFilter {
   readonly attr: string;
@@ -58,3 +62,35 @@ export interface PatternSpec {
   readonly corpus?: string;
   readonly limit?: number;
 }
+
+/**
+ * The fields each part of a spec may have. The compiler warns about any other, because a misspelt
+ * field (`nameStartWith`) is otherwise ignored and the pattern quietly matches more than meant.
+ * `schemas/pattern.v1.json` lists the same fields, and a test keeps them equal.
+ */
+export const PATTERN_FIELDS = {
+  spec: [
+    '$schema',
+    'name',
+    'description',
+    'target',
+    'scope',
+    'filters',
+    'params',
+    'corpus',
+    'limit',
+  ],
+  target: [
+    'kind',
+    'name',
+    'nameStartsWith',
+    'nameEndsWith',
+    'nameContains',
+    'nameRegex',
+    'customTag',
+    'isDeclaration',
+  ],
+  scope: ['within', 'withinName', 'directChild'],
+  filter: ['attr', 'op', 'value'],
+  param: ['name', 'description', 'default', 'required'],
+} as const;

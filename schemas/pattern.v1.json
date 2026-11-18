@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/nimishph/anvesa/main/schemas/pattern.v1.json",
+  "title": "Anvesa Pattern Schema (v1)",
+  "description": "One declarative structural pattern, compiled to WQL. A project's live in .anvesa/patterns/<name>.json, yours in ~/.anvesa/patterns/<name>.json; the file is named after the pattern. Check one with: anvesa pattern check <name>.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "description", "target"],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "description": "The pattern's name, and its file's name without .json: lowercase letters, digits and -."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S",
+      "description": "What the pattern finds, shown by pattern list."
+    },
+    "target": {
+      "$ref": "#/$defs/target"
+    },
+    "scope": {
+      "$ref": "#/$defs/scope"
+    },
+    "filters": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/filter" },
+      "description": "Further conditions on the target's attributes, all of which must hold."
+    },
+    "params": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/param" },
+      "description": "Values given at run time (pattern run <name> key=value), used as \"$key\" in a target name field or a filter value."
+    },
+    "corpus": {
+      "type": "string",
+      "description": "Only files in this named corpus are searched."
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "How many hits a run returns unless the caller says otherwise."
+    }
+  },
+  "$defs": {
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "description": "What the pattern finds.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "function",
+            "method",
+            "callable",
+            "class",
+            "interface",
+            "struct",
+            "type",
+            "custom"
+          ],
+          "description": "callable is a function or a method. custom needs customTag."
+        },
+        "name": {
+          "type": "string",
+          "description": "The exact name, or \"$param\"."
+        },
+        "nameStartsWith": {
+          "type": "string",
+          "description": "A name prefix, or \"$param\"."
+        },
+        "nameEndsWith": {
+          "type": "string",
+          "description": "A name suffix, or \"$param\"."
+        },
+        "nameContains": {
+          "type": "string",
+          "description": "Text the name contains, or \"$param\"."
+        },
+        "nameRegex": {
+          "type": "string",
+          "description": "A regular expression the name matches."
+        },
+        "customTag": {
+          "type": "string",
+          "description": "The node tag to find, for kind custom."
+        },
+        "isDeclaration": {
+          "type": "boolean",
+          "description": "Only declarations, not references."
+        }
+      },
+      "if": { "properties": { "kind": { "const": "custom" } } },
+      "then": { "required": ["kind", "customTag"] }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Where the target must be. withinName and directChild apply only with within.",
+      "properties": {
+        "within": {
+          "type": "string",
+          "description": "The tag of the enclosing node, such as class."
+        },
+        "withinName": {
+          "type": "string",
+          "description": "The enclosing node's name."
+        },
+        "directChild": {
+          "type": "boolean",
+          "description": "The target is a direct child of the enclosing node, not any descendant."
+        }
+      }
+    },
+    "filter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attr", "op", "value"],
+      "properties": {
+        "attr": {
+          "type": "string",
+          "description": "The attribute to test, such as visibility or async."
+        },
+        "op": {
+          "enum": ["eq", "contains", "starts", "ends", "regex", "exists"]
+        },
+        "value": {
+          "type": "string",
+          "description": "The value to compare with, or \"$param\". Ignored for exists."
+        }
+      }
+    },
+    "param": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Used as \"$name\" in the spec."
+        },
+        "description": {
+          "type": "string"
+        },
+        "default": {
+          "type": "string",
+          "description": "The value when a run gives none."
+        },
+        "required": {
+          "type": "boolean",
+          "description": "A run without a value (and with no default) is an error."
+        }
+      }
+    }
+  }
+}
