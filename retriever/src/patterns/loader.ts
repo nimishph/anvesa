@@ -74,11 +74,18 @@ export function parsePatternFile(text: string, file: string): PatternSpec {
   }
   const stem = file.replace(/\.json$/, '');
   if (parsed.name !== stem) {
-    throw new InvalidArgumentError(
-      'pattern',
-      `the file name to be the pattern's name (rename it to ${parsed.name}.json, or set "name" to "${stem}")`,
-      file,
-    );
+    // Offer only the fixes that give a valid name; with neither, the name rule below says why.
+    const fixes = [
+      ...(PATTERN_NAME.test(parsed.name) ? [`rename it to ${parsed.name}.json`] : []),
+      ...(PATTERN_NAME.test(stem) ? [`set "name" to "${stem}"`] : []),
+    ];
+    if (fixes.length > 0) {
+      throw new InvalidArgumentError(
+        'pattern',
+        `the file name to be the pattern's name (${fixes.join(', or ')})`,
+        file,
+      );
+    }
   }
   if (!PATTERN_NAME.test(parsed.name)) {
     throw new InvalidArgumentError(
