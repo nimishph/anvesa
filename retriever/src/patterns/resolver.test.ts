@@ -43,6 +43,28 @@ describe('pattern loader', () => {
     await expect(source.find('odd')).rejects.toThrow('rename it to even.json');
   });
 
+  test('a name that differs from its file offers only the fixes that give a valid name', () => {
+    const reason = (text: string, file: string) => {
+      try {
+        parsePatternFile(text, file);
+        return 'accepted';
+      } catch (failure) {
+        return (failure as { message: string }).message;
+      }
+    };
+    expect(reason(pattern('even'), 'odd.json')).toContain(
+      'rename it to even.json, or set "name" to "odd"',
+    );
+    const upperFile = reason(pattern('wrong-case'), 'Wrong-Case.json');
+    expect(upperFile).toContain('rename it to wrong-case.json)');
+    expect(upperFile).not.toContain('set "name"');
+    const upperName = reason(pattern('Wrong-Case'), 'wrong-case.json');
+    expect(upperName).toContain('set "name" to "wrong-case")');
+    expect(upperName).not.toContain('rename it');
+    // Neither name is valid: the name rule is the reason.
+    expect(reason(pattern('Bad'), 'Worse.json')).toContain('lowercase letters, digits');
+  });
+
   test('all lists usable patterns and every rejected file with a typed code', async () => {
     const dir = folder({
       'a.json': pattern('a'),
